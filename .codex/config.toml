@@ -1,0 +1,8 @@
+# Project-scoped Codex config (applies only when this repository is a trusted Codex project).
+# Registers the same EUTONOS Music MCP facade that Claude Code loads from .mcp.json.
+[mcp_servers.eutonos_music]
+command = "node"
+args = ["dist/src/authoring/mcp-main.js"]
+startup_timeout_sec = 20
+# FL CLI render/verify: up to 60 s waiting for another client plus the 300 s FL CLI timeout.
+tool_timeout_sec = 420

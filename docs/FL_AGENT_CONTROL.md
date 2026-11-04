@@ -1,7 +1,7 @@
 # Unified FL Studio control for Codex and Claude
 
 Document ID: `EM-D017`  
-Status: **architecture and operating guide only**, 2026-11-03. Nothing described here has been installed or verified on the owner's FL Studio machine.
+Status: architecture and operating guide, 2026-11-03. **Update 2026-11-04 (EMF-S08):** a first bounded slice is implemented and live-verified on the owner's Windows PC — one shared broker/MCP facade used by Claude Code and Codex, offline project edits, FL-side readback, FL CLI render and an `em.audio-pack.v0` pack. See [S08 FL authoring](S08_FL_AUTHORING.md) for what actually exists; the wider design below (live GUI scripting, Piano-roll, mixer, plugins, UI automation) remains proposed.
 
 **Producer seam after S01:** emit PCM16 WAV and metadata through the [portable v0 pack contract](S01_FOUNDATION.md); do not invent a separate PC pack or DJ interface. S08 may begin on Windows after S01 publication while cloud S02–S07 continue independently. The shared music system targets Windows, macOS and Linux; the Windows UI/export mechanisms below are host-specific candidates, not cross-platform FL capability claims.
 

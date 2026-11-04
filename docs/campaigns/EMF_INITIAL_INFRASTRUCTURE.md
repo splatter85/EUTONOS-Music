@@ -3,10 +3,10 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS — EMF-S01/S02 COMPLETE; EMF-S03 READY**
+Status: **IN_PROGRESS — EMF-S01/S02 COMPLETE; EMF-S08 PC COMPLETE; EMF-S03 READY**
 Recorded 2026-11-03; revised 2026-11-04, America/Chicago
 
-Progress estimate: **unknown**; S01 foundation and S02 cloud player checks pass. Physical output, musical acceptance, the full standalone MVP and the DAW bridge remain unqualified.
+Progress estimate: **unknown**; S01 foundation and S02 cloud player checks pass, and S08 proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.
 
 ## Outcome
 
@@ -46,7 +46,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
 
-**Current slice status:** **S01 and S02 COMPLETE** for their bounded cloud engineering scopes. S02 uses one native Web Audio clock for Play/Pause A/B, Now/Next and the authored A→B route. At source `c7f75321bf034517fd0b2fde41298285b89f26b9`, 54 Node tests, deterministic fixture/media checks, seven native offline audio checks and live Chromium behavior passed on Windows, macOS and Linux. [Detailed S02 evidence](../handoffs/EMF-S02-HANDOFF.md). **S03 READY — CLOUD** is the next pickup; it has not started. **S08 READY — PC host intake** remains available independently. Physical listening and actual FL host capabilities remain unverified; later slices retain their prerequisites.
+**Current slice status:** **S01 and S02 COMPLETE** for their bounded cloud engineering scopes. S02 uses one native Web Audio clock for Play/Pause A/B, Now/Next and the authored A→B route. At source `c7f75321bf034517fd0b2fde41298285b89f26b9`, 54 Node tests, deterministic fixture/media checks, seven native offline audio checks and live Chromium behavior passed on Windows, macOS and Linux. [Detailed S02 evidence](../handoffs/EMF-S02-HANDOFF.md). **S03 READY — CLOUD** is the next pickup; it has not started. **S08 COMPLETE — PC** (2026-11-04): one MCP facade shared by Claude Code and Codex edited a disposable FL project, FL read it back, rendered WAV and the result validated as an `em.audio-pack.v0` pack. [Detailed S08 evidence](../handoffs/EMF-S08-HANDOFF.md). Physical listening remains unverified; later slices retain their prerequisites.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
@@ -90,7 +90,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF12** | PLANNED | DJ selection and persistent history | EMF11 | Deterministic eligibility/recency/preference rules, fixed-state identity changes, replayable versions/seeds and bounded logs. |
 | **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
 | **EMF14** | PLANNED — after S10 | Mission Control request adapter | S10, required API refinement | S12 real MC integration only after standalone MVP listening acceptance. |
-| **EMF15** | PLANNED — PC parallel lane | Unified FL Studio MCP authoring control | S01 contract, actual PC environment | S06 cloud mocks do not prove FL. S08 PC verifies real editable changes/rendering; S09 imports outputs. S02–S07 remain independent. |
+| **EMF15** | IN_PROGRESS — S08 bounded path verified on Windows | Unified FL Studio MCP authoring control | S01 contract, actual PC environment | [S08](../handoffs/EMF-S08-HANDOFF.md) verified real note/tempo/clip edits, FL-side readback, save, CLI render, export checks, reconcile and recovery through one facade for Claude Code and Codex. Live GUI control, mixer/plugins, render settings and non-Windows FL remain open; S09 imports outputs. |
 | **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
 | **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
 | **EMF18** | PLANNED | Windows-first and cross-platform listening/operational qualification | EMF17 | Named Windows reference environment plus macOS/Linux playback qualification, real work sessions, recovery/load evidence and scope-matched endurance. CI alone cannot close real-device/listening criteria. |
@@ -126,7 +126,7 @@ These IDs and meanings are retained. M1 and M2 are smaller milestone evidence, n
 | EMF-C04 | Recorded/procedural/recorded handoffs and at least one non-direct bridge | Pending |
 | EMF-C05 | Persistent catalogue/history, identity/seed replay and eligibility filtering | Pending |
 | EMF-C06 | Transition route/coverage diagnostics and intentional fallback | Pending |
-| EMF-C07 | Useful bounded FL authoring MCP operation with actual artifact readback | Pending |
+| EMF-C07 | Useful bounded FL authoring MCP operation with actual artifact readback | Met for the S08 bounded scope on Windows ([evidence](../handoffs/EMF-S08-HANDOFF.md)); broader FL actions later |
 | EMF-C08 | Optional producer jobs cannot interrupt audio or silently admit output | Pending |
 | EMF-C09 | Three named reviews completed for the implementation they cover | Pending |
 | EMF-C10 | Required failure/recovery, resources and listening checks on the reference environment | Pending |
@@ -141,7 +141,11 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 `npm ci --ignore-scripts` and `npm run check` passed **54 tests, zero skipped**, exact regeneration of all seven fixture files and validation of all six WAVs. [Run 41903543079](https://github.com/splatter85/EUTONOS-Music/actions/runs/41903543079) passed on **Windows, macOS and Linux**, including seven native offline Web Audio checks and live Chromium transport/ownership/reload/layout checks. The actual A→B source was rendered and compared sample-by-sample at 48 kHz and 44.1 kHz. Cue boundaries remain exact; native 44.1 kHz EOF rounding is reported separately. The [S02 handoff](../handoffs/EMF-S02-HANDOFF.md) and [retained evidence](../evidence/emf-s02/README.md) contain versions, measurements, historical failures/corrections, source review and limitations. Physical speaker/headphone output and listening were **not tested**. No full DJ, live procedural player, FL/MCP or MC integration is claimed.
 
-S01's original contracts and fixtures are unchanged; its [historical handoff](../handoffs/EMF-S01-HANDOFF.md) remains applicable. **Next: EMF-S03 — CLOUD**, integrating the deterministic DJ and S01 state/genre/Next/queue/Hold contract with this player. First inspect current main/worktree and run the Node 24 checks. **PC S08 may proceed independently** with the same pack contract; cloud S03–S07 do not wait for installed FL Studio. S09 later joins the paths; S10 still requires owner listening before S12 MC integration. The sequence is unchanged. Overall effort remains unknown; stage counts are not completion estimates.
+S01's original contracts and fixtures are unchanged; its [historical handoff](../handoffs/EMF-S01-HANDOFF.md) remains applicable. **Next: EMF-S03 — CLOUD**, integrating the deterministic DJ and S01 state/genre/Next/queue/Hold contract with this player. First inspect current main/worktree and run the Node 24 checks. **PC S08 is complete** (see the S08 checkpoint below); cloud S03–S07 do not wait for installed FL Studio. S09 later joins the paths; S10 still requires owner listening before S12 MC integration. The sequence is unchanged. Overall effort remains unknown; stage counts are not completion estimates.
+
+### EMF-S08 PC checkpoint
+
+**S08 COMPLETE**, 2026-11-04, PC lane, from main `25c26bf9d5c6d0c2352dc0ee8ebfe2ff958978ec`. Claude Code wrote an original 8-bar, 120 BPM A-minor sketch (chords, bass, lead, drums; 221 notes) through the `eutonos-music` MCP facade into a disposable copy of an FL factory template. FL Studio 26.1.7 loaded the saved project and its MIDI export matched every note and the tempo; the FL CLI render (PCM16 stereo 44.1 kHz, 19.98 s) passed export checks; the pack validated with the unchanged S01 loader. Codex used the same facade, was refused while Claude held the writer lease, then made a bounded verified edit. Live refusals and recovery and simulated failure cases are listed in the [S08 handoff](../handoffs/EMF-S08-HANDOFF.md). `npm run check` passed 66 tests. Renders and packs stay owner-local (factory-instrument rights); **nobody has listened**. This does not change the cloud sequence: **next remains EMF-S03 — CLOUD**.
 
 ## Resume and closeout
 

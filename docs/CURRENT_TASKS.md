@@ -1,7 +1,7 @@
 # Current Tasks
 
 Document ID: `EM-D010`  
-Updated 2026-11-04 — S02 cloud player closeout.
+Updated 2026-11-04 — S08 PC FL authoring closeout (cloud pickup unchanged).
 
 **Pickup for the next instance: EMF-S03 — CLOUD.** Read the [verified S02 handoff](handoffs/EMF-S02-HANDOFF.md), inspect current main and preserve unrelated changes, then follow the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint). Every slice requires the [detailed repository closeout and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
@@ -15,7 +15,7 @@ Updated 2026-11-04 — S02 cloud player closeout.
 
 **After S03:** S04 procedural generator → S05 recorded/procedural handoffs → S06 importer/mock FL producer → S07 integrated app, tests and scaffold review. These remain subsequent assignments.
 
-**PC lane:** **S08 remains available in parallel**, using the unchanged S01 contract. Windows leads real FL/MCP integration; the shared system targets Windows, macOS and Linux. S09 joins the checked cloud build and real FL audio on PC; S10 is owner listening acceptance. **Only then S12 connects Mission Control**. S11 is optional cloud hardening; S13 is wider campaign qualification. See the [authoritative slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
+**PC lane:** **S08 is complete** ([handoff](handoffs/EMF-S08-HANDOFF.md), [guide](S08_FL_AUTHORING.md)): one MCP facade for Claude Code and Codex edits, verifies, renders and packages a disposable FL project on Windows. Windows leads real FL/MCP integration; the shared system targets Windows, macOS and Linux. S09 joins the checked cloud build and real FL audio on PC; S10 is owner listening acceptance. **Only then S12 connects Mission Control**. S11 is optional cloud hardening; S13 is wider campaign qualification. See the [authoritative slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
 
 **Owner notices in slice closeouts:** S01 provided the checked pack revision and PC S08 opening; S07 will provide the tested cloud SHA/run commands for PC S09 after FL exports exist. There is no asynchronous notification. Cloud work with eligible fixtures does not wait for installed FL Studio.
 
