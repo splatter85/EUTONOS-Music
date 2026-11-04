@@ -14,9 +14,9 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; }
 a { color: inherit; text-underline-offset: 0.24em; }
-button, input { font: inherit; }
-button, a, summary, input { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible {
+button, input, select { font: inherit; }
+button, a, summary, input, select { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible {
   outline: 3px solid #f0d5a5;
   outline-offset: 4px;
 }
@@ -184,3 +184,29 @@ footer a span { margin-left: 4px; }
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
 }
+
+/* S03 control surface retains the fixture player's palette and spacing. */
+.target-row { display: flex; justify-content: space-between; align-items: start; gap: 18px; border-bottom: 1px solid var(--line, #343d3e); padding-bottom: 18px; margin-bottom: 24px; }
+.target-row p { margin: 0 0 7px; }
+#requested-target { overflow-wrap: anywhere; }
+#revision { color: #a8b2b1; font-size: .75rem; white-space: nowrap; }
+.clock-mark { color: var(--muted); font-size: .65rem; letter-spacing: .08em; white-space: nowrap; }
+.transport { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.target-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; }
+.target-controls label { display: flex; flex-direction: column; gap: 6px; color: #a8b2b1; font-size: .75rem; }
+.target-controls select, .target-controls input { height: 38px; border: 1px solid #465152; border-radius: 6px; background: #15191a; color: #f1efe7; padding: 7px 10px; font: inherit; }
+.target-controls input { width: 170px; }
+.target-controls button { min-height: 38px; }
+button.primary:not(:disabled) { background: #a7d3be; color: #17221e; border-color: #a7d3be; }
+button.primary:hover:not(:disabled) { background: #c0e0cf; border-color: #c0e0cf; }
+button[aria-pressed="true"] { border-color: #eda58c; color: #eda58c; }
+.control-help { color: #a8b2b1; font-size: .77rem; line-height: 1.6; }
+.queue-heading { margin-top: 22px; }
+.queue { list-style: none; padding: 0; margin: 0 0 20px; }
+.queue li { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #343d3e; padding: 10px 0; font-size: .82rem; }
+.queue li span { overflow-wrap: anywhere; }
+.queue .empty-queue { color: #a8b2b1; }
+.queue button { padding: 6px 12px; font-size: .75rem; }
+.execution-row { margin-top: 18px; }
+#execution { color: #a8b2b1; font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .target-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; } .target-controls input, .target-controls select { width: 100%; min-width: 0; } .target-controls #hold { grid-column: 1 / -1; } .transport #next-song { flex-basis: auto; } .target-row { gap: 8px; } }

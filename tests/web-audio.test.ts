@@ -130,6 +130,36 @@ test('release cancels a future start after generation invalidation and is idempo
   assert.throws(() => source.scheduleStart({at: clock.stamp(48_000), entryCueId: 'entry'}), /Prepare before start/);
 });
 
+test('cancelling a future source exit restores its original finish and coincident fade-in endpoint', async () => {
+  const asset = offsetPack().assets[0]!;
+  const context = new ContextDouble();
+  const clock = new WebAudioClock(context.audio);
+  const source = new RecordedSource(context.audio, recording(asset, 48_000), context.destination,
+    {allowFixtures: true, fadeInFrames: 192_000, fadeOutFrames: 192_000});
+  await source.prepare(clock);
+  source.scheduleStart({at: clock.stamp(48_000), entryCueId: 'middle-entry'});
+  const originalEnd = source.endFrame;
+  assert.equal(originalEnd, 624_000, 'natural EOF accounts for the nonzero entry and native pickup');
+  source.transitionOut('exit', clock.stamp(240_000));
+  context.currentTime = 2;
+  assert.equal(source.cancelTransition(), true);
+  assert.equal(source.endFrame, originalEnd);
+  assert.deepEqual(context.sources[0]!.stops, [9, 13]);
+  assert.deepEqual(context.gains[0]!.gain.calls.slice(-2), [
+    {kind: 'cancel', time: 5}, {kind: 'ramp', value: 1, time: 5},
+  ], 'the original fade-in endpoint at the exit timestamp is restored after cancelling automation');
+  assert.equal(source.cancelTransition(), true, 'repeated cancellation is harmless');
+  assert.deepEqual(context.sources[0]!.stops, [9, 13]);
+  source.transitionOut('exit', clock.stamp(240_000));
+  context.currentTime = 5;
+  const calls = [...context.gains[0]!.gain.calls];
+  assert.equal(source.cancelTransition(), false);
+  assert.equal(source.endFrame, 432_000);
+  assert.deepEqual(context.sources[0]!.stops, [9, 13, 9]);
+  assert.deepEqual(context.gains[0]!.gain.calls, calls, 'an exit that has begun cannot change its automation');
+  source.release();
+});
+
 test('recordings reject another context, ineligible media, wrong decoded format and obsolete starts', async () => {
   const context = new ContextDouble();
   const other = new ContextDouble();
