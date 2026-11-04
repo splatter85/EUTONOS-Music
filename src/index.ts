@@ -4,3 +4,6 @@ export * from './pack.js';
 export * from './audio.js';
 export * from './playable-source.js';
 export * from './control.js';
+export * from './web-audio.js';
+export * from './browser-pack.js';
+export * from './player.js';

@@ -1,7 +1,13 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: MVP design only; not implemented.
+Status: S02's small recording player is implemented; the full MVP controls below remain staged work.
+
+## Implemented S02 subset
+
+[S02 player setup](S02_PLAYER.md) provides Play A/B, Pause/Resume, Stop, Volume/Mute, Now/Next and one scheduled A→B route from the validated S01 pack. Native Web Audio owns all audio timing. The page pauses when hidden and uses a cooperating same-origin tab lock. The [S02 handoff](handoffs/EMF-S02-HANDOFF.md) records actual browser/offline evidence and its limits. No state/genre/queue/Hold DJ or live procedural source is implemented by S02.
+
+## Later full MVP
 
 The first app is **not Mission Control**. It exercises the DJ and procedural player directly.
 

@@ -15,6 +15,8 @@ A handoff is an **as-of snapshot**, not a second task/status owner; the receivin
 
 A **PICKUP** brief is a starting assignment, **not** a closeout. The initial [S01 pickup](EMF-S01-PICKUP.md) remains historical assignment context. The [S01 handoff](EMF-S01-HANDOFF.md) now records the actual implementation, evidence and next pickup; inspect its disposition and the campaign before proceeding.
 
+The [S02 handoff](EMF-S02-HANDOFF.md) records the small browser player's source, verification and next pickup. Its browser/rendering evidence is separate from physical output and listening acceptance.
+
 **Special PC notices:** at S01 completion, tell the owner the checked pack revision allows **S08 PC** to begin in parallel with cloud S02–S07. At S07 completion, supply the tested cloud build revision/run commands for **S09 PC** after S08 real FL outputs exist. Both notices happen during their respective slice closeouts.
 
 Keep one handoff per slice, updating it with clear provenance on resumption; Git preserves prior versions. Avoid copying the whole campaign or a private chain of thought.

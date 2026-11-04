@@ -5,6 +5,8 @@ Status: proposed qualification plan, revised 2026-11-03. Documentation checks ar
 
 **S01 engineering checks:** run `npm run check` as documented in [S01 foundation](S01_FOUNDATION.md). GitHub Actions applies the same commands to Windows, macOS and Linux. This tests code/contracts and deterministic media integrity, not browser decoding, real playback, FL/MCP operation or listening. Actual results and unrun checks belong to the [S01 handoff](handoffs/EMF-S01-HANDOFF.md).
 
+**S02 verification adds** a native offline Web Audio page and `npm run check:browser` for the small player, served and tested together in a fresh Chromium process. [Setup and exact checks](S02_PLAYER.md#verification-surfaces). The [S02 handoff](handoffs/EMF-S02-HANDOFF.md) records actual platform/browser outcomes, sample-error tolerances, review corrections and blocked/unrun checks. Headless rendering and UI behavior do not establish physical audio output, human listening, arbitrary browser compatibility or full MVP acceptance.
+
 ## Evidence categories
 
 Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.

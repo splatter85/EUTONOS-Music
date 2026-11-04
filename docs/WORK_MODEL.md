@@ -28,7 +28,7 @@ Keep IDs stable. EMF is `campaign-emf-001`; its stages EMF00–EMF19 retain thei
 
 Confirm the assigned outcome, inspect current source/worktree, identify the applicable stage, and record a concrete next step. Reuse the existing campaign when appropriate. User authorization for the requested work should not be turned into repeated permission questions for ordinary reversible implementation choices.
 
-EMF00 finished with the planning baseline. Subsequent implementation, installation, model execution and production actions follow the selected slice and the user's actual authorization; the S01 assignment authorizes its bounded implementation and GitHub publication. Do not infer that a future feature list admits all later actions now.
+EMF00 finished with the planning baseline. Subsequent implementation, installation, model execution and production actions follow the selected slice and the user's actual authorization; the S01 and subsequent S02 assignments authorize their bounded implementation, verification and GitHub publication. Do not infer that a future feature list admits all later actions now.
 
 ## Reviews
 

@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: standalone-first design and production guidebook, with the S01 portable contract/fixture foundation. The browser player, DJ and production adapters remain future slices.
+Status: standalone-first design and production guidebook, with the S01 portable foundation and S02 small browser recording player. The full DJ, procedural performer and production adapters remain future slices.
 
 ## Start with the next audible result
 
@@ -16,6 +16,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [Capabilities](CAPABILITIES.md) | Person-facing outcomes and optional/required dependencies |
 | [Architecture](ARCHITECTURE.md) | Playback/production ownership, shared clock and renderer choice |
 | [S01 foundation](S01_FOUNDATION.md) | Executable v0 pack/source/control contracts, portable setup and declared limits |
+| [S02 player](S02_PLAYER.md) | Small Web Audio player, setup, clock/cue mapping, browser checks and lifecycle limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |
 | [State/API](STATE_AND_CONTROL_API.md) | Intent, actual playback, command/hold/retry semantics and proposed tools |
 | [Test app](TEST_APP.md) | Simple MC-facing controls and advanced audition laboratory |

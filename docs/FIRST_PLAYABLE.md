@@ -1,7 +1,7 @@
 # First playable — standalone three-layer MVP
 
 Document ID: `EM-D016`  
-Status: **direction selected; S01 contracts/fixtures implemented, no playable MVP or listening qualification**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements.
+Status: **S01 contracts/fixtures and the S02 small recording player are implemented; the full three-layer MVP and listening qualification remain incomplete**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements. [Current player boundary](S02_PLAYER.md).
 
 **Platforms:** Windows first for real FL/MCP integration, with Windows, macOS and Linux required for the shared music system. Each host-specific authoring adapter and browser/audio-device path needs its own verification; portable fixture/test execution alone does not establish it.
 

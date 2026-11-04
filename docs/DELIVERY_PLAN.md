@@ -1,6 +1,6 @@
 # Delivery plan — cloud now, PC at the handoff
 
-Document ID: `EM-D009`. Updated 2026-11-04; no runtime work has begun.
+Document ID: `EM-D009`. Updated 2026-11-04; S01 foundation and S02 small recording player now exist. [Campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns exact stage status and evidence.
 
 The [single EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment) owns the authoritative slice order. This page is explanation, **not a second task list**.
 

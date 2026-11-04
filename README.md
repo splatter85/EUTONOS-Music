@@ -2,20 +2,25 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status:** S01 portable TypeScript foundation: executable pack validation, source/control contracts, original reproducible WAV fixtures and automated tests. There is no browser player, live procedural performer, DJ planner, FL bridge or auditioned music yet. [Current evidence and next slice](docs/CURRENT_TASKS.md).
+**Status:** S02 adds a small standalone Web Audio player to S01's portable foundation: Play/Pause A/B, Now/Next and one cue-checked A→B crossfade. The full DJ, live procedural performer and FL bridge remain later slices. Listening is not reviewed. [Current evidence and next slice](docs/CURRENT_TASKS.md).
 
-**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. Cross-platform CI checks the S01 code and fixture bytes. Actual browser/audio-device and FL adapter compatibility require later platform-specific verification.
+**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S02 handoff](docs/handoffs/EMF-S02-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
-## Run the S01 foundation
+## Run the player
 
 Install **Node.js 24.x** (including npm), then run from a checkout on any target OS:
 
 ```sh
 npm ci --ignore-scripts
 npm run check
+npm run demo
 ```
 
-This compiles the TypeScript, runs the automated tests, checks deterministic fixture regeneration, and validates all six committed WAV files. It does not start audio playback or FL Studio. No runtime dependencies, native server, DAW, model or paid service is needed.
+Open **http://127.0.0.1:4173/**. Press **Play A**, then **Schedule A → B** before A reaches eight seconds. B enters at 8 seconds, the four-second overlap finishes at 12 seconds, and B ends at 24 seconds. Pause freezes that timeline; Stop cancels it. Play B also works independently. Playback starts only after a user gesture. Hidden tabs pause until an explicit Resume.
+
+`check` compiles TypeScript, runs Node tests, checks deterministic fixture regeneration, and validates all six committed WAV files. `demo` starts a small loopback-only development server. No runtime npm package, DAW, model or paid service is needed. TypeScript and Playwright are development dependencies.
+
+The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S02 setup, architecture and lifecycle limits](docs/S02_PLAYER.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
@@ -36,6 +41,7 @@ A **tiny standalone app** provides Play/Pause, Volume/Mute, State, Genre, Next S
 - [EMF campaign](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Executable S01 foundation](docs/S01_FOUNDATION.md)
+- [S02 Web Audio player](docs/S02_PLAYER.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)
 - [FL Studio control research](docs/FL_STUDIO_INTEGRATION.md)
 - [Production guidebook](docs/guides/README.md)

@@ -1,7 +1,7 @@
 # Preliminary architecture
 
 Document ID: `EM-D004`  
-Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, without a renderer or DJ planner.
+Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, and [S02](S02_PLAYER.md) adds one native Web Audio recording renderer and A/B transport. A DJ planner and procedural performer remain later slices.
 
 ## Platform boundary
 
@@ -15,7 +15,9 @@ The small **Codex/Claude → unified MCP → FL Studio authoring → procedural 
 
 Build the Mission Control soundtrack with **one renderer, one playback owner and one musical clock**. Keep authoring outside playback. Start the audible investigation with Web Audio; select the pilot renderer in EMF03 using actual evidence. This revises the initial presumption that a compiled native worker was required from the start. Native playback remains a candidate, not a rejected future.
 
-Web Audio documents scheduled sample/synthesis playback. Browser lifecycle can suspend or discard pages, so background/persistence behavior must be tested rather than inferred. Choose native output when a required lifecycle, resource or audio behavior cannot be met, or when playback independent of a closed browser becomes required. Do not implement both production renderers before one works. [A1][A2]
+S02 selects native Web Audio buffer sources and gain automation for its two-recording proof, with one context, output-frame cue mapping, generation cancellation and explicit fixture eligibility. See [the exact implementation and lifecycle boundary](S02_PLAYER.md) and [executed evidence](handoffs/EMF-S02-HANDOFF.md). No additional scheduling library or production backend is introduced.
+
+Web Audio documents scheduled sample/synthesis playback. Browser lifecycle can suspend or discard pages, so background/persistence behavior must be tested rather than inferred. S02 conservatively pauses hidden tabs. Choose native output when a required lifecycle, resource or audio behavior cannot be met, or when playback independent of a closed browser becomes required. Do not implement both production renderers before one works. [A1][A2]
 
 [First playable](FIRST_PLAYABLE.md) defines the small proof and usable pilot. The full library, state, authoring and vocal documents describe the wider contract, not mandatory simultaneous implementation. Older authoring guidance describes a native deployment; its native-service wording applies when that renderer is selected, not as a separate prerequisite for the browser proof. This document owns the current backend decision.
 

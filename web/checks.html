@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Run offline browser audio checks for the EUTONOS Music fixture player.">
+    <title>EUTONOS Music — offline checks</title>
+    <link rel="stylesheet" href="/web/style.css">
+    <script type="module" src="/dist/web/checks.js"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="masthead">
+        <a class="brand" href="/" aria-label="EUTONOS Music player">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>EUTONOS <span class="brand-divider">/</span> <span class="brand-product">Music</span></span>
+        </a>
+        <a class="back-link" href="/">Back to player</a>
+      </header>
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <p class="eyebrow">Playback verification</p>
+          <h1 id="page-title">Check the timing.</h1>
+          <p class="intro-copy">Run the browser’s audio checks and inspect the results below. These checks render offline without speaker output.</p>
+        </section>
+        <section class="checks-panel" aria-label="Offline audio checks">
+          <div class="check-actions">
+            <button id="run-checks" class="transition-button" type="button">Run offline checks</button>
+            <output id="check-status" role="status" aria-live="polite">Ready to check</output>
+          </div>
+          <pre id="check-results" class="check-results" aria-live="polite">No checks have run yet.</pre>
+          <p class="check-limits">Passing these checks establishes the reported engineering behavior in this browser. Physical audio output and listening quality need separate verification.</p>
+        </section>
+        <noscript><p class="error-message">JavaScript is required to run the offline audio checks.</p></noscript>
+      </main>
+      <footer>
+        <p>Original synthetic fixtures · Engineering demo · Listening not reviewed</p>
+        <a href="/">Return to player</a>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -3,7 +3,7 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS — EMF-S01 COMPLETE; EMF-S02 READY**
+Status: **IN_PROGRESS — EMF-S01 COMPLETE; EMF-S02 IN_REVIEW**
 Recorded and revised: 2026-11-03, America/Chicago  
 Progress estimate: **unknown**; S01 foundation is verified, while playback, musical acceptance and the DAW bridge remain unqualified.
 
@@ -15,7 +15,7 @@ The basic **AI authoring controller is part of MVP**; broader FL automation is l
 
 ## Scope and authorization
 
-EMF00 preserves the completed initial documentation baseline. On 2026-11-04 the owner assigned **S01 implementation, original eligible fixtures, automated validation and GitHub publication**, with a detailed repository handoff and mini chat handoff. This authorization is bounded to S01; subsequent slices, actual DAW operations and changes to the separate Mission Control repository remain separate assignments.
+EMF00 preserves the completed initial documentation baseline. On 2026-11-04 the owner assigned **S01 implementation, original eligible fixtures, automated validation and GitHub publication**, then **S02: a small Web Audio player, Play/Pause A/B, Now/Next and a cue-checked A→B transition on one clock**, with a detailed published repository handoff and mini chat handoff. Current implementation authorization is bounded to S02; subsequent cloud slices, actual DAW operations and changes to the separate Mission Control repository remain separate assignments. PC S08 may proceed independently under the owner's separate assignment.
 
 **Platform requirement (owner, 2026-11-04): Windows, macOS and Linux.** Windows may lead the real FL Studio/MCP work, but the shared pack, playback and request contracts must stay portable. Use platform-neutral paths, scripts and browser-facing code; isolate host-specific authoring adapters. Cross-platform CI is engineering evidence, separate from browser/device/listening qualification on each OS. No claim of FL/MCP compatibility on an uninspected host.
 
@@ -45,7 +45,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
 
-**Current slice status:** **S01 COMPLETE** for its engineering contract/fixture scope. **S02 READY — CLOUD** is the primary next assignment. **S08 READY — PC host intake** is available in parallel; actual installed capabilities remain unknown. Local checks, independent inspection, source publication/readback and Windows/macOS/Linux CI are verified in the [S01 handoff](../handoffs/EMF-S01-HANDOFF.md). All other slices retain their stated prerequisites and remain planned; no next slice starts automatically.
+**Current slice status:** **S01 COMPLETE** for its engineering contract/fixture scope. **S02 IN_REVIEW — CLOUD** is the assigned work, from verified clean main `43b7f449c0370f22c75463b278b3f50c09a0ee0d`. Local checks pass 53 tests; hosted native browser verification is pending. [S02 evidence and recovery](../handoffs/EMF-S02-HANDOFF.md). **S08 READY — PC host intake** is available in parallel; actual installed capabilities remain unknown. S01 checks are recorded in the [S01 handoff](../handoffs/EMF-S01-HANDOFF.md). All other slices retain their stated prerequisites and remain planned; no next slice starts automatically.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
