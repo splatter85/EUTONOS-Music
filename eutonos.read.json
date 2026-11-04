@@ -1,0 +1,90 @@
+{
+  "bindings": [
+    {
+      "kind": "docs",
+      "label": "EM-D001",
+      "path": "docs/PRODUCT_GOAL.md",
+      "resource_id": "EM-D001",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D004",
+      "path": "docs/ARCHITECTURE.md",
+      "resource_id": "EM-D004",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D008",
+      "path": "docs/VALIDATION.md",
+      "resource_id": "EM-D008",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D010",
+      "path": "docs/CURRENT_TASKS.md",
+      "resource_id": "EM-D010",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D011",
+      "path": "docs/DECISIONS.md",
+      "resource_id": "EM-D011",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D012",
+      "path": "docs/WORK_MODEL.md",
+      "resource_id": "EM-D012",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "EM-D014",
+      "path": "docs/PROGRESS.md",
+      "resource_id": "EM-D014",
+      "state": "active",
+      "visibility": "public"
+    },
+    {
+      "kind": "docs",
+      "label": "campaign-emf-001",
+      "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md",
+      "resource_id": "campaign-emf-001",
+      "state": "active",
+      "visibility": "public"
+    }
+  ],
+  "excluded_roots": [],
+  "namespace": "eutonos-music.native",
+  "owners": {
+    "current_task": {
+      "namespace": "eutonos-music.native",
+      "resource_id": "EM-D010",
+      "scope_id": "eutonos-music.local"
+    }
+  },
+  "profile": "eutonos.tokenslang.catalog.v1",
+  "repository_id": "eutonos-music.repo",
+  "scope_id": "eutonos-music.local",
+  "source_paths": [
+    "docs/ARCHITECTURE.md",
+    "docs/CURRENT_TASKS.md",
+    "docs/DECISIONS.md",
+    "docs/PRODUCT_GOAL.md",
+    "docs/PROGRESS.md",
+    "docs/VALIDATION.md",
+    "docs/WORK_MODEL.md",
+    "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+  ]
+}

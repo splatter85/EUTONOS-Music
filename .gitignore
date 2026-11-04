@@ -15,3 +15,6 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# EUTONOS local workflow state (diagnostics, metric index) is per-machine.
+/.eutonos-local/

@@ -42,3 +42,92 @@ Use checks aimed at concrete risk. Docs need link/ID/example/consistency checks;
 Update canonical owners at meaningful boundaries. Close out with practical result, checks/limits, current milestone/stage, effort with basis or unknown and one next step. Git publication, integration, native filing, runtime qualification and owner acceptance are distinct.
 
 Native EUTONOS tooling is not configured here. Use readable Markdown owners; do not fabricate managed-board or RAM receipts. Later adoption uses the supported migration route and preserves IDs. The [documentation map](docs/README.md) routes canonical owners; cross-link instead of copying long contracts. Public docs stay generic and do not transplant private project policies or history.
+
+
+<!-- eutonos:delegation:start -->
+## EUTONOS delegation
+
+This repository enables instruction-based delegation through the agent host's
+existing worker tools. The repository's native owners, boot protocol, write
+coordination, tests, and publication rules remain authoritative. Delegation
+does not install EUTONOS services or grant writes, Git publication, deployment,
+external effects, credentials, or model upgrades.
+
+For optional orientation, an available EUTONOS source checkout offers
+`python tools/workflow.py orient --root ROOT`. In an adopted repository with
+an intentionally selected installed runtime and this managed wrapper, use
+`python tools/eutonos_project.py workflow orient --root ROOT` instead. Omit
+`--request` for cold entry with a 32,768-byte output budget; `workflow describe orient`
+describes compatible requests and packets. Inspect source pins,
+coverage, privacy and selection gaps before dependent work. The reader may
+update its cache and fetch explicitly configured Shared Work refs when due.
+If the command/runtime is missing, unavailable or incompatible, continue via
+applicable native instructions, selected onboarding and exact native owners;
+do not require a packet or a setup loop. Upstream onboarding references below
+are guidance, not assumed consumer paths. Packets/receipts do not prove reading,
+understanding, permission, identity, setup or acceptance. Supplied caller
+identity remains unverified; prior receipt pins are untrusted comparison input.
+Returned source pins describe observed inputs and validated exact RAM reads, not
+caller ownership or authority.
+
+At pickup, when the managed wrapper exposes settings, run
+`python tools/eutonos_project.py settings status` once and honor its effective
+routing and task overrides. Otherwise use the policy here without requiring a
+missing runtime: adaptive delegation is on and model/effort selection is Auto.
+The primary balances expected correctness, total cost, handoff, review, and
+latency; prefer a cheaper helper only when it is likely to return the same useful
+quality. A user task or session choice overrides the default. Persist a durable
+choice only when explicitly requested.
+
+The primary may give one bounded, non-recursive helper a complete assignment.
+Moving above the current primary model requires user approval unless already
+selected. Continue independent work while approval is pending; if no answer is
+given, keep that work on the current primary. Read-only helpers need no write
+lease. Writing helpers use the repository's existing coordination for their own
+exact scope, preserve unrelated work, run relevant checks, and return source
+paths, findings, changes, unresolved risks, and actual closeout. If delegation
+is disabled or unavailable, the primary continues normally without a setup loop.
+
+Use `python tools/eutonos_project.py workflow help` once when unfamiliar with
+the installed operations, then call known commands directly. For substantive
+work, keep the native current-task checkpoint recoverable. Before a substantive
+final, use `workflow prepare closeout`, answer its semantic prompts, and use
+`workflow run closeout` with the existing actor/work context. Respect effective
+RAM capture cadence and retrieval settings; do not manufacture receipt fields.
+Quick edits need no campaign or repeated discovery. Exact source and native
+owners outrank RAM/NAV summaries. A read-only task never authorizes new writes.
+
+`version status` shows optional project/module versions separately from the
+installed EUTONOS runtime. Follow the project's own version convention at useful
+milestones; do not bump versions on every tiny edit. Portable reference docs
+are upstream guidance, not the consumer's selected work board or acceptance.
+## EUTONOS rule references
+
+Index: `eutonos.rule-reference-index.v1`.
+Canonical documents and applicable repository instructions retain authority.
+Upstream references are guidance, not consumer owners or installed capabilities.
+Keep the readable AGENTS/selected onboarding route if optional orientation is unavailable.
+
+- `eutonos.rule.entry` | Required | Every entry and task; already-loaded exact selections can satisfy reading. | native `AGENTS.md` and applicable harness instructions. Reason: Resolve applicable repository and harness constraints before work.
+- `eutonos.rule.onboarding` | Required-if | First entry, a new harness, lost context or an applicable uncompleted first-run exercise; follow native onboarding adaptations. | upstream reference `docs/AGENT_ONBOARDING.md` :: Mandatory reading and applicable setup, pickup and first-run exercise (`eutonos.doc.agent-onboarding`). Reason: Locate the complete applicable entry route, including source-pinned RAM, NAV, current/completed work and real closeout exercises.
+- `eutonos.rule.selected-work` | Required-if | Picking up, executing, resuming or reporting admitted work; use the native selection's campaign/module readings. | native `docs/CURRENT_TASKS.md` (`EM-D010`). Reason: Find the selected work and its source-pinned native scope, checkpoint and next action.
+- `eutonos.rule.reading-tiers` | Required-if | Selecting, changing or resolving a task reading map or context gap. | upstream reference `docs/CAMPAIGN_CONTEXT.md` :: Required, conditional and optional reading (`eutonos.doc.campaign-context`). Reason: Interpret task-relative reading labels and resolve material applicability uncertainty without omitting constraints.
+- `eutonos.rule.completion-integration` | Required-if | Implementing or finishing work, interpreting a narrower deliverable, or assessing completion. | upstream reference `docs/WORK_MODEL.md` :: Completion contract; canonical wording in src/eutonos/completion_policy.py (`eutonos.doc.work-model`). Reason: Resolve the requested finish line and coordinator target integration against the applicable managed AGENTS contract and CLAUDE import.
+- `eutonos.rule.delivery` | Required-if | Saving, integrating, publishing or judging delivered state. | upstream reference `docs/WORK_MODEL.md` :: Save, integrate and publish at useful milestones (`eutonos.doc.work-model`). Reason: Distinguish native writing, Git publication, target integration and runtime effects under the selected delivery route.
+- `eutonos.rule.recording-closeout` | Required-if | Substantive work, tracked work, meaningful checkpoints or a task's closeout assessment. | upstream reference `docs/WORK_MODEL.md` :: Record substantive work before execution; Lightweight closeout filing (`eutonos.doc.work-model`). Reason: Find the recording boundary and native lifecycle route for this task.
+- `eutonos.rule.workflow-procedure` | Required-if | Using an unfamiliar workflow operation, resolving coverage or recovering a failed phase. | upstream reference `docs/DEPLOYMENT_STARTUP.md` :: Guided task CLI; Shared Current Work; delivery and attribution (`eutonos.doc.deployment-startup`). Reason: Resolve actual checkout/installed commands, native source selection and phase-specific recovery.
+- `eutonos.rule.campaign-gates` | Required-if | Planning, implementing, reviewing or closing a campaign stage. | upstream reference `docs/CAMPAIGN_LIFECYCLE.md` :: Review checkpoints and stage-closeout briefing (`eutonos.doc.campaign-lifecycle`). Reason: Locate applicable review, dependency and integration gates alongside the selected campaign.
+- `eutonos.rule.verification` | Required-if | Changing source or claiming verified behavior/readiness. | upstream reference `docs/PROJECT_HEALTH.md` :: Campaign-first verification and relevant checks (`eutonos.doc.project-health`). Reason: Select the smallest required checks for changed source and its consumers.
+- `eutonos.rule.experience-navigation` | Optional | Additional experience or navigation would help; applicable entry/task requirements remain required. | upstream reference `NAV/WORKFLOWS.md` :: Task-relevant RAM, NAV and procedure routes (`eutonos.doc.workflow-navigation`). Reason: Find useful optional experience and source routes beyond any required onboarding exercise or task-selected source.
+- `eutonos.rule.agent-access` | Required-if | Designing/using agent access, composing context or making provenance claims. | upstream reference `modules/agent-interface/CONTRACT.md` :: Adaptive context, not compulsory packets; identity and contribution provenance (`eutonos.doc.module-agent-interface`). Reason: Resolve access and caller/source provenance boundaries without assuming packet or installed capability support.
+- Precedence reference `eutonos.rule.completion-integration` with `eutonos.rule.entry`, `eutonos.rule.delivery`, `eutonos.rule.campaign-gates`: Read the scoped implementation/integration contract beside applicable AGENTS/CLAUDE instructions and separate publication/effect rules; surface conflicts to their canonical owners.
+- Precedence reference `eutonos.rule.reading-tiers` with `eutonos.rule.entry`, `eutonos.rule.onboarding`, `eutonos.rule.selected-work`, `eutonos.rule.experience-navigation`: Resolve each task's reading need against applicable entry requirements and actual dependencies; the Optional experience row does not downgrade required exercises or selections.
+
+<!-- eutonos:delegation:end -->
+
+
+<!-- eutonos:completion:start sha256=a91d46404e31b60530b8889782fd5c619cd22a8393ff2e05ce11969e0e32e78a -->
+## Completion contract
+
+Requests to implement features or finish campaigns, stages, slices or implementation work include integration and merging into the established target unless explicitly scoped to exploration, research, testing, prototypes or another narrower deliverable. Implementation is finished when scoped changes pass required checks, are integrated into that target, and the target state is verified. Local edits, a commit, passing tests, worker handback or an open PR are intermediate; unmerged implementation remains unfinished. The coordinator owns final integration. Resolve the target from repository and campaign rules (a stage target may be a campaign branch, not main); ask only about material ambiguity. Preserve required reviews, branch protections, dependency ordering, concurrent work and explicit narrower instructions. Use the appropriate fast-forward, squash or merge strategy. If blocked, state the exact remaining step rather than claim completion. Merge does not authorize deployment, installation, restart or release, bypass permissions, or widen the task. Follow applicable global and repository instructions; surface conflicts rather than silently overriding them.
+<!-- eutonos:completion:end -->

@@ -1,0 +1,11 @@
+{
+  "current_task": "docs/CURRENT_TASKS.md",
+  "namespace": "eutonos-music.native",
+  "profile": "eutonos.tokenslang.ram-config.v1",
+  "repository_id": "eutonos-music.repo",
+  "scope_id": "eutonos-music.local",
+  "store_root": "RAM",
+  "work_owners": {
+    "eutonos-music-development-entry": "docs/CURRENT_TASKS.md"
+  }
+}

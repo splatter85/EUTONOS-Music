@@ -1,0 +1,21 @@
+{
+  "context_paths": [
+    "docs/ARCHITECTURE.md",
+    "docs/STATE_AND_CONTROL_API.md"
+  ],
+  "excluded_roots": [
+    "node_modules",
+    "dist",
+    "fixtures"
+  ],
+  "map_root": "NAV",
+  "namespace": "eutonos-music.native",
+  "profile": "eutonos.tokenslang.nav-config.v1",
+  "repository_id": "eutonos-music.repo",
+  "scope_id": "eutonos-music.local",
+  "source_roots": [
+    "src",
+    "scripts",
+    "tests"
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "adoption_profile": {
+    "modules": [
+      "dashboard",
+      "delegation",
+      "docs",
+      "nav",
+      "ram"
+    ],
+    "namespace": "eutonos-music.native",
+    "nav": {
+      "context_paths": [
+        "docs/ARCHITECTURE.md",
+        "docs/STATE_AND_CONTROL_API.md"
+      ],
+      "excluded_roots": [
+        "node_modules",
+        "dist",
+        "fixtures"
+      ],
+      "map_root": "NAV",
+      "source_roots": [
+        "src",
+        "scripts",
+        "tests"
+      ]
+    },
+    "owners": {
+      "architecture": {
+        "path": "docs/ARCHITECTURE.md",
+        "resource_id": "EM-D004"
+      },
+      "campaign_emf": {
+        "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md",
+        "resource_id": "campaign-emf-001"
+      },
+      "current_task": {
+        "path": "docs/CURRENT_TASKS.md",
+        "resource_id": "EM-D010"
+      },
+      "decisions": {
+        "path": "docs/DECISIONS.md",
+        "resource_id": "EM-D011"
+      },
+      "progress": {
+        "path": "docs/PROGRESS.md",
+        "resource_id": "EM-D014"
+      },
+      "purpose": {
+        "path": "docs/PRODUCT_GOAL.md",
+        "resource_id": "EM-D001"
+      },
+      "validation": {
+        "path": "docs/VALIDATION.md",
+        "resource_id": "EM-D008"
+      },
+      "work_model": {
+        "path": "docs/WORK_MODEL.md",
+        "resource_id": "EM-D012"
+      }
+    },
+    "profile": "eutonos.tokenslang.adoption-profile.v1",
+    "repository_id": "eutonos-music.repo",
+    "scope_id": "eutonos-music.local"
+  },
+  "identity_owners_fingerprint": "24ce57e1640a368e3b0400ec0fb4ffe5506c3c1402d6168e178c9b5299915ace",
+  "managed": {
+    "AGENTS.md": {
+      "mode": "block",
+      "sha256": "336ee6cd0d4eb0e3c9f2b1c694cdbc7da975a7fe5cc15c29ad62ca21ce59c066"
+    },
+    "eutonos.nav.json": {
+      "mode": "whole",
+      "sha256": "325a42542d25cbf74820975539105cafd12f4061d5a3e2caa48426eca1b5bdf8"
+    },
+    "eutonos.ram.json": {
+      "mode": "whole",
+      "sha256": "a8b52d882496d7e7a4fc7df36f0da42809fbec84f26238af2b48c1aab67141db"
+    },
+    "eutonos.read.json": {
+      "mode": "whole",
+      "sha256": "8a801d863949020f860ded86f6bbf66a902a2a832cc35fc97a41e6233eef99f1"
+    },
+    "tools/eutonos_project.py": {
+      "mode": "whole",
+      "sha256": "a320dbe7d386909a87245cb9cf74fce201d0e954188b4500c0c8d5d45eb8fb2c"
+    }
+  },
+  "package_version": "0.5.4",
+  "profile": "eutonos.tokenslang.adoption-manifest.v1",
+  "profile_fingerprint": "6d8f36ab3a3b72e4ee7a773b4b7edd7a217b0c41f673ccd5573371e36d0ba4bd",
+  "selected_modules": [
+    "dashboard",
+    "delegation",
+    "docs",
+    "nav",
+    "ram"
+  ],
+  "source_fingerprint": "d77e1de2a6fc5d21c156393cef2406317d3653a93206194eef71ab41978660ed"
+}
