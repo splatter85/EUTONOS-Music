@@ -75,7 +75,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#next-detail')!.textContent === 'Handoff complete.', null,
     {timeout: 6000});
   assert.equal(await page.locator('#now-title').innerText(), 'S01 B — syncopated pulse');
-  checks.push({name: 'Live A → B, Now/Next, frozen pause/resume and mute', status: 'PASS'});
+  checks.push({name: 'Live A → B, Now/Next, frozen pause/resume and mute indicator', status: 'PASS'});
   await page.getByRole('button', {name: 'Stop', exact: true}).click();
   assert.equal(await page.locator('#now-title').innerText(), 'Nothing playing');
   assert.equal(await page.locator('#next-title').innerText(), 'Nothing queued');
@@ -84,6 +84,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#now-title')!.textContent!.includes('S01 B'));
   assert.equal(await page.locator('#transition').isDisabled(), true);
   const second = await context.newPage();
+  second.on('pageerror', (error: Error) => errors.push(error.message));
   await second.goto(origin);
   await second.waitForFunction(() => !document.querySelector<HTMLButtonElement>('#play-a')!.disabled);
   await second.getByRole('button', {name: 'Play A', exact: true}).click();
@@ -96,7 +97,8 @@ try {
   await second.close();
   checks.push({name: 'Play B and same-origin ownership conflict/release', status: 'PASS'});
 
-  // A scheduled incoming voice must disappear when stopped before its cue.
+  // UI cancellation/replacement evidence. Native future-source silence is
+  // checked separately by the offline renderer, not inferred from this UI.
   await page.getByRole('button', {name: 'Play A', exact: true}).click();
   await page.waitForFunction(() => document.querySelector('#status')!.textContent === 'Playing.');
   await page.getByRole('button', {name: 'Schedule A → B', exact: true}).click();
@@ -109,7 +111,7 @@ try {
   await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('#play-a')!.disabled);
   assert.equal(await page.locator('#now-title').innerText(), 'Nothing playing');
   assert.equal(await page.locator('#pause').isDisabled(), true);
-  checks.push({name: 'Stop cancels pending transition; replacement and reload stay explicit', status: 'PASS'});
+  checks.push({name: 'Stop clears pending UI state; replacement and reload stay explicit', status: 'PASS'});
 
   await page.setViewportSize({width: 390, height: 844});
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Mobile layout overflows');

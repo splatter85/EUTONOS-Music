@@ -12,6 +12,7 @@ jobs:
   validate:
     name: Node 24 / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:

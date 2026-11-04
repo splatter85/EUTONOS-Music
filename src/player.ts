@@ -150,6 +150,8 @@ export class SmallPlayer {
       this.wantsRunning = false;
       this.state = 'paused';
       this.setOutput(false);
+      // A failed external ownership gate must not leave a silent timeline running.
+      if (this.context.state !== 'closed') await this.context.suspend().catch(() => undefined);
       throw error;
     }
   }

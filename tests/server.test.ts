@@ -35,14 +35,17 @@ function get(port: number, path: string, method = 'GET', host = `127.0.0.1:${por
 
 async function serve(t: TestContext): Promise<{ root: string; port: number; server: Server }> {
   const root = await mkdtemp(join(tmpdir(), 'eutonos server '));
-  t.after(() => rm(root, { recursive: true, force: true }));
   const server = createDemoServer(root);
+  t.after(async () => {
+    try {
+      if (server.listening) await new Promise<void>((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+      });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   assert.equal(server.listening, false, 'importing/creating the server must not start it');
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => new Promise<void>((resolve, reject) => {
-    server.close(error => error ? reject(error) : resolve());
-  }));
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return { root, port: address.port, server };
@@ -151,12 +154,17 @@ test('demo server restricts methods and accepts only loopback Host headers', asy
 
 test('demo CLI resolves its default assets independently of cwd and reports an ephemeral port', { timeout: 10_000 }, async t => {
   const cwd = await mkdtemp(join(tmpdir(), 'eutonos server cwd '));
-  t.after(() => rm(cwd, { recursive: true, force: true }));
   const child = spawn(process.execPath, [serverScript, '--port', '0'], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
   const closed = once(child, 'close');
   t.after(async () => {
-    if (child.exitCode === null && child.signalCode === null) child.kill();
-    await closed;
+    try {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await closed;
+    } finally {
+      // Windows keeps a running process's cwd in use. Kill before removing it;
+      // a failed earlier after-hook would otherwise skip child cleanup entirely.
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += String(chunk); });

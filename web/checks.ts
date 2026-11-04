@@ -42,11 +42,18 @@ async function renderTransition(loaded: LoadedBrowserPack, rate: number): Promis
   }
   requireAudio(maxError < 0.000003, `Rendered start/offset/envelope differs from expected samples: ${maxError}`);
   requireAudio(peak > 0.01 && peak < 1 && nonzero > rate, 'Transition is silent, invalid or clipped.');
-  requireAudio(plan.at.frame === start.at.frame + rate * 8 && plan.end.frame === start.at.frame + rate * 12 &&
-    end === start.at.frame + rate * 24, 'Fixture schedule does not match authored 8/12/24 second boundaries.');
+  requireAudio(plan.at.frame === start.at.frame + rate * 8 && plan.end.frame === start.at.frame + rate * 12,
+    'Fixture cue schedule does not match authored 8/12 second boundaries.');
+  const authoredEndFrame = start.at.frame + rate * 24;
+  // The loader already allows one native resampler rounding frame at natural EOF.
+  // Cue starts and the outgoing handoff remain exact; do not relax sample comparison.
+  requireAudio(end === plan.at.frame + b.buffer.length && Math.abs(end - authoredEndFrame) <= 1,
+    `Natural end differs from the decoded length or authored duration: ${end} vs ${authoredEndFrame}.`);
   from.release(); to.release();
   return {sampleRate: rate, frames: actual.length, startFrame: start.at.frame,
     bEntryFrame: plan.at.frame, handoffFrame: plan.end.frame, endFrame: end,
+    decodedFrames: {a: a.buffer.length, b: b.buffer.length}, authoredEndFrame,
+    naturalEndDeltaFrames: end - authoredEndFrame,
     comparedSamples: actual.length, maxAbsoluteSampleError: maxError, peak, nonzeroSamples: nonzero,
     tolerance: 0.000003, output: 'OfflineAudioContext; no device output'};
 }

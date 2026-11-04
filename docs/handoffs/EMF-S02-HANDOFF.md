@@ -23,7 +23,7 @@ The route starts B eight seconds after A's scheduled start, overlaps for four se
 | Check | Actual result | Limit |
 | --- | --- | --- |
 | Node 24 `npm ci --ignore-scripts` | PASS | Pinned development dependencies; no browser download during install. |
-| `npm run check` | **53/53 tests PASS**, 0 skipped | Original 28 plus 3 loader, 15 audio/player and 7 server checks. Transport/source doubles are not native audio evidence. |
+| `npm run check` | **54/54 tests PASS**, 0 skipped | Original 28 plus 3 loader, 16 audio/player and 7 server checks. Transport/source doubles are not native audio evidence. |
 | Fixture regeneration | PASS, 7 exact files | Six WAVs and manifest unchanged. |
 | Media validation | PASS, all 6 files | Actual bytes, hashes, PCM properties and rights-evidence files. |
 | UI ownership failure reproduction | PASS after fix | Independent DOM/lock/context double: failed no-voice Resume releases ownership; no stale source begins. |
@@ -37,7 +37,9 @@ Native buffer sources and gain automation are the single selected S02 renderer. 
 
 The full three-layer MVP is incomplete. Device loss/sleep, continuous background playback, other browser families, cross-profile/device ownership, physical output and musical quality remain unqualified. Web Locks is an origin/storage-partition coordination mechanism, not an OS audio-device lease. Default recovery is stopped or paused and requires an explicit user action.
 
-Last verified checkpoint: 53 passing local tests and unchanged validated fixtures. Next verification action is to publish this review branch, inspect the exact remote tree, run hosted CI and resolve any actual browser/test failures before marking S02 complete or advancing Current Tasks. The final closeout must record the successful run/source and remote main/handoff readback.
+Review corrections also suspend the retained timeline after rejected Resume ownership; its focused regression passes. The first hosted Linux run (41902273454, source dddb3c587ba32824f28c054411d80a46747b49d9) decoded all six WAVs and passed the 48 kHz render, then exposed an overly strict 44.1 kHz natural-end assertion. Cue boundaries and sample comparison remain exact; only the already-permitted one-frame native resampler EOF rounding is now explicit and reported. A Windows test teardown ordering defect was corrected by stopping the child before deleting its working directory. Hosted re-verification is pending.
+
+Last verified checkpoint: 54 passing local tests and unchanged validated fixtures. Next verification action is to publish this review branch, inspect the exact remote tree, run hosted CI and resolve any actual browser/test failures before marking S02 complete or advancing Current Tasks. The final closeout must record the successful run/source and remote main/handoff readback.
 
 ## Next handoff
 

@@ -86,6 +86,24 @@ test('Pause freezes the context while keeping the pending handoff and Resume pre
   await player.dispose();
 });
 
+test('denied ownership during Resume keeps an existing paused voice silent and freezes its clock', async () => {
+  const {context, player} = setup();
+  await player.play('a');
+  context.advance(2);
+  await player.pause();
+  const paused = player.snapshot();
+  await assert.rejects(player.resume(Promise.reject(new Error('ownership unavailable'))), /ownership unavailable/);
+  assert.equal(player.snapshot().state, 'paused');
+  assert.equal(outputValue(context), 0);
+  assert.equal(context.state, 'suspended', 'failed ownership must suspend, not merely mute, the resumed context');
+  context.advance(60);
+  assert.equal(player.snapshot().currentFrame, paused.currentFrame);
+  assert.equal(player.snapshot().elapsedSeconds, paused.elapsedSeconds);
+  assert.equal(context.sources.length, 1);
+  assert.equal(context.sources[0]!.starts.length, 1);
+  await player.dispose();
+});
+
 test('Stop or Pause during a pending decode cannot be undone by its eventual completion', async () => {
   for (const action of ['stop', 'pause'] as const) {
     const {context, player} = setup();
