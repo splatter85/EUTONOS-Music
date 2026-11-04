@@ -17,6 +17,10 @@ Use the produced sounds as a small instrument palette inside **one worthwhile re
 
 Load **two distinct eligible recordings** plus the procedural recipe. Expose `setState`, `requestGenre`, `nextSong` and optional `queueTrack`, along with Hold and transition length. When the listener makes a request, choose a valid next selection, show what is queued, and transition at the next agreed musical boundary. Demonstrate a phrase-aligned mix and a percussion/breakdown/fade bridge. Prevent overlapping incompatible bass parts and cut-off tails. Show a clear “no eligible track” outcome rather than random selection.
 
+## Implementation order and PC handoff
+
+Develop the browser DJ, requests/playlist, procedural source and test app first in **ChatGPT/GitHub** with a reusable audio-pack contract and original/eligible fixtures. This produces a **cloud-playable proof**, not complete MVP acceptance. Once the pack contract is committed, the **PC FL Studio/MCP authoring slice can run in parallel**; it supplies actual exported sounds through the identical contract. After cloud integration tests, pull the checked build to Windows and verify the complete three-layer production→generator→DJ system and real listening. Only then integrate Mission Control. The [EMF execution slices](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment) own exact dependencies and handoff notices.
+
 ## Tiny standalone test app
 
 A simple browser UI with **Play/Pause, Volume/Mute, State, Genre, Next Song, Hold, Transition (short/medium/long), Now Playing and Queued Next**. The app controls the DJ, not individual audio streams. One renderer, audio clock and output owner. Web Audio is a starting candidate; a native worker needs an observed reason. Advanced parameters, a full media library editor and Mission Control are excluded.

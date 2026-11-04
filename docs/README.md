@@ -36,7 +36,7 @@ The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary
 | Document | Owns |
 | --- | --- |
 | [Current Tasks](CURRENT_TASKS.md) | Priority and immediate pickup |
-| [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Sole stage/status/acceptance owner, grouped delivery milestones |
+| [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Sole stage/status/acceptance owner and CLOUD/PC/BOTH slice order with handoffs |
 | [Delivery plan](DELIVERY_PLAN.md) | Proof, pilot, authoring, full qualification and earned later expansion |
 | [Decisions](DECISIONS.md) | Stable design choices and reconsideration conditions |
 | [Work model](WORK_MODEL.md) | Readable repo-local EUTONOS-style convention |

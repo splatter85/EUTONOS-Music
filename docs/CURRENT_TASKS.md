@@ -1,16 +1,18 @@
 # Current Tasks
 
 Document ID: `EM-D010`  
-Updated: 2026-11-03, America/Chicago — **standalone MVP direction**.
+Updated 2026-11-04 — cloud-first execution slices.
 
-This is a readable EUTONOS-style queue, not a native board. [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns stage state.
+**One campaign:** [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). The campaign alone owns statuses, dependencies and acceptance. No native EUTONOS board is configured.
 
-| Priority | Campaign | Next action |
-| --- | --- | --- |
-| 1 | **EMF — Initial infrastructure**, PLANNED | **EMF01:** inspect Windows FL Studio, a real Codex/Claude-to-FL route, eligible sounds and the simplest playback backend. Plan one working **Codex/Claude → unified MCP → FL Studio authoring → procedural generator → DJ + tiny standalone app** path. No VB.NET dependency. |
+| Priority | Next work | Where | Finish line |
+| --- | --- | --- | --- |
+| 1 | **EMF-S01** — source/asset/request contracts and original audio fixtures | **ChatGPT/GitHub coding environment** | Checked common playable-source interface, pack schema, DJ queue/request contract, two eligible test recordings and sampler sounds; published Git SHA. |
 
-The first proof is not a Mission Control integration. A small app must let the user choose **next song, genre or state**, with the DJ executing the transition. The MCP authoring workflow must truly produce editable FL content and a verified exported sound used by the generator. [First playable](FIRST_PLAYABLE.md) describes the end-to-end acceptance.
+**Next cloud slices:** S02 small browser player → S03 DJ playlist/state/genre/next → S04 procedural generator → S05 recorded/procedural handoffs → S06 importer/mock FL producer → S07 integrated app, tests and scaffold review.
 
-**Mission Control comes afterward**, using the same DJ request interface. Vocals, broad FL MCP, massive variety and automated activity interpretation do not block MVP.
+**PC lane:** S08 can start **as soon as S01 is published**, in parallel with cloud S02–S07. S09 joins the checked cloud build and real FL audio on the PC; S10 is owner listening acceptance. **Only then S12 connects Mission Control**. S11 is optional cloud hardening; S13 wider campaign qualification. See the [authoritative campaign slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
 
-**Evidence:** documentation direction only; no runtime layer or FL edit is complete. Overall implementation effort is unknown. Next pickup reads [AGENTS](../AGENTS.md), [MVP](FIRST_PLAYABLE.md), [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) and [Unified FL agent control](FL_AGENT_CONTROL.md), then [FL integration](FL_STUDIO_INTEGRATION.md).
+**Two owner notices required in slice closeouts:** S01 gives precise SHA and tells owner PC S08 can start; S07 gives tested SHA/run commands for PC S09 after FL exports exist. There is no asynchronous notification. Cloud music uses eligible fixtures and **does not wait for installed FL Studio**.
+
+Current status: **planning only**; no executable slice verified. Effort percent unknown.

@@ -25,28 +25,53 @@ Read [Product goal](../PRODUCT_GOAL.md), [First playable](../FIRST_PLAYABLE.md),
 
 Actual workstation, FL version, musical assets and Mission Control interface must be inspected when implementation starts. Published upstream documentation does not prove their installed state.
 
-## Delivery milestones — superseding implementation order
+## Cloud-first execution strategy
 
-**M1 — three-layer standalone MVP:** EMF01 (environment), EMF02 (two original recordings and palette), EMF03 (one renderer), **EMF15 early** (single unified MCP authoring bridge using tested FL scripting/UI/render adapters), EMF04 (procedural generator + DJ + standalone app), EMF05 (actual listening/scaffold review). The app requests next song, genre and state; the DJ transitions recorded A → procedural → different recorded B. One real Codex/Claude → MCP → editable FL change and verified export is required. Native FL API gaps may require verified GUI adapters or explicit manual steps; do not claim universal automation.
+Keep one EMF campaign and its original stable **EMF00–EMF19** stage IDs. The stage table below retains wider exit criteria; the numbered **EMF-Sxx slices** are smaller, restartable implementation checkpoints, not a second campaign or work queue.
 
-**M2 — harden and broaden:** EMF06–EMF13 extend imported content, state, variations, app, DJ history and transition options without blocking M1.
+**Cloud first:** Build and automatically test the DJ, playlist/requests, procedural performer and tiny browser app in a ChatGPT coding environment using the GitHub repository. GitHub source hosting alone is not an audio runtime. Use original/eligible fixture audio and deterministic test sequences. FL Studio, native Windows devices and the authoring MCP cannot block these cloud slices.
 
-**M3 — integrate Mission Control afterward:** EMF14 uses the **already working** request contract. EMF16 optional production jobs can wait.
+**PC integration:** After the first cloud contract is committed, the owner may start real FL Studio/MCP work *in parallel*. It supplies exported audio through the exact same asset format. The real-device listening gate and complete standalone-MVP acceptance occur on PC after cloud and FL paths join. Mission Control integration follows standalone acceptance.
 
-**M4 — assembled qualification:** EMF17–EMF19. Broader genre coverage, all-DAW automation, vocals and three-day variety stay later.
+**Completion distinction:** Cloud demo runnable ≠ real FL workflow verified ≠ owner listening accepted ≠ full EMF campaign completed. The larger EMF06–EMF19 scope and reviews remain; optional added genres/vocals/72-hour variety do not block first playback.
 
-These 20 stage IDs are stable historical identities, **not strict execution order**. EMF15 is intentionally early. M1 scoped MVP is distinct from completing the entire campaign.
+## Execution slices — authoritative order and environment
+
+**CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation with actual FL Studio, Codex/Claude, installed plugins and audio output. **BOTH** means source and content joined and qualified on the PC.
+
+| Slice | Where | Stage(s) informed | Dependency | Checked outcome |
+| --- | --- | --- | --- | --- |
+| **EMF-S01** | **CLOUD** | EMF01–02 (contract) | EMF00 | Inspect repo; define small portable pack/asset schema, common recorded/procedural playable-source lifecycle, DJ commands/explicit queue and one clock. Create two original or permitted compatible audio fixtures and a sampler palette. Verify fixture provenance and schema. |
+| **EMF-S02** | **CLOUD** | EMF03–04 (thin player) | S01 | Select/test one Web Audio renderer, tiny app, play/pause A/B, Now/Next and a cue-checked scheduled A→B transition. Browser/offline tests, build instructions and lifecycle limits. |
+| **EMF-S03** | **CLOUD** | EMF04/07/12 (thin DJ) | S02 | DJ state/genre/next/queue/Hold requests with explicit queue priority, cancellation, idempotent retries, no-match fallback and deterministic tests. |
+| **EMF-S04** | **CLOUD** | EMF04/10 (first recipe) | S01–02 | Procedural sampler/phrase source sharing clock and `prepare/start/exit/release`; original palette, distinct seeded variations, bounded resources and replay tests. |
+| **EMF-S05** | **CLOUD** | EMF04/09/11 (handoff) | S03–04 | DJ drives recording A → procedural → different recording B with checked cues, bass/tail handoff and safe fade/bridge; reproducible audio/command tests. |
+| **EMF-S06** | **CLOUD** | EMF06/15 (contract only) | S01, S04 | Portable import/manifest validation and mock FL-producer/MCP contract tests. Verify sound enters generator regardless of producer; **no claim of actual FL control**. |
+| **EMF-S07** | **CLOUD** | EMF05 cloud scaffold review | S02–06 | Integrated app/demo, CI or repeatable test commands, offline/browser audio checks, review findings and exact artifact/commit SHA. Report **cloud playable proof**, not accepted full MVP. |
+| **EMF-S08** | **PC** | EMF15 real FL/MCP | **S01 only**; host intake | In disposable FL Studio project, verify single shared broker for Codex/Claude, real persistent note edit/readback, saved project, rendered WAV/loop and receipt reconciliation. May run **in parallel with S02–S07**. |
+| **EMF-S09** | **BOTH — PC audio** | EMF02/04/15 integration; targeted EMF18 | S05–06, S08 | Pull exact checked cloud revision; import real FL-produced material with unchanged pack contract. Test A→procedural→B on Windows/audio device; log timing, sound and lifecycle failures. |
+| **EMF-S10** | **PC + owner** | EMF05 listening gate; standalone MVP milestone | S07, S09 | Owner listens and accepts/revises the complete creation→generator→DJ→app flow. Playback works with FL/agents closed. **Does not complete EMF19 full release.** |
+| **EMF-S11** | **CLOUD** | Remaining EMF06–13 breadth | S07 | Optional post-proof persistence, genres, recipe/history and expanded transition coverage. Can proceed without PC when scope is disjoint. |
+| **EMF-S12** | **BOTH — actual MC** | EMF14 | S10, necessary API hardening | Connect Mission Control to the same state/genre/next interface, manual first, optional activity mapping only after verifying signals and overrides. |
+| **EMF-S13** | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
+
+### Exactly when to involve the PC
+
+- **Handoff #1, after S01 is published:** tell owner the checked Git SHA, pack contract and setup constraints: *“You can pull now to start PC slice S08 in parallel; I'll continue S02–S07 in the cloud.”* This notification is part of the closeout, **not a background automation**. Missing PC integration does not stop the cloud sequence.
+- **Handoff #2, after S07 is published:** provide exact build SHA, run commands, artifact/demo, checks and caveats: *“Pull this tested revision for S09 once S08 has produced eligible FL exports.”*
+- **Join at S09.** Do not make two implementations of the asset contract, queue or DJ. PC work changes only the producer adapter and supplies real files into the same validated format. Real audio-device testing, listening and host compatibility cannot be declared successful from GitHub CI alone.
+- **Next now:** EMF-S01 (CLOUD). Future implementation slices run when selected; this planning edit authorizes no software installs, DAW edits, model downloads, external releases or changes to the Mission Control repo.
 
 ## Stage map and sole status owner
 
 | Stage | Status | Outcome | Depends on | Exit evidence |
 | --- | --- | --- | --- | --- |
 | **EMF00** | **COMPLETE — documentation only** | Original documentation/research baseline | Initial owner brief | Baseline `ee7125e` and retained [Progress](../PROGRESS.md) evidence. |
-| **EMF01** | PLANNED | Campaign adequacy review | EMF00, actual environment intake | Bounded KEEP/CHANGE/DEFER findings and the smallest audible investigation. This paper review does not close the host-aware gate. |
-| **EMF02** | PLANNED | Production and fixture baseline | EMF01 | Small eligible original fixture set, sound palette, actual production inventory and one repeatable export; manual FL work is valid. Broader families are completed before M2. |
-| **EMF03** | PLANNED | Audio backend decision | EMF01, basic EMF02 fixtures | Investigate Web Audio first; select one renderer using timing/lifecycle/resource evidence. Native only if justified. |
-| **EMF04** | PLANNED | Small working standalone app | EMF02–03 and early EMF15 | Verified real FL sound used by one procedural recipe; basic DJ transitions recorded A → procedural → recorded B and handles test-app state/genre/next-song requests. |
-| **EMF05** | PLANNED | MVP audio/scaffold review | EMF04 | Observe the entire creation → playback → transition sequence; inspect code and actual sound, retain specific corrections. |
+| **EMF01** | PLANNED | Contract/adequacy review | EMF00 | S01 cloud source, fixture, request and backend review; actual FL host capabilities inspected at S08 and cannot block cloud code. |
+| **EMF02** | PLANNED | Portable fixtures then FL production sources | EMF01 contract | S01 original fixture audio for cloud; S09 verifies eligible FL exports through same pack schema. |
+| **EMF03** | PLANNED | Initial renderer | S01 fixtures | S02 Web Audio/browser and timing checks; real Windows/audio-device qualification follows on PC. |
+| **EMF04** | PLANNED | Working standalone cloud scaffold | S01–05 | Browser DJ, sample-based procedural source, state/genre/next requests and hybrid transitions with eligible fixtures. **Not blocked by real FL MCP stage EMF15.** |
+| **EMF05** | PLANNED | Scaffold review and owner listening | S07 cloud proof; S09 PC integration | S07 reviews running scaffold and technical audio tests; S10 adds full FL-backed real PC listening and owner acceptance. |
 | **EMF06** | PLANNED | Versioned library and importer | EMF05 | Readiness-dependent metadata, hashes, intended-use eligibility, cues and useful errors; no mandatory annotation wall. |
 | **EMF07** | PLANNED | Transport and state lifecycle | EMF05–06 | Requested/planned/audible state, musical dwell, bounded wait, hold, duplicate/revision/expiry and restart behavior. |
 | **EMF08** | PLANNED | Manual listening app | EMF07 | Simple MC-facing panel plus advanced lab, pending display, skip/favorite, save-vibe and accessible controls. |
@@ -55,8 +80,8 @@ These 20 stage IDs are stable historical identities, **not strict execution orde
 | **EMF11** | PLANNED | Hybrid musical handoffs | EMF09–10 | Generalize the small proof within supported content; verify shared context, bass/vocal/tail ownership and latency alignment. |
 | **EMF12** | PLANNED | DJ selection and persistent history | EMF11 | Deterministic eligibility/recency/preference rules, fixed-state identity changes, replayable versions/seeds and bounded logs. |
 | **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
-| **EMF14** | PLANNED — after MVP | Mission Control adapter and playback MCP/API | EMF05 and necessary state paths | MC sends the same state/genre/next-song commands to the proven DJ; manual requests first, optional activity mapping later. |
-| **EMF15** | PLANNED — early MVP | Unified FL Studio MCP authoring control | EMF01–02 | Both Codex and Claude can inspect one FL session through a common server; one agent creates persistent editable notes/patterns, reads back the result, and produces verified rendered audio using available FL scripting/GUI/CLI methods. Optional visual UI is not the control backbone. |
+| **EMF14** | PLANNED — after S10 | Mission Control request adapter | S10, required API refinement | S12 real MC integration only after standalone MVP listening acceptance. |
+| **EMF15** | PLANNED — PC parallel lane | Unified FL Studio MCP authoring control | S01 contract, actual PC environment | S06 cloud mocks do not prove FL. S08 PC verifies real editable changes/rendering; S09 imports outputs. S02–S07 remain independent. |
 | **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
 | **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
 | **EMF18** | PLANNED | Windows listening and operational qualification | EMF17 | Named environment, real work sessions, recovery/load evidence and scope-matched endurance. |
@@ -105,7 +130,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 EMF00's original documentation result is preserved. This revision adds [EM-REVIEW-001](../reviews/MISSION_CONTROL_FIRST_REVIEW.md), answers forty questions, retains ten strengths and changes sequencing around first sound and MC. No implementation stage or runtime completion check has been closed. No audio was generated, rendered or listened to; no local environment/MC source integration was performed. Native board filing is unavailable here; readable owners are used.
 
-Next: EMF01 inspects the actual FL/agent/audio environment; then EMF02/EMF03 prepare content/backend, **early EMF15** establishes the AI-to-FL controller, and EMF04 proves the standalone app and DJ. No MC integration until M1 works. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
+Next: **EMF-S01 in CLOUD** prepares the source/asset/request contract, original fixtures and tests. On its published closeout give the owner the SHA for optional **PC S08 in parallel**; finish CLOUD S02–S07 and hand off the verified build for S09. Real FL audio and owner listening remain required for standalone-MVP acceptance. No MC integration before S10. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
 
 ## Resume and closeout
 

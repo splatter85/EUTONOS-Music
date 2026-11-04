@@ -72,3 +72,7 @@ Owner narrowed the first build to a working Visual Basic AI/FL Studio controller
 ## Agent authoring interface correction — 2026-11-03
 
 The owner clarified that Codex and Claude need comprehensive FL Studio authoring control. The design moves from provisional VB.NET-first to **one MCP server with multiple validated FL scripting, UI and rendering adapters**; VB.NET remains an optional UI. [Unified control design](FL_AGENT_CONTROL.md) records current community options, capability limits and a safe staged test path. This is **documentation only**, not a tested MCP installation, working DAW edit, export or audible MVP.
+
+## 2026-11-04 — cloud-first slicing (planning only)
+
+The one existing EMF campaign now contains ordered execution slices EMF-S01–S13 tagged CLOUD, PC or BOTH. Cloud S01–S07 can build DJ/requests/procedural app and tests with original fixture assets. Real FL Studio/MCP editing/export on PC starts at S08 any time after S01 and can run in parallel; S09 integrates cloud code with actual FL-made sounds, and S10 is the owner listening gate before S12 Mission Control. Existing EMF00–EMF19 stage identities and full campaign checks are retained. **No runtime, FL edit or listening outcome is claimed from this documentation work.**
