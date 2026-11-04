@@ -41,7 +41,22 @@ Use checks aimed at concrete risk. Docs need link/ID/example/consistency checks;
 
 Update canonical owners at meaningful boundaries. Close out with practical result, checks/limits, current milestone/stage, effort with basis or unknown and one next step. Git publication, integration, native filing, runtime qualification and owner acceptance are distinct.
 
-Native EUTONOS tooling is not configured here. Use readable Markdown owners; do not fabricate managed-board or RAM receipts. Later adoption uses the supported migration route and preserves IDs. The [documentation map](docs/README.md) routes canonical owners; cross-link instead of copying long contracts. Public docs stay generic and do not transplant private project policies or history.
+EUTONOS is adopted here (see Setup status below). Readable Markdown owners stay canonical: the campaign owns stage status, [Current Tasks](docs/CURRENT_TASKS.md) stays hand-written, and [the native board](docs/WORK_ITEMS.md) changes only through the EUTONOS boards CLI. Never fabricate board, RAM, NAV or acceptance receipts. The [documentation map](docs/README.md) routes canonical owners; cross-link instead of copying long contracts. Public docs stay generic and do not transplant private project policies or history.
+
+## EUTONOS setup status
+
+Status as of 2026-11-04. These are local, unpublished checks. Project key `eutonos-music-696a3fe8967d`, adopted through the add-repository checklist on a Windows PC with a dev-linked runtime.
+
+- **Docs: ready.** The adoption profile has been applied and verified. It added the delegation and rule-reference blocks below, plus `eutonos.read.json`, `eutonos.adoption.json` and `tools/eutonos_project.py`. Orientation reads the single `tokenslang-work` entry in Current Tasks.
+- **Boards: ready.** `eutonos.boards.json` points to [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md). It holds the EMF campaign, stages EMF00–EMF19 and slices EMF-S01–S13, filed through `boards batch submit`. Batch submission does not regenerate Current Tasks.
+- **NAV: ready (build complete).** Run `emf-nav-build-20261104` finished all 16 sweeps and holds 51 records in `NAV/`; `nav maintenance` is a no-op. Semantic acceptance is unproven. The bootstrap `GAP-bootstrap` placeholder remains because NAV refuses to remove it.
+- **RAM: ready.** `eutonos.ram.json` stores records in `RAM/`. The first closeout record was filed and read back from a fresh process with `eutonos-ram recent`.
+- **Finalize and acceptance: blocked.** `eutonos-setup finalize` needs `eutonos.installation.json`, but profile adoption does not write it. Nobody hand-writes it. The supported route has been raised with EUTONOS maintainers.
+- **Permission entries: blocked.** `add-project` ran with `--no-permissions` because this PC's runtime is dev-linked and the installer was not run (the owner's decision). Nothing was hand-written into `.claude/` or `.codex/`.
+- **Person steps: optional, not done.** Claude Desktop Auto mode and Codex project trust are not set up.
+- **Runtime note:** this PC has no installed launchers. When you call `tools/eutonos_project.py` or `python -m eutonos.*`, set `EUTONOS_PYTHON` to the EUTONOS runtime's Python.
+
+Next incomplete module: finalize/acceptance, once a supported route exists.
 
 
 <!-- eutonos:delegation:start -->
