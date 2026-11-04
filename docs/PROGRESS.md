@@ -76,3 +76,7 @@ The owner clarified that Codex and Claude need comprehensive FL Studio authoring
 ## 2026-11-04 — cloud-first slicing (planning only)
 
 The one existing EMF campaign now contains ordered execution slices EMF-S01–S13 tagged CLOUD, PC or BOTH. Cloud S01–S07 can build DJ/requests/procedural app and tests with original fixture assets. Real FL Studio/MCP editing/export on PC starts at S08 any time after S01 and can run in parallel; S09 integrates cloud code with actual FL-made sounds, and S10 is the owner listening gate before S12 Mission Control. Existing EMF00–EMF19 stage identities and full campaign checks are retained. **No runtime, FL edit or listening outcome is claimed from this documentation work.**
+
+## 2026-11-04 — every-slice handoff policy and first pickup
+
+The owner selected a **two-part handoff for each EMF execution slice**: a detailed, checked, published `docs/handoffs/EMF-Sxx-HANDOFF.md` plus a mini copy-ready handoff given in the completing agent's chat message. The [Work Model](WORK_MODEL.md#per-slice-handoff-policy) owns this policy; [handoff folder](handoffs/README.md) contains the template and an [EMF-S01 pickup brief](handoffs/EMF-S01-PICKUP.md). The campaign remains the sole slice status owner. **S01 remains unstarted; no implementation code, audio or tests were delivered by preparing this pickup.**

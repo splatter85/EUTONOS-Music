@@ -39,7 +39,8 @@ The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary
 | [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Sole stage/status/acceptance owner and CLOUD/PC/BOTH slice order with handoffs |
 | [Delivery plan](DELIVERY_PLAN.md) | Proof, pilot, authoring, full qualification and earned later expansion |
 | [Decisions](DECISIONS.md) | Stable design choices and reconsideration conditions |
-| [Work model](WORK_MODEL.md) | Readable repo-local EUTONOS-style convention |
+| [Work model](WORK_MODEL.md) | Repo-local convention and **mandatory detailed + mini handoffs** at every slice |
+| [Handoffs](handoffs/README.md) | Reusable closeout template and first S01 pickup brief |
 | [Progress](PROGRESS.md) | Versioned historical checkpoints and validation limits |
 | [Review](reviews/MISSION_CONTROL_FIRST_REVIEW.md) | Forty questions answered, ten strengths and primary-source checks |
 | [Research map](RESEARCH.md) | Existing source routes and provider evidence |

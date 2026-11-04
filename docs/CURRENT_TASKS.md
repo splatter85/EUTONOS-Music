@@ -3,6 +3,8 @@
 Document ID: `EM-D010`  
 Updated 2026-11-04 — cloud-first execution slices.
 
+**Pickup for the next instance:** [EMF-S01-PICKUP](handoffs/EMF-S01-PICKUP.md), a detailed assignment brief. S01 remains **PLANNED**. Every slice later requires a checked [detailed repository closeout and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
+
 **One campaign:** [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). The campaign alone owns statuses, dependencies and acceptance. No native EUTONOS board is configured.
 
 | Priority | Next work | Where | Finish line |

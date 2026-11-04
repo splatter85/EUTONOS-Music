@@ -29,6 +29,10 @@ Genre recipes are starting vocabularies, not universal cultural laws. Make origi
 
 Record source/asset/recipe/model versions and intended use. Historical experiences remain historical when source changes; their original evidence and applicability to current software are separate questions. Review bounded recipe behavior without claiming all future seeds were auditioned.
 
+## Mandatory end-of-slice handoff
+
+At the end of **every** EMF-Sxx slice, including pauses/blocks, follow [the Work Model policy](docs/WORK_MODEL.md#per-slice-handoff-policy): publish and read back a **detailed** `docs/handoffs/EMF-Sxx-HANDOFF.md`, update the campaign/Current Tasks, then send a **short copy-ready mini handoff to the owner in the same response**. Include actual tests, audio/listening limitations, source/commit SHA and one next CLOUD/PC/BOTH slice. A failed Git publication must be reported, not called complete. [The S01 pickup](docs/handoffs/EMF-S01-PICKUP.md) is a starting brief, not evidence S01 was completed.
+
 ## Verification and delivery
 
 Use checks aimed at concrete risk. Docs need link/ID/example/consistency checks; audio needs engineering and listening evidence. A written specification cannot complete a runtime stage. Keep music failures isolated from Mission Control work and respect listener mute/hold/transport.

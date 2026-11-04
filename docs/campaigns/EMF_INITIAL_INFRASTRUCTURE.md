@@ -35,6 +35,10 @@ Keep one EMF campaign and its original stable **EMF00–EMF19** stage IDs. The s
 
 **Completion distinction:** Cloud demo runnable ≠ real FL workflow verified ≠ owner listening accepted ≠ full EMF campaign completed. The larger EMF06–EMF19 scope and reviews remain; optional added genres/vocals/72-hour variety do not block first playback.
 
+## Every slice requires a detailed repo handoff plus mini chat handoff
+
+Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff-policy). At every COMPLETE, PAUSED or BLOCKED boundary, publish/read back an evidence-backed `docs/handoffs/EMF-Sxx-HANDOFF.md`, update this campaign's authoritative status/checkpoint and Current Tasks pointer, then give the owner a **copy/paste mini handoff in the same chat**. The [initial S01 pickup](../handoffs/EMF-S01-PICKUP.md) is an unstarted assignment brief, **not** a completion report. S01 closeout explicitly offers parallel **PC S08**; S07 closeout gives tested SHA and **PC S09** handoff instructions. No automatic background alerts.
+
 ## Execution slices — authoritative order and environment
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation with actual FL Studio, Codex/Claude, installed plugins and audio output. **BOTH** means source and content joined and qualified on the PC.
