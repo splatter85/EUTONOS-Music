@@ -1,11 +1,13 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: S02's small recording player is implemented; the full MVP controls below remain staged work.
+Status: S03 connects DJ requests to the small recording player; the full three-layer MVP remains staged work.
 
-## Implemented S02 subset
+## Implemented S03 subset
 
-[S02 player setup](S02_PLAYER.md) provides Play A/B, Pause/Resume, Stop, Volume/Mute, Now/Next and one scheduled A→B route from the validated S01 pack. Native Web Audio owns all audio timing. The page pauses when hidden and uses a cooperating same-origin tab lock. The [S02 handoff](handoffs/EMF-S02-HANDOFF.md) records actual browser/offline evidence and its limits. No state/genre/queue/Hold DJ or live procedural source is implemented by S02.
+[S03 setup and policy](S03_DJ.md) provides Play/Pause/Stop, Volume/Mute, State, Genre, Next Song, manual FIFO queue/cancellation and Hold state & genre. The app sends revisioned commands to one DJ, which schedules the existing A→B route through S02's one-clock renderer. Requested targets, scheduled sources, Now and queued entries are displayed separately. The [S03 handoff](handoffs/EMF-S03-HANDOFF.md) records actual evidence and limits.
+
+The fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. There is no procedural performer or Mission Control integration yet.
 
 ## Later full MVP
 

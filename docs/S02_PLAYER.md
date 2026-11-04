@@ -4,7 +4,7 @@ Document ID: `EM-D019`
 
 Implemented scope: `EMF-S02`, `campaign-emf-001`. [Campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns live status; [slice handoff](handoffs/EMF-S02-HANDOFF.md) records executed evidence.
 
-The browser demo plays the two original S01 recordings independently and schedules the pack's one directed A→B route. It uses native `AudioBufferSourceNode` and `GainNode` with one `AudioContext`. There are no runtime packages, external services, DAW requirements or new audio assets. The [S01 format and fixtures](S01_FOUNDATION.md) remain unchanged. DJ selection, the request queue and live procedural performance belong to later slices.
+The browser demo plays the two original S01 recordings independently and schedules the pack's one directed A→B route. It uses native `AudioBufferSourceNode` and `GainNode` with one `AudioContext`. There are no runtime packages, external services, DAW requirements or new audio assets. The [S01 format and fixtures](S01_FOUNDATION.md) remain unchanged. [S03](S03_DJ.md) now integrates DJ selection and the request queue; the direct S02 controls described below are historical. The current demo uses the S03 controls. Live procedural performance remains later work.
 
 ## Run on Windows, macOS or Linux
 

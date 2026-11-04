@@ -9,6 +9,8 @@ Status: proposed qualification plan, revised 2026-11-03. Documentation checks ar
 
 ## Evidence categories
 
+**S03 verification adds** deterministic DJ/request integration and boundary/race tests, plus native sample comparisons proving that cancelling a future A→B restores full A at 48 kHz and 44.1 kHz. The browser runner exercises the actual DJ controls and manual queue. [S03 policy and commands](S03_DJ.md) and [source-pinned results](handoffs/EMF-S03-HANDOFF.md) distinguish local doubles, hosted native browser evidence and untested physical/listening outcomes.
+
 Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.
 
 Use READY / REVISE / BLOCKED / NOT VERIFIED for required musical outcomes with a short observation and next action. Engineering checks can retain their test-specific pass/fail result. Do not average a required failure into a passing taste score. Never claim an agent listened based on MIDI, screenshots or signal statistics.

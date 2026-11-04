@@ -1,7 +1,7 @@
 # Design decisions and open questions
 
 Document ID: `EM-D011`  
-Status: current design decisions, including bounded S01/S02 implementation updates, revised 2026-11-04.
+Status: current design decisions, including bounded S01/S02/S03/S08 implementation updates, revised 2026-11-04.
 
 Owner direction: Mission Control music first, possible growth later, focus on making it work. Other engineering decisions below are this review's recommendations within that direction, not unrun qualification results. The initial versions of EM-DEC001–010 are preserved at baseline `ee7125e`; their stable identities remain.
 
@@ -16,7 +16,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC007 | Compatibility is directed and version/scenario-specific | Start with a few authored routes; generalize only within tested content classes. |
 | EM-DEC008 | Three-day endurance and musical breadth are separate | Seed counts and graph reachability do not establish enjoyment. |
 | EM-DEC009 | Intended-use provenance is required for distributed packs | Private authoring, compositions, stems, reusable sounds and weights are distinct decisions. |
-| EM-DEC010 | Work follows the current bounded assignment; S01 and S02 implementation/publication were authorized | Later slice ordering is not automatic dispatch. No runtime or listening stage closes without its actual evidence. |
+| EM-DEC010 | Work follows the current bounded assignment; the S08 completion handoff assigns S03 CLOUD implementation/publication | Later slice ordering is not automatic dispatch. No runtime or listening stage closes without its actual evidence. |
 | EM-DEC011 | Audible proof precedes broad infrastructure | EMF04 demonstrates a controlled recorded/generated journey; EMF05 reviews it before breadth. |
 | EM-DEC012 | FL MCP and production jobs stay in full EMF but do not block usable MC pilot | EMF15/16 are retained. Advance only a narrow helper when a measured bottleneck justifies it. |
 | EM-DEC013 | Adaptation is optional and tested against fixed-state music | No productivity or attention inference from activity counts alone. |
@@ -63,4 +63,10 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 **EM-DEC025:** The first real FL path is **offline project authoring plus FL's own command line**, not live GUI scripting. On the reference PC WinMM exposes no MIDI input, so controller scripts cannot receive commands without a further install; GUI automation is excluded. A clean-room FLP codec edits pattern notes, tempo and clip length in disposable workspace copies of an allowlisted factory template; FL itself proves the edit by loading the saved project and exporting MIDI, and renders WAV with `/R /Ewav`. Writes are limited to the verified FL 24.x layout. Reconsider when a live controller bridge (virtual MIDI port) is assigned or FL's layout changes. [Details](S08_FL_AUTHORING.md).
 
 **EM-DEC026:** Claude Code and Codex each launch their own stdio server process; coordination lives in the shared workspace, not in a resident daemon: a writer lease (TTL), an exclusive-create critical-section lock, SHA-256 revisions with `expected_revision`, a backup before every mutation and an append-only journal keyed by caller operation IDs (duplicate lookup precedes lease/revision checks; started-without-outcome requires reconciliation). Any running FL GUI instance is treated as a competing writer (`HOST_BUSY`). Reconsider if a resident broker is needed for live GUI control.
+
+## S03 deterministic selection and cancellation — 2026-11-04
+
+**EM-DEC027:** The first DJ is a typed in-process coordinator over the existing two-recording renderer. An explicit FIFO head precedes state/genre preferences but never bypasses eligibility, availability or a checked directed route. Automatic selection filters by the requested state/genre, excludes the current identity and uses stable ID order. A blocked head, unavailable match, missed cue or absent route preserves current finite playback and reports the reason. Queue/target/Next requests while stopped cannot start sound; Play is explicit. Hold refuses manual and automated state/genre changes while retaining transport and explicit queue/Next controls. No automatic loop, FIFO skip, queue drain or third voice is introduced. Reconsider wider selection only with S04/S05 source/route evidence. [Executable policy](S03_DJ.md).
+
+**EM-DEC028:** Acceptance receipts and renderer effects are separate. Caller-known canonical retries recover the original receipt and current execution outcome without repeating native scheduling, including after Stop or a generation change. Retain reservations before awaits and consume a queue entry only after its native entry frame has been observed; delayed promise observation cannot put started music back in the queue. Before entry, Cancel next restores outgoing A's original envelope/end and removes B while retaining an unstarted queue entry. Cancellation after onset is refused; Stop/Mute remain immediate. Receipt durability, external adapters and expiry/lease rules remain later work. [Review and evidence](handoffs/EMF-S03-HANDOFF.md).
 
