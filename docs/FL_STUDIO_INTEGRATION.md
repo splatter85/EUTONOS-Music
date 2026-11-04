@@ -2,6 +2,10 @@
 
 **Status: design/research; not implemented/tested.** This repository does not currently ship an FL Studio controller, an MCP server, an installer, or a verified host integration. Source review date: **2026-11-03, America/Chicago**. The installed FL Studio version, activated edition, plugin entitlements, operating system, and audio configuration have not been verified.
 
+## Current control decision (2026-11-03)
+
+**MCP is the agent interface, not Visual Basic.** Use one unified EUTONOS Music MCP facade for Codex and Claude, with selectively integrated FL scripting, Piano-roll, tested Windows UI and official command-line export adapters. A visual/VB.NET controller is optional. See the current [Unified FL control design and operator instructions](FL_AGENT_CONTROL.md). This document retains supporting research and detailed low-level safety rules; neither it nor the newer proposal is an installed integration.
+
 ## 1. Purpose and boundary
 
 FL Studio is the production workshop for EUTONOS-Music: compose editable music, design sounds, record performances, refine mixes, and render assets. Codex or Claude should eventually help operate that workshop through a small, observable MCP interface. The result can be an original instrument, a song, a transition, a stem bundle, or material for a versioned recipe. This authoring path is useful for any genre supported by the actual instruments and production skills available.

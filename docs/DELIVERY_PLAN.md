@@ -3,7 +3,7 @@
 Document ID: `EM-D009`  
 Status: revised direction; implementation pending.
 
-**M1 — standalone MVP:** EMF01 checks actual FL/agent/audio environment. EMF02 makes two compatible recordings and a sound palette. EMF03 chooses one playback backend. **EMF15 moves early:** one real AI prompt → editable FL Studio change → exported loop/sound through a small Visual Basic controller. EMF04 assembles a basic procedural recipe, DJ transitions and little state/genre/next-song app. EMF05 checks code and hears the result.
+**M1 — standalone MVP:** EMF01 checks actual FL/agent/audio environment. EMF02 makes two compatible recordings and a sound palette. EMF03 chooses one playback backend. **EMF15 moves early:** one real Codex/Claude request → unified MCP server → editable FL Studio change → verified exported loop/sound. Use the official scripting interfaces plus tested UI/export adapters for gaps. Visual Basic is only an optional user interface. EMF04 assembles a basic procedural recipe, DJ transitions and little state/genre/next-song app. EMF05 checks code and hears the result.
 
 **M2 — expand only what is useful:** EMF06–EMF13 harden the asset library, state, app, procedural variation, DJ selection/history and more transition types. The first MVP does not need this entire framework.
 

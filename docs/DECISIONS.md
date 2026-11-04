@@ -41,3 +41,7 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 **EM-DEC012:** “Visual Basic AI controller” is provisionally interpreted as a tiny VB.NET Windows UI using one real Codex/Claude → FL Studio editable creation/export route. If the owner meant a visually basic controller rather than the VB.NET language, substitute its shell without changing the audio/content contract.
 
 **EM-DEC013:** Start with two compatible recordings, one original sound palette/recipe, and approved transitions. Defer broader automation, genre mixing, vocals and 72-hour variety. No runtime work has yet passed.
+
+## Correction: agent control is MCP-first, 2026-11-03
+
+**EM-DEC014:** The previous provisional VB.NET-first assumption in EM-DEC012 is superseded. One unified **MCP server for Codex and Claude Code** owns the FL Studio authoring interface; a visual/VB.NET controller is optional and uses the same server. Selectively adapt existing FL community bridges rather than concatenate/install all of them. The interface exposes supported FL Python APIs and tested UI/CLI export methods, with session locks, capability discovery, readback and safe recovery. The goal is maximal *verified* authoring control, not a universal automation claim. [Canonical design](FL_AGENT_CONTROL.md). No controller or runtime has been installed by this decision.

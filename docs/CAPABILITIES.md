@@ -3,16 +3,16 @@
 Document ID: `EM-D003`  
 Status: intended outcomes, revised 2026-11-03. No listed runtime capability is available yet.
 
-Mission Control listening is the first consumer outcome; production capabilities support it and can grow later. Feature dependencies do not force optional automation to precede manual authoring.
+The **standalone three-layer player + test app is first**; Mission Control becomes its first later external consumer. MCP authoring is an MVP source-production requirement; broader automation can grow later. Feature dependencies do not force optional automation to precede manual authoring.
 
 | Stable ID | Capability | Features | Acceptance and sequencing |
 | --- | --- | --- | --- |
-| EM-C001 | Listen to music that develops with a chosen state | EM-F001–F003 | Pilot: choose/hold a vibe in MC and hear deliberate development. |
+| EM-C001 | Listen to music that develops with a chosen state | EM-F001–F003 | Standalone MVP: select/hold a vibe in test app and hear it change. Later MC sends the same requests. |
 | EM-C002 | Hear different musical identities within one mood | EM-F004–F007, F015 | Pilot: remain moderate while distinct eligible material appears. |
 | EM-C003 | Move between recorded and generated music | EM-F002, F006–F008 | Proof: recording A → procedural passage → different recording B. |
-| EM-C004 | Control music from another application | EM-F001, F009; F010 for agent tools | MC is the first actual consumer, not only a generic simulated client. |
-| EM-C005 | Produce library material with FL Studio | EM-F004, F014; F011 for automation | Manual/scripted export first; bridge automation follows in EMF15. |
-| EM-C006 | Direct an assistant in ordinary musical language | EM-F011–F014 | Later supported brief/edit/audition workflow preserves accepted parts. |
+| EM-C004 | Control music from another application | EM-F001, F009; F010 for agent tools | Standalone request contract first; then verified actual MC connection through that interface. |
+| EM-C005 | Produce library material with FL Studio | EM-F004, F011, F014 | MVP: Codex/Claude use one MCP to produce a real editable FL change and verified audio export, optionally with a shown manual UI step. |
+| EM-C006 | Direct an assistant in ordinary musical language | EM-F011–F014 | MVP: prompt → supported FL edit → readback → render; later deeper arrangement/mixing automation and audition revisions. |
 | EM-C007 | Use local model production where appropriate | EM-F012–F013 | Optional versioned job returns review candidates without touching playback deadlines. |
 | EM-C008 | Add deliberate vocal performances | EM-F013–F014 | Later selected route demonstrates diction, pitch, expression and usable boundaries. |
 | EM-C009 | Revisit a musical moment | EM-F004, F015 | Pilot restores versions/seed/settings; distinguishes setup from exact recorded audio. |

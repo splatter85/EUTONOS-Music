@@ -5,7 +5,7 @@ Status: revised proposal, 2026-11-03. No described runtime is implemented here.
 
 ## Current MVP sequence
 
-The small **Visual Basic AI/FL Studio controller → procedural generator → DJ + standalone test app** is the first build. Mission Control is a later caller of the same DJ requests. All earlier statements favoring MC integration inside the first proof are superseded by [First playable](FIRST_PLAYABLE.md).
+The small **Codex/Claude → unified MCP → FL Studio authoring → procedural generator → DJ + standalone test app** is the first build. A Visual Basic or other graphical controller is optional. The FL authoring facade owns one real project writer and chooses tested scripting, GUI and external-render adapters; the playback clock and DJ remain independent. See [Unified FL agent control](FL_AGENT_CONTROL.md). Mission Control is a later caller of the same DJ requests. All earlier statements favoring MC integration inside the first proof are superseded by [First playable](FIRST_PLAYABLE.md).
 
 ## Main decision
 

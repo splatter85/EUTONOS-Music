@@ -3,11 +3,11 @@
 Document ID: `EM-D016`  
 Status: **direction selected; no implementation or listening qualification**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements.
 
-## 1. Visual Basic AI production controller
+## 1. MCP-based AI music production (optional visual controller)
 
-A tiny **VB.NET Windows interface** (provisional interpretation of the owner's “Visual Basic”) accepts a plain-language prompt such as “Make an 8-bar dark-house bass-and-drum loop, 124 BPM, in A minor.” It uses an available **Codex or Claude** integration to prepare editable MIDI or a supported FL Piano roll script, applies a bounded change in a disposable FL Studio project, and produces at least one verified exported audio loop/sound. Store source project, tempo, meter, length, key if established, file hash, genre and rights.
+**Codex or Claude Code uses the unified EUTONOS Music MCP server** to accept a plain-language prompt such as “Make an 8-bar dark-house bass-and-drum loop, 124 BPM, in A minor.” It uses an available **Codex or Claude** integration to prepare editable MIDI or a supported FL Piano roll script, applies a bounded change in a disposable FL Studio project, and produces at least one verified exported audio loop/sound. Store source project, tempo, meter, length, key if established, file hash, genre and rights.
 
-One *real* AI → editable FL project → export path is mandatory; not a mocked prompt box. If the installed FL Studio interface needs a manual script-invoke/export click, make it visible and repeatable rather than pretending it is automated. Broader FL MCP/GUI automation can follow later. The AI controller is for creation, **not required during playback**.
+One *real* agent → MCP → editable FL project → export path is mandatory; not a mocked prompt box. The MCP facade routes to FL's MIDI/Piano roll script API, selectively tested Windows UI automation and the official saved-project render path as appropriate. A visual front end (including VB.NET) is optional and calls these same tools. Read [Unified FL agent control](FL_AGENT_CONTROL.md) for capability gaps, tool design and agent instructions. If the installed FL Studio interface needs a manual script-invoke/export click, make it visible and repeatable rather than pretending it is automated. Broader FL MCP/GUI automation can follow later. The AI controller is for creation, **not required during playback**.
 
 ## 2. Procedural generator
 
@@ -23,7 +23,7 @@ A simple browser UI with **Play/Pause, Volume/Mute, State, Genre, Next Song, Hol
 
 ## Complete MVP acceptance sequence
 
-1. Give the AI controller a musical request. Inspect the actual FL edit and exported sound.
+1. Give Codex or Claude a musical request through the MCP facade. Inspect the actual FL edit and exported sound.
 2. Import the sound into the generator. Hear several meaningful variations—not the same loop forever.
 3. Play recording A. Request another genre/track or state through the small app. Watch the pending choice and hear the DJ perform **A → procedural → different recorded B** without a jarring cut.
 4. Verify Hold, Pause, Mute, a mid-phrase request, an unavailable-genre fallback, and clean playback continuation.

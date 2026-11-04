@@ -6,6 +6,10 @@ Read [README](README.md), [Product goal](docs/PRODUCT_GOAL.md), [Current Tasks](
 
 The first product is music for EUTONOS Mission Control. Preserve possible future growth without making a general platform a prerequisite. Prove the audible experience early; the full FL authoring bridge and model/vocal options must not block the initial listening pilot. They remain planned features, not deleted requirements.
 
+## Current authoring decision
+
+Codex and Claude must use the proposed **single EUTONOS Music MCP facade** for FL Studio authoring. VB.NET is optional UI, not a required control mechanism. Never load multiple competing third-party FL MCP servers against the same project or claim unsupported native FL API functions work. Read [Unified FL control](docs/FL_AGENT_CONTROL.md) before implementation. Scripting, UI and CLI-render adapters require real host verification; keep only one DAW writer and reconcile uncertain outcomes.
+
 ## Work and evidence
 
 - Follow the user's assigned scope and the [work model](docs/WORK_MODEL.md). A queued campaign is not automatic dispatch.

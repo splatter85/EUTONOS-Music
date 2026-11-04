@@ -68,3 +68,7 @@ The commit containing this entry is the source checkpoint. Final handback report
 ## Standalone MVP direction, 2026-11-03
 
 Owner narrowed the first build to a working Visual Basic AI/FL Studio controller, procedural generator, DJ and tiny standalone test app. Mission Control integration now follows verified standalone success. Historic research/stages are preserved. **Planning change only**; no executable music or listening qualification exists yet.
+
+## Agent authoring interface correction — 2026-11-03
+
+The owner clarified that Codex and Claude need comprehensive FL Studio authoring control. The design moves from provisional VB.NET-first to **one MCP server with multiple validated FL scripting, UI and rendering adapters**; VB.NET remains an optional UI. [Unified control design](FL_AGENT_CONTROL.md) records current community options, capability limits and a safe staged test path. This is **documentation only**, not a tested MCP installation, working DAW edit, export or audible MVP.

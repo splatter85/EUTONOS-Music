@@ -25,6 +25,8 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 
 [First playable](FIRST_PLAYABLE.md) is the current standalone three-layer MVP contract and supersedes prior MC-first delivery sequencing.
 
+[Unified FL Studio agent control](FL_AGENT_CONTROL.md) is the current MCP-first authoring contract for Codex/Claude; the longer [FL integration](FL_STUDIO_INTEGRATION.md) remains supporting research. A visual controller is optional, not required for authoring.
+
 ## Learning and creation
 
 The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary, FL workflow, arrangement/mixing/taste, recipe authoring, agent workflow and vocal production. These are creator resources; listening does not require reading them. Technical possibilities in a guide do not automatically enter the pilot scope.

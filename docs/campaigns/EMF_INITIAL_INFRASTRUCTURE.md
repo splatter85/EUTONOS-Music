@@ -9,7 +9,7 @@ Progress estimate: **unknown**; no runtime, musical corpus or DAW bridge has bee
 
 ## Outcome
 
-Build a **standalone three-layer MVP** first: a simple Visual Basic AI/FL Studio production controller, a procedural generator and a DJ controlled through a tiny state/next-song/genre app. Connect EUTONOS Mission Control only after this works. Demonstrate quality recorded playback, several authored procedural identities, deliberate hybrid transitions, understandable controls, persistent catalogue/history and a bounded FL Studio authoring MCP path.
+Build a **standalone three-layer MVP** first: one MCP-based Codex/Claude-to-FL Studio authoring interface (optional visual controller), a procedural generator and a DJ controlled through a tiny state/next-song/genre app. Connect EUTONOS Mission Control only after this works. Demonstrate quality recorded playback, several authored procedural identities, deliberate hybrid transitions, understandable controls, persistent catalogue/history and a bounded FL Studio authoring MCP path.
 
 The basic **AI authoring controller is part of MVP**; broader FL automation is later. Mission Control integration is only after the standalone system is proven. This is a delivery milestone inside the campaign, not cancellation of EMF15/EMF16 or a claim the whole campaign is finished. The full acceptance contract below retains those outcomes.
 
@@ -21,13 +21,13 @@ When implementation is selected, follow its assigned scope without needless per-
 
 ## Inputs
 
-Read [Product goal](../PRODUCT_GOAL.md), [First playable](../FIRST_PLAYABLE.md), [Architecture](../ARCHITECTURE.md), [Library/transitions](../LIBRARY_AND_TRANSITIONS.md), [State/API](../STATE_AND_CONTROL_API.md), [Test app](../TEST_APP.md) and [Validation](../VALIDATION.md). The [40-question review](../reviews/MISSION_CONTROL_FIRST_REVIEW.md) explains the revised delivery sequence. FL/model stages additionally read [FL integration](../FL_STUDIO_INTEGRATION.md), [Vocals/models](../VOCALS_AND_MODELS.md) and the relevant [guides](../guides/README.md).
+Read [Product goal](../PRODUCT_GOAL.md), [First playable](../FIRST_PLAYABLE.md), [Architecture](../ARCHITECTURE.md), [Library/transitions](../LIBRARY_AND_TRANSITIONS.md), [State/API](../STATE_AND_CONTROL_API.md), [Test app](../TEST_APP.md) and [Validation](../VALIDATION.md). The [40-question review](../reviews/MISSION_CONTROL_FIRST_REVIEW.md) explains the revised delivery sequence. FL/model stages additionally read [Unified MCP control](../FL_AGENT_CONTROL.md), [FL integration](../FL_STUDIO_INTEGRATION.md), [Vocals/models](../VOCALS_AND_MODELS.md) and the relevant [guides](../guides/README.md).
 
 Actual workstation, FL version, musical assets and Mission Control interface must be inspected when implementation starts. Published upstream documentation does not prove their installed state.
 
 ## Delivery milestones — superseding implementation order
 
-**M1 — three-layer standalone MVP:** EMF01 (environment), EMF02 (two original recordings and palette), EMF03 (one renderer), **EMF15 early** (small Visual Basic AI-to-FL content controller), EMF04 (procedural generator + DJ + standalone app), EMF05 (actual listening/scaffold review). The app requests next song, genre and state; the DJ transitions recorded A → procedural → different recorded B. One real agent-caused editable FL change and verified export is required.
+**M1 — three-layer standalone MVP:** EMF01 (environment), EMF02 (two original recordings and palette), EMF03 (one renderer), **EMF15 early** (single unified MCP authoring bridge using tested FL scripting/UI/render adapters), EMF04 (procedural generator + DJ + standalone app), EMF05 (actual listening/scaffold review). The app requests next song, genre and state; the DJ transitions recorded A → procedural → different recorded B. One real Codex/Claude → MCP → editable FL change and verified export is required. Native FL API gaps may require verified GUI adapters or explicit manual steps; do not claim universal automation.
 
 **M2 — harden and broaden:** EMF06–EMF13 extend imported content, state, variations, app, DJ history and transition options without blocking M1.
 
@@ -56,7 +56,7 @@ These 20 stage IDs are stable historical identities, **not strict execution orde
 | **EMF12** | PLANNED | DJ selection and persistent history | EMF11 | Deterministic eligibility/recency/preference rules, fixed-state identity changes, replayable versions/seeds and bounded logs. |
 | **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
 | **EMF14** | PLANNED — after MVP | Mission Control adapter and playback MCP/API | EMF05 and necessary state paths | MC sends the same state/genre/next-song commands to the proven DJ; manual requests first, optional activity mapping later. |
-| **EMF15** | PLANNED — early MVP | Visual Basic AI/FL Studio controller and bounded MCP/script path | EMF01–02 | Tiny VB.NET UI and one supported Codex/Claude workflow make editable musical content in disposable FL project and produce verified WAV/loop; manual export permitted if clearly required. |
+| **EMF15** | PLANNED — early MVP | Unified FL Studio MCP authoring control | EMF01–02 | Both Codex and Claude can inspect one FL session through a common server; one agent creates persistent editable notes/patterns, reads back the result, and produces verified rendered audio using available FL scripting/GUI/CLI methods. Optional visual UI is not the control backbone. |
 | **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
 | **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
 | **EMF18** | PLANNED | Windows listening and operational qualification | EMF17 | Named environment, real work sessions, recovery/load evidence and scope-matched endurance. |
