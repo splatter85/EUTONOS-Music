@@ -141,3 +141,35 @@ test('invalid control values and duplicate catalog IDs fail clearly', () => {
   Object.assign(snapshot.requested, { state: 'surge' });
   assert.equal(control.snapshot().requested.state, 'browse', 'snapshot mutations cannot change the session');
 });
+
+test('cancellation is revisioned, manual-only and replayable; genre can be cleared explicitly', () => {
+  const control = new ControlContract(catalog, 7, 'explore');
+  accepted(control.accept({...base('q', 0), type: 'queueTrack', trackId: 'a'}));
+  rejected(control.accept({...base('auto-cancel', 1, 'automation'), type: 'cancelQueue', queueCommandId: 'q'}), 'manual-only');
+  const cancel: ControlRequest = {...base('cancel', 1), type: 'cancelQueue', queueCommandId: 'q'};
+  const receipt = control.accept(cancel);
+  accepted(receipt);
+  assert.equal(control.snapshot().queue.length, 0);
+  assert.deepEqual(control.accept(cancel), receipt);
+  rejected(control.accept({...base('missing-cancel', 2), type: 'cancelQueue', queueCommandId: 'q'}), 'missing-queue-entry');
+  accepted(control.accept({...base('genre', 2), type: 'requestGenre', genreId: 'ambient'}));
+  accepted(control.accept({...base('clear-genre', 3), type: 'requestGenre', genreId: null}));
+  assert.equal(control.snapshot().requested.genreId, null);
+  accepted(control.accept({...base('cancel-next', 4), type: 'cancelNext'}));
+  rejected(control.accept({...base('auto-cancel-next', 5, 'automation'), type: 'cancelNext'}), 'manual-only');
+});
+
+test('renderer generation changes clear evidence without losing queue or receipt identity', () => {
+  const control = new ControlContract(catalog, 7);
+  const request: ControlRequest = {...base('q', 0), type: 'queueTrack', trackId: 'a'};
+  const receipt = control.accept(request);
+  control.reportPrepared({forRevision: 1, source: {id: 'a', revision: 1}, at: {engineGeneration: 7, frame: 1000}});
+  control.reportAudible({source: null, state: null, transport: 'stopped', muted: false, at: {engineGeneration: 7, frame: 500}});
+  control.adoptEngineGeneration(9);
+  assert.equal(control.snapshot().planned, null);
+  assert.equal(control.snapshot().audible, null);
+  assert.equal(control.snapshot().queue.length, 1);
+  assert.deepEqual(control.accept(request), receipt);
+  assert.throws(() => control.adoptEngineGeneration(8), /stale-generation/);
+  assert.throws(() => control.reportAudible({source: null, state: null, transport: 'stopped', muted: false, at: {engineGeneration: 7, frame: 600}}), /stale-generation/);
+});

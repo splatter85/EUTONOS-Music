@@ -7,3 +7,4 @@ export * from './control.js';
 export * from './web-audio.js';
 export * from './browser-pack.js';
 export * from './player.js';
+export * from './dj.js';

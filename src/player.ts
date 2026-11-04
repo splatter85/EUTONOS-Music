@@ -1,6 +1,7 @@
 import {decodeRecordings, type LoadedBrowserPack} from './browser-pack.js';
 import {quartersToFrames} from './pack.js';
-import type {SourceStart} from './playable-source.js';
+import type {ClockStamp, SourceStart} from './playable-source.js';
+import type {VersionRef} from './pack-types.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   type CheckedRoute, type DecodedRecording, type TransitionPlan} from './web-audio.js';
 
@@ -12,6 +13,9 @@ export interface PlayerSnapshot {
   readonly next: string | null;
   readonly transition: 'none' | 'scheduled' | 'mixing' | 'complete';
   readonly transitionInSeconds: number | null;
+  readonly voices: readonly {readonly source: VersionRef; readonly start: ClockStamp; readonly endFrame: number}[];
+  readonly transitionAt: ClockStamp | null;
+  readonly transitionEnd: ClockStamp | null;
   readonly elapsedSeconds: number;
   readonly durationSeconds: number;
   readonly currentFrame: number;
@@ -34,6 +38,7 @@ export class SmallPlayer {
   private plan: TransitionPlan | null = null;
   private state: PlayerState = 'idle';
   private operation = 0;
+  private transitionOperation = 0;
   private wantsRunning = false;
   private selected: 'a' | 'b' | null = null;
   private volume = 0.65;
@@ -96,16 +101,17 @@ export class SmallPlayer {
       'Play A first. Only one A → B transition can be scheduled.');
     const from = this.voices[0]!;
     const operation = this.operation;
+    const transitionOperation = this.transitionOperation;
     // Check before preparation, then check again immediately before committing.
     planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock, this.loaded.allowFixtures, this.leadFrames);
     const recordings = await this.decoded!;
-    if (operation !== this.operation) return;
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) return;
     const recording = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision)!;
     const overlapFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
     const incoming = new RecordedSource(this.context, recording, this.output,
       {allowFixtures: this.loaded.allowFixtures, fadeInFrames: overlapFrames});
     await incoming.prepare(this.clock);
-    if (operation !== this.operation) { incoming.release(); return; }
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) { incoming.release(); return; }
     if (this.plan) { incoming.release(); throw new Error('The A → B transition is already scheduled.'); }
     try {
       const plan = planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock,
@@ -122,6 +128,22 @@ export class SmallPlayer {
       // its transitionOut succeeded and the nonthrowing assignments above finish.
       throw error;
     }
+  }
+
+  /** Invalidate only an in-flight transition preparation; retain committed audio. */
+  cancelTransitionPreparation(): void { ++this.transitionOperation; }
+
+  /** Cancel preparation or a future A → B, without changing playback ownership. */
+  cancelPendingTransition(): boolean {
+    if (this.plan && this.clock.currentFrame >= this.plan.at.frame) return false;
+    if (this.plan && !this.voices[0]!.source.cancelTransition()) return false;
+    ++this.transitionOperation;
+    if (this.plan) {
+      for (const voice of this.voices.slice(1)) voice.source.release();
+      this.voices = this.voices.slice(0, 1);
+      this.plan = null;
+    }
+    return true;
   }
 
   async pause(): Promise<void> {
@@ -200,6 +222,9 @@ export class SmallPlayer {
     return {state: this.state, requested: this.selected === 'a' ? this.pair.from.id : this.selected === 'b' ? this.pair.to.id : null,
       now, next: pending?.source.reference.id ?? null, transition,
       transitionInSeconds: this.plan ? Math.max(0, (this.plan.at.frame - frame) / this.clock.sampleRate) : null,
+      voices: this.voices.map(voice => ({source: {...voice.source.reference}, start: {...voice.start.at}, endFrame: voice.source.endFrame})),
+      transitionAt: this.plan ? {...this.plan.at} : null,
+      transitionEnd: this.plan ? {...this.plan.end} : null,
       elapsedSeconds: first ? Math.max(0, Math.min(duration, (frame - first.start.at.frame) / this.clock.sampleRate)) : 0,
       durationSeconds: duration, currentFrame: frame, sampleRate: this.clock.sampleRate,
       engineGeneration: this.clock.engineGeneration, contextState: this.context.state,
@@ -217,6 +242,7 @@ export class SmallPlayer {
 
   private get leadFrames(): number { return Math.ceil(0.1 * this.clock.sampleRate); }
   private cancelVoices(): void {
+    ++this.transitionOperation;
     for (const voice of this.voices) voice.source.release();
     this.voices = [];
     this.plan = null;

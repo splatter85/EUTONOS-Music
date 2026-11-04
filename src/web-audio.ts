@@ -93,6 +93,8 @@ export class RecordedSource implements PlayableSource {
   private start: SourceStart | null = null;
   private entryFrame = 0;
   private finishFrame = 0;
+  private naturalEndFrame = 0;
+  private transitionFrame: number | null = null;
   private readonly fadeIn: number;
   private readonly fadeOut: number;
 
@@ -144,6 +146,7 @@ export class RecordedSource implements PlayableSource {
     this.start = start;
     this.entryFrame = entry;
     this.finishFrame = start.at.frame + this.recording.buffer.length - entry;
+    this.naturalEndFrame = this.finishFrame;
     this.phase = 'scheduled';
   }
 
@@ -166,7 +169,32 @@ export class RecordedSource implements PlayableSource {
     else this.gain!.gain.setValueAtTime(0, when);
     this.node!.stop(end);
     this.finishFrame = at.frame + this.fadeOut;
+    this.transitionFrame = at.frame;
     this.phase = 'stopping';
+  }
+
+  /** Restore the original start envelope and finish only before an exit has begun. */
+  cancelTransition(): boolean {
+    if (this.transitionFrame === null) return true;
+    this.checkGeneration();
+    if (this.clock!.currentFrame >= this.transitionFrame) return false;
+    const transitionFrame = this.transitionFrame;
+    const rate = this.clock!.sampleRate;
+    this.gain!.gain.cancelScheduledValues(transitionFrame / rate);
+    // A future exit may share a timestamp with an original start-envelope event.
+    // Recreate any such event removed by cancelScheduledValues.
+    if (this.start!.at.frame >= transitionFrame) {
+      this.gain!.gain.setValueAtTime(this.fadeIn ? 0 : 1, this.start!.at.frame / rate);
+    }
+    if (this.fadeIn && this.start!.at.frame + this.fadeIn >= transitionFrame) {
+      this.gain!.gain.linearRampToValueAtTime(1, (this.start!.at.frame + this.fadeIn) / rate);
+    }
+    // Web Audio replaces a future scheduled stop when stop() is called again.
+    this.node!.stop(this.naturalEndFrame / rate);
+    this.finishFrame = this.naturalEndFrame;
+    this.transitionFrame = null;
+    this.phase = 'scheduled';
+    return true;
   }
 
   stop(at: ClockStamp): void {

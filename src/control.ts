@@ -14,8 +14,10 @@ interface RequestBase {
 export type TransportAction = 'play' | 'pause' | 'stop' | 'mute' | 'unmute';
 export type ControlRequest = RequestBase & (
   | { readonly type: 'setState'; readonly state: MusicState }
-  | { readonly type: 'requestGenre'; readonly genreId: string }
+  | { readonly type: 'requestGenre'; readonly genreId: string | null }
   | { readonly type: 'queueTrack'; readonly trackId: string }
+  | { readonly type: 'cancelQueue'; readonly queueCommandId: string }
+  | { readonly type: 'cancelNext' }
   | { readonly type: 'nextSong' }
   | { readonly type: 'hold'; readonly enabled: boolean }
   | { readonly type: 'transport'; readonly action: TransportAction }
@@ -47,7 +49,9 @@ export interface PreparedPlan {
 }
 export interface AudibleState {
   readonly source: VersionRef | null;
-  readonly state: MusicState;
+  /** The target bound to this source when scheduled, if supported by its metadata. */
+  readonly state: MusicState | null;
+  readonly sources?: readonly VersionRef[];
   readonly transport: 'playing' | 'paused' | 'stopped';
   readonly muted: boolean;
   readonly at: ClockStamp;
@@ -62,7 +66,7 @@ export interface ControlSnapshot {
 }
 export type RejectionCode = 'invalid-request' | 'id-conflict' | 'stale-revision'
   | 'manual-only' | 'held' | 'missing-track' | 'unavailable-track'
-  | 'missing-genre' | 'unavailable-genre' | 'queue-full';
+  | 'missing-genre' | 'unavailable-genre' | 'queue-full' | 'missing-queue-entry';
 export type CommandReceipt =
   | { readonly commandId: string; readonly status: 'accepted'; readonly revision: number;
       readonly execution: 'pending'; readonly urgency: 'immediate' | 'musical-boundary' }
@@ -84,11 +88,12 @@ function validRequest(request: ControlRequest): boolean {
     || !['manual', 'automation'].includes(request.source)) return false;
   switch (request.type) {
     case 'setState': return states.includes(request.state);
-    case 'requestGenre': return typeof request.genreId === 'string' && request.genreId.length > 0;
+    case 'requestGenre': return request.genreId === null || typeof request.genreId === 'string' && request.genreId.length > 0;
     case 'queueTrack': return typeof request.trackId === 'string' && request.trackId.length > 0;
+    case 'cancelQueue': return typeof request.queueCommandId === 'string' && request.queueCommandId.length > 0;
     case 'hold': return typeof request.enabled === 'boolean';
     case 'transport': return actions.includes(request.action);
-    case 'nextSong': return true;
+    case 'nextSong': case 'cancelNext': return true;
     default: return false;
   }
 }
@@ -127,11 +132,29 @@ export class ControlContract {
   private planned: PreparedPlan | null = null;
   private audible: AudibleState | null = null;
 
-  constructor(catalog: ControlCatalog, readonly engineGeneration: number) {
+  private generation: number;
+
+  constructor(catalog: ControlCatalog, engineGeneration: number, initialState: MusicState = 'browse') {
     if (!Number.isSafeInteger(engineGeneration) || engineGeneration < 0) throw new Error('Invalid engine generation.');
+    if (!states.includes(initialState)) throw new Error('Invalid initial state.');
+    this.generation = engineGeneration;
+    this.requested = {...this.requested, state: initialState};
     this.tracks = catalogMap(catalog.tracks);
     this.genres = catalogMap(catalog.genres);
   }
+
+  get engineGeneration(): number { return this.generation; }
+
+  /** Renderer replacement/Stop invalidates evidence, never caller retry identities. */
+  adoptEngineGeneration(generation: number): void {
+    if (!Number.isSafeInteger(generation) || generation < this.generation) throw new Error('stale-generation');
+    if (generation === this.generation) return;
+    this.generation = generation;
+    this.planned = null;
+    this.audible = null;
+  }
+
+  clearPrepared(): void { this.planned = null; }
 
   snapshot(): ControlSnapshot {
     return structuredClone({ revision: this.revision, engineGeneration: this.engineGeneration,
@@ -151,6 +174,8 @@ export class ControlContract {
         case 'setState': this.requested = { ...this.requested, state: request.state }; break;
         case 'requestGenre': this.requested = { ...this.requested, genreId: request.genreId }; break;
         case 'queueTrack': this.queue.push({ commandId: request.commandId, trackId: request.trackId }); break;
+        case 'cancelQueue': this.queue = this.queue.filter(entry => entry.commandId !== request.queueCommandId); break;
+        case 'cancelNext': break; // execution owner decides whether a future plan can still be cancelled
         case 'nextSong': this.requested = { ...this.requested, nextRequests: this.requested.nextRequests + 1 }; break;
         case 'hold': this.requested = { ...this.requested, hold: request.enabled }; break;
         case 'transport': {
@@ -210,14 +235,15 @@ export class ControlContract {
   private check(request: ControlRequest): RejectionCode | null {
     if (!validRequest(request)) return 'invalid-request';
     if (request.expectedRevision !== this.revision) return 'stale-revision';
-    if (request.source !== 'manual' && ['hold', 'transport', 'queueTrack', 'nextSong'].includes(request.type)) return 'manual-only';
+    if (request.source !== 'manual' && ['hold', 'transport', 'queueTrack', 'nextSong', 'cancelQueue', 'cancelNext'].includes(request.type)) return 'manual-only';
     if (this.requested.hold && (request.type === 'setState' || request.type === 'requestGenre')) return 'held';
     if (request.type === 'queueTrack') {
       if (!this.tracks.has(request.trackId)) return 'missing-track';
       if (!this.tracks.get(request.trackId)) return 'unavailable-track';
       if (this.queue.length >= CONTROL_LIMITS.queue) return 'queue-full';
     }
-    if (request.type === 'requestGenre') {
+    if (request.type === 'cancelQueue' && !this.queue.some(entry => entry.commandId === request.queueCommandId)) return 'missing-queue-entry';
+    if (request.type === 'requestGenre' && request.genreId !== null) {
       if (!this.genres.has(request.genreId)) return 'missing-genre';
       if (!this.genres.get(request.genreId)) return 'unavailable-genre';
     }

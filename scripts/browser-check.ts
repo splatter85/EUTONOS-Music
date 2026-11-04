@@ -22,7 +22,7 @@ await new Promise<void>((resolve, reject) => { server.once('error', reject); ser
 const address = server.address();
 assert.ok(address && typeof address !== 'string');
 const origin = `http://127.0.0.1:${address.port}`;
-const directory = resolve(options.get('--output') ?? 'artifacts/s02-browser');
+const directory = resolve(options.get('--output') ?? 'artifacts/s03-browser');
 await mkdir(directory, {recursive: true});
 let browser;
 const checks: {name: string; status: string}[] = [];
@@ -39,9 +39,9 @@ try {
     {timeout: 30000});
   const offline = JSON.parse(await page.locator('#check-results').innerText());
   await writeFile(resolve(directory, 'offline.json'), JSON.stringify(offline, null, 2) + '\n');
-  assert.equal(offline.results.length, 7);
+  assert.equal(offline.results.length, 9);
   assert.ok(offline.results.every((r: {status: string}) => r.status === 'PASS'), JSON.stringify(offline, null, 2));
-  checks.push({name: 'Seven native offline audio checks', status: 'PASS'});
+  checks.push({name: 'Nine native offline audio checks', status: 'PASS'});
 
   await page.goto(origin);
   await page.getByRole('button', {name: 'Play A', exact: true}).waitFor({state: 'visible'});
