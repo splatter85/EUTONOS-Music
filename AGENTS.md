@@ -49,14 +49,14 @@ Status as of 2026-11-04. These are local, unpublished checks. Project key `euton
 
 - **Docs: ready.** The adoption profile has been applied and verified. It added the delegation and rule-reference blocks below, plus `eutonos.read.json`, `eutonos.adoption.json` and `tools/eutonos_project.py`. Orientation reads the single `tokenslang-work` entry in Current Tasks.
 - **Boards: ready.** `eutonos.boards.json` points to [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md). It holds the EMF campaign, stages EMF00–EMF19 and slices EMF-S01–S13, filed through `boards batch submit`. Batch submission does not regenerate Current Tasks.
-- **NAV: ready (build complete).** Run `emf-nav-build-20261104` finished all 16 sweeps and holds 51 records in `NAV/`; `nav maintenance` is a no-op. Semantic acceptance is unproven. The bootstrap `GAP-bootstrap` placeholder remains because NAV refuses to remove it.
-- **RAM: ready.** `eutonos.ram.json` stores records in `RAM/`. The first closeout record was filed and read back from a fresh process with `eutonos-ram recent`.
-- **Finalize and acceptance: blocked.** `eutonos-setup finalize` needs `eutonos.installation.json`, but profile adoption does not write it. Nobody hand-writes it. The supported route has been raised with EUTONOS maintainers.
+- **NAV: ready (build complete).** Run `emf-nav-build-20261104` finished all 16 sweeps and holds 51 records in `NAV/`; `nav maintenance` is a no-op. Semantic acceptance is unproven. The bootstrap `GAP-bootstrap` placeholder remains. It can only be removed in the final sweep of a `--mode refinement` run.
+- **RAM: ready.** `eutonos.ram.json` stores records in `RAM/`. The first closeout record was filed and read back from a fresh process with `eutonos-ram recent`. Closeout keeps exactly one `tokenslang-ram-links` fence at the end of Current Tasks. Leave it intact and never copy or duplicate it, because a second fence makes later RAM writes refuse.
+- **Finalize and acceptance: locally verified.** `eutonos-setup finalize` checked commit `b5c5c9e` and wrote [eutonos.acceptance.json](eutonos.acceptance.json): outcome `verified`, manifest `eutonos.adoption.json` `locally-verified`, package 0.5.4. As an adopted repository there is no `eutonos.installation.json`. That file lists its own limits: no AI-comprehension, UI or audio acceptance, and a cooperative local host only. Do not edit it by hand.
 - **Permission entries: blocked.** `add-project` ran with `--no-permissions` because this PC's runtime is dev-linked and the installer was not run (the owner's decision). Nothing was hand-written into `.claude/` or `.codex/`.
 - **Person steps: optional, not done.** Claude Desktop Auto mode and Codex project trust are not set up.
 - **Runtime note:** this PC has no installed launchers. When you call `tools/eutonos_project.py` or `python -m eutonos.*`, set `EUTONOS_PYTHON` to the EUTONOS runtime's Python.
 
-Next incomplete module: finalize/acceptance, once a supported route exists.
+Next incomplete module: none required. Optional follow-ups: retire the NAV `GAP-bootstrap` placeholder through a `--mode refinement` run, add permission entries once an installed runtime has install consent, and the person steps above.
 
 
 <!-- eutonos:delegation:start -->
