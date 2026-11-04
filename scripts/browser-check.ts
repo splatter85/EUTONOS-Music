@@ -133,7 +133,9 @@ try {
   await page.locator('#queue-b').click();
   await waitText(page, '#next-title', /^S01 B — syncopated pulse$/);
   await queueCount(page, 1);
-  assert.match(await page.locator('#clock-detail').innerText(), /^suspended ·/);
+  // Diagnostics live in a closed disclosure; read the clock's DOM text even
+  // when it has no rendered innerText. The same state is used by waitText above.
+  assert.match(await page.locator('#clock-detail').textContent() ?? '', /^suspended ·/);
   await page.screenshot({path: resolve(directory, 'player-paused.png'), fullPage: true});
   await page.locator('#cancel-next').click();
   await waitText(page, '#next-title', /^Nothing scheduled$/);
@@ -144,7 +146,7 @@ try {
   await page.locator('#next-song').click();
   await waitText(page, '#next-title', /^S01 B — syncopated pulse$/);
   await queueCount(page, 1);
-  assert.match(await page.locator('#clock-detail').innerText(), /^suspended ·/);
+  assert.match(await page.locator('#clock-detail').textContent() ?? '', /^suspended ·/);
   checks.push({name: stage, status: 'PASS'});
 
   stage = 'Hold refuses target changes, release replays nothing, and mute survives resume';
