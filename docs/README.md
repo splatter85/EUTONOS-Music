@@ -17,6 +17,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [Architecture](ARCHITECTURE.md) | Playback/production ownership, shared clock and renderer choice |
 | [S01 foundation](S01_FOUNDATION.md) | Executable v0 pack/source/control contracts, portable setup and declared limits |
 | [S02 player](S02_PLAYER.md) | Small Web Audio player, setup, clock/cue mapping, browser checks and lifecycle limits |
+| [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |
 | [State/API](STATE_AND_CONTROL_API.md) | Intent, actual playback, command/hold/retry semantics and proposed tools |
 | [Test app](TEST_APP.md) | Simple MC-facing controls and advanced audition laboratory |

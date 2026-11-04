@@ -1,0 +1,175 @@
+[
+  {
+    "operation_id": "s08-acc-create-1",
+    "kind": "create",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "4ec17b9428c2899e1c5a10c54911e1672dd2c46c7611025a89abff60afcd853f",
+    "client_id": "claude-code:2530b96a",
+    "state": "completed",
+    "at": "2026-11-04T20:13:43.619Z",
+    "after_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d"
+  },
+  {
+    "operation_id": "s08-acc-apply-1",
+    "kind": "apply",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "010508486c97a8eeb6ee9abb7535aa191e65911cf4eccfee60c9fc2587570565",
+    "client_id": "claude-code:2530b96a",
+    "state": "started",
+    "at": "2026-11-04T20:14:26.348Z",
+    "before_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+    "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-apply-1",
+    "kind": "apply",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "010508486c97a8eeb6ee9abb7535aa191e65911cf4eccfee60c9fc2587570565",
+    "client_id": "claude-code:2530b96a",
+    "state": "completed",
+    "at": "2026-11-04T20:14:26.364Z",
+    "before_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+    "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-save-1",
+    "kind": "save",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "2dd3f45a2b5bf34c5515dd9900f2796ff661e3c531d9abde1a0f5bb33e5325fe",
+    "client_id": "claude-code:2530b96a",
+    "state": "started",
+    "at": "2026-11-04T20:14:37.673Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-save-1",
+    "kind": "save",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "2dd3f45a2b5bf34c5515dd9900f2796ff661e3c531d9abde1a0f5bb33e5325fe",
+    "client_id": "claude-code:2530b96a",
+    "state": "completed",
+    "at": "2026-11-04T20:14:37.678Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+    "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-render-1",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "b4ecfdc4a03cccf47b9f2769270ddca24c38517764a95dd1acd3e780ee6c7d9d",
+    "client_id": "claude-code:2530b96a",
+    "state": "started",
+    "at": "2026-11-04T20:14:37.990Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-render-1",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "b4ecfdc4a03cccf47b9f2769270ddca24c38517764a95dd1acd3e780ee6c7d9d",
+    "client_id": "claude-code:2530b96a",
+    "state": "completed",
+    "at": "2026-11-04T20:14:46.028Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-acc-pack-1",
+    "kind": "pack",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "f3ed2510a28bb6d45c0c8dc34b42a05df238c2351dcda162f2d7fe2882587eea",
+    "client_id": "claude-code:2530b96a",
+    "state": "completed",
+    "at": "2026-11-04T20:14:49.530Z"
+  },
+  {
+    "operation_id": "s08-codex-apply-1",
+    "kind": "apply",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "3b0cda5c21e78224ba809b8411fa079afb7e5852df98bfb82a3476dea25b006e",
+    "client_id": "codex-mcp-client:eacc80b0",
+    "state": "started",
+    "at": "2026-11-04T20:17:36.489Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+    "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f"
+  },
+  {
+    "operation_id": "s08-codex-apply-1",
+    "kind": "apply",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "3b0cda5c21e78224ba809b8411fa079afb7e5852df98bfb82a3476dea25b006e",
+    "client_id": "codex-mcp-client:eacc80b0",
+    "state": "completed",
+    "at": "2026-11-04T20:17:36.497Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+    "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f"
+  },
+  {
+    "operation_id": "s08-live-busy-render-1",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "8a30a0b496a1d98d1c28c0e0f9620351dae3610cbabd9e3470970c35b19e671b",
+    "client_id": "claude-code:3c94476a",
+    "state": "started",
+    "at": "2026-11-04T20:19:06.693Z",
+    "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f"
+  },
+  {
+    "operation_id": "s08-live-busy-render-1",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "8a30a0b496a1d98d1c28c0e0f9620351dae3610cbabd9e3470970c35b19e671b",
+    "client_id": "claude-code:3c94476a",
+    "state": "failed",
+    "at": "2026-11-04T20:19:07.713Z",
+    "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+    "error": {
+      "code": "HOST_BUSY",
+      "message": "HOST_BUSY: FL Studio is already running (emf-s08-acceptance.flp - FL Studio 2026); the CLI hands off and renders nothing. Close FL first."
+    }
+  },
+  {
+    "operation_id": "s08-live-restore-1",
+    "kind": "restore",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "7f61b5c5820b8a8faae17ef08b567ee438f325b9ece94d08861a253429c327fd",
+    "client_id": "claude-code:1e70b470",
+    "state": "started",
+    "at": "2026-11-04T20:20:11.170Z",
+    "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+    "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "s08-live-restore-1",
+    "kind": "restore",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "7f61b5c5820b8a8faae17ef08b567ee438f325b9ece94d08861a253429c327fd",
+    "client_id": "claude-code:1e70b470",
+    "state": "completed",
+    "at": "2026-11-04T20:20:11.178Z",
+    "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+    "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  },
+  {
+    "operation_id": "op-recheck-render-20261104",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "b4ecfdc4a03cccf47b9f2769270ddca24c38517764a95dd1acd3e780ee6c7d9d",
+    "client_id": "claude-code:6849e17e",
+    "state": "started",
+    "at": "2026-11-04T20:35:29.416Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+    "detail": {
+      "render_id": "r-9ebc53e64350-90134d2f3eac"
+    }
+  },
+  {
+    "operation_id": "op-recheck-render-20261104",
+    "kind": "render",
+    "project_id": "emf-s08-acceptance",
+    "payload_hash": "b4ecfdc4a03cccf47b9f2769270ddca24c38517764a95dd1acd3e780ee6c7d9d",
+    "client_id": "claude-code:6849e17e",
+    "state": "completed",
+    "at": "2026-11-04T20:35:35.504Z",
+    "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+  }
+]

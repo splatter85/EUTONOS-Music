@@ -1,6 +1,6 @@
 # FL Studio integration and MCP authoring bridge
 
-**Status: design/research; not implemented/tested.** This repository does not currently ship an FL Studio controller, an MCP server, an installer, or a verified host integration. Source review date: **2026-11-03, America/Chicago**. The installed FL Studio version, activated edition, plugin entitlements, operating system, and audio configuration have not been verified.
+**Status: design/research, with one implemented slice.** As of 2026-11-04 (EMF-S08) the repository ships a bounded MCP authoring facade verified against FL Studio 26.1.7 on Windows: see [S08 FL authoring](S08_FL_AUTHORING.md). It has no installer, live GUI control or plugin/mixer automation; the rest of this document remains research. Source review date: **2026-11-03, America/Chicago**. The installed FL Studio version, activated edition, plugin entitlements, operating system, and audio configuration have not been verified.
 
 ## Current control decision (2026-11-03)
 

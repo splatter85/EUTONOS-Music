@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "eutonos-music": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/dist/src/authoring/mcp-main.js"],
+      "env": {}
+    }
+  }
+}

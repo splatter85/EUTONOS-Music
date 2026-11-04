@@ -42,6 +42,7 @@ A **tiny standalone app** provides Play/Pause, Volume/Mute, State, Genre, Next S
 - [Architecture](docs/ARCHITECTURE.md)
 - [Executable S01 foundation](docs/S01_FOUNDATION.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
+- [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)
 - [FL Studio control research](docs/FL_STUDIO_INTEGRATION.md)
 - [Production guidebook](docs/guides/README.md)

@@ -1,0 +1,75 @@
+{
+  "schema_version": "em.audio-pack.v0",
+  "id": "emf-s08-a-minor-sketch",
+  "revision": 1,
+  "assets": [
+    {
+      "id": "a-minor-sketch-120",
+      "revision": 1,
+      "title": "A minor sketch, 120 BPM",
+      "source_kind": "recording",
+      "file": {
+        "path": "audio/a-minor-sketch-120.wav",
+        "sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+        "bytes": 3525428,
+        "format": "pcm16-wav",
+        "sample_rate": 44100,
+        "channels": 2,
+        "frames": 881311
+      },
+      "rights": {
+        "origin": "original composition authored through the EUTONOS Music MCP and rendered by FL Studio",
+        "creator": "EUTONOS Music EMF-S08 authoring session for the repository owner",
+        "license": "owner-local; redistribution of rendered FL factory instrument sound not established",
+        "allowed_uses": [
+          "playback"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "unreviewed",
+      "genres": [
+        "electronic"
+      ],
+      "states": [
+        "explore"
+      ],
+      "key": "A minor",
+      "harmony_pitch_classes": null,
+      "timing": {
+        "bpm": 120,
+        "meter": [
+          4,
+          4
+        ],
+        "bars": 8,
+        "phrase_bars": 4,
+        "first_downbeat_frame": 0
+      },
+      "cues": [
+        {
+          "id": "entry-q0",
+          "kind": "entry",
+          "position_quarters": 0
+        },
+        {
+          "id": "entry-q16",
+          "kind": "entry",
+          "position_quarters": 16
+        },
+        {
+          "id": "exit-q16",
+          "kind": "exit",
+          "position_quarters": 16
+        },
+        {
+          "id": "exit-q32",
+          "kind": "exit",
+          "position_quarters": 32
+        }
+      ]
+    }
+  ],
+  "palettes": [],
+  "recipes": [],
+  "routes": []
+}

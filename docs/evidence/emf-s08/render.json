@@ -1,0 +1,31 @@
+{
+  "render_id": "r-9ebc53e64350-crender1",
+  "project_id": "emf-s08-acceptance",
+  "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+  "operation_id": "s08-acc-render-1",
+  "rendered_at": "2026-11-04T20:14:46.018Z",
+  "host": {
+    "adapter": "windows-fl-cli",
+    "fl_version": "26.1.7.5654"
+  },
+  "command": "FL64.exe /R /Ewav \"<workspace>\\projects\\emf-s08-acceptance\\renders\\r-9ebc53e64350-crender1\\emf-s08-acceptance.flp\"",
+  "exit_code": 0,
+  "duration_ms": 7065,
+  "expected_body_quarters": 32,
+  "tempo_bpm": 120,
+  "render_settings": "FL CLI defaults (not selectable)",
+  "wav": {
+    "ok": true,
+    "problems": [],
+    "sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+    "bytes": 3525428,
+    "format": "pcm16-wav",
+    "sample_rate": 44100,
+    "channels": 2,
+    "frames": 881311,
+    "duration_seconds": 19.98437641723356,
+    "peak": 0.985992431640625,
+    "body_frames": 705600,
+    "first_onset_frame_above_minus40dbfs": 2
+  }
+}

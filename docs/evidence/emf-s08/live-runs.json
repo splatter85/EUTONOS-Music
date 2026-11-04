@@ -1,0 +1,2361 @@
+{
+  "recorded": "2026-11-04",
+  "host": "Windows 11, FL Studio 26.1.7.5654",
+  "runs": [
+    {
+      "purpose": "Claude Code acceptance: create → edit → readback → save → render → pack",
+      "calls": [
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_capabilities",
+          "arguments": {},
+          "result": {
+            "contract_version": "em.fl-authoring.v0",
+            "bridge_version": "0.1.0",
+            "host": {
+              "platform": "win32",
+              "adapter": "windows-fl-cli",
+              "available": true,
+              "fl_executable": "C:\\Program Files\\Image-Line\\FL Studio 2026\\FL64.exe",
+              "fl_version": "26.1.7.5654",
+              "reason": null
+            },
+            "writer": {
+              "model": "single broker per workspace; writer lease + cross-process lock; caller operation IDs",
+              "client_id": "claude-code:2530b96a"
+            },
+            "operations": {
+              "supported": [
+                "fl_create_project (copy of an allowlisted FL factory template into the private workspace)",
+                "fl_inspect (offline read of the saved project: version, tempo, meter, channels, patterns, notes, playlist clips)",
+                "fl_prepare_edit / fl_apply_edit (replace one channel's notes inside a named pattern; tempo; clip length)",
+                "fl_verify (file readback + FL-side readback through FL's own MIDI export)",
+                "fl_save (named checkpoint, verified by FL loading it)",
+                "fl_render (official FL CLI WAV render) and fl_verify_export",
+                "fl_build_pack (em.audio-pack.v0, validated with the S01 loader)",
+                "fl_operation_status (reconcile by operation_id) and fl_restore (backup recovery)"
+              ],
+              "partial": [
+                "arrangement: only resizing existing, untrimmed pattern clips",
+                "project format: writes only FL 24.x-layout projects (verified); other layouts are read-only or rejected"
+              ],
+              "unsupported": [
+                "live edits inside a running FL GUI session (no MIDI input port on this host for controller scripting; render/export refuses while FL is open)",
+                "creating channels, loading plugins/samples, mixer and plugin-parameter edits",
+                "arbitrary Python, GUI clicks or filesystem paths from agents",
+                "render settings (sample rate, bit depth, stems): FL CLI uses the project/app defaults (observed PCM16 stereo 44.1 kHz)"
+              ]
+            },
+            "templates": [
+              "fl-factory/create-a-chord-progression"
+            ],
+            "workspace": "private per-user workspace (not exposed as a path)"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_create_project",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "template": "fl-factory/create-a-chord-progression",
+            "operation_id": "s08-acc-create-1"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "created_from": "fl-factory/create-a-chord-progression",
+            "fl_version": "24.2.99.4720"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 128,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 0,
+                "notes_by_channel": {}
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 0,
+                "notes_by_channel": {}
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 0,
+                "notes_by_channel": {}
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 51,
+                "notes_by_channel": {
+                  "3": 51
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 16
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 16
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 16
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 16
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 16,
+            "writer_lease": null,
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_prepare_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "expected_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "tempo_bpm": 120,
+            "clip_bars": 8,
+            "targets": [
+              {
+                "pattern": {
+                  "index": 1,
+                  "expected_name": "Chords"
+                },
+                "channel": {
+                  "index": 0,
+                  "expected_name": "Chords"
+                },
+                "note_count": 48
+              },
+              {
+                "pattern": {
+                  "index": 2,
+                  "expected_name": "Bass"
+                },
+                "channel": {
+                  "index": 1,
+                  "expected_name": "Bass"
+                },
+                "note_count": 40
+              },
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "note_count": 31
+              },
+              {
+                "pattern": {
+                  "index": 4,
+                  "expected_name": "Drums"
+                },
+                "channel": {
+                  "index": 3,
+                  "expected_name": "Drums"
+                },
+                "note_count": 102
+              }
+            ]
+          },
+          "result": {
+            "change_id": "chg-11642c1d4be3429e",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "summary": [
+              {
+                "pattern": {
+                  "index": 1,
+                  "expected_name": "Chords"
+                },
+                "channel": {
+                  "index": 0,
+                  "expected_name": "Chords"
+                },
+                "notes_before": 0,
+                "notes_after": 48
+              },
+              {
+                "pattern": {
+                  "index": 2,
+                  "expected_name": "Bass"
+                },
+                "channel": {
+                  "index": 1,
+                  "expected_name": "Bass"
+                },
+                "notes_before": 0,
+                "notes_after": 40
+              },
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "notes_before": 0,
+                "notes_after": 31
+              },
+              {
+                "pattern": {
+                  "index": 4,
+                  "expected_name": "Drums"
+                },
+                "channel": {
+                  "index": 3,
+                  "expected_name": "Drums"
+                },
+                "notes_before": 51,
+                "notes_after": 102
+              }
+            ],
+            "tempo_bpm": {
+              "before": 128,
+              "after": 120
+            },
+            "song_length_quarters": {
+              "before": 16,
+              "after": 32
+            },
+            "next_action": "Acquire the writer lease, then call fl_apply_edit with this change_id and a new caller-known operation_id."
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 900
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "holder": "claude-code:2530b96a",
+            "acquired_at": "2026-11-04T20:14:24.401Z",
+            "expires_at": "2026-11-04T20:29:24.401Z",
+            "previous_holder": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_apply_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "change_id": "chg-11642c1d4be3429e",
+            "operation_id": "s08-acc-apply-1"
+          },
+          "result": {
+            "status": "applied_file_verified",
+            "operation_id": "s08-acc-apply-1",
+            "change_id": "chg-11642c1d4be3429e",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "backup_revision": "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d",
+            "readback": {
+              "ok": true,
+              "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "mismatches": [],
+              "method": "reparse of the persisted project file"
+            },
+            "next_action": "Call fl_verify for FL-side readback before declaring the musical edit complete."
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "include_notes": false
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": {
+              "holder": "claude-code:2530b96a",
+              "acquired_at": "2026-11-04T20:14:24.401Z",
+              "expires_at": "2026-11-04T20:29:24.401Z",
+              "previous_holder": null
+            },
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "method": "FL Studio CLI MIDI export of the saved project (FL parses and re-emits the notes)",
+            "host_command": "FL64.exe /M\"<workspace>\\projects\\emf-s08-acceptance\\verify\\9ebc53e64350d18d\\emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "fl_midi_tempo_bpm": 120,
+            "file_tempo_bpm": 120,
+            "song_length_quarters": 32,
+            "channels": [
+              {
+                "channel": 0,
+                "name": "Chords",
+                "expected_notes": 48,
+                "fl_exported_notes": 48,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 1,
+                "name": "Bass",
+                "expected_notes": 40,
+                "fl_exported_notes": 40,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 2,
+                "name": "Lead",
+                "expected_notes": 31,
+                "fl_exported_notes": 31,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 3,
+                "name": "Drums",
+                "expected_notes": 102,
+                "fl_exported_notes": 102,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              }
+            ],
+            "compared": "key, start, length and velocity of every song-time note per channel (multiset)",
+            "fl_export_convention": {
+              "notes_ending_at_song_end_exported_one_tick_short": 6
+            },
+            "verified": true
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_save",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "label": "acceptance",
+            "operation_id": "s08-acc-save-1"
+          },
+          "result": {
+            "status": "saved",
+            "operation_id": "s08-acc-save-1",
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "checkpoint": "saves/acceptance-9ebc53e64350.flp",
+            "editable": "FL Studio project (.flp); open it in FL Studio to continue editing",
+            "next_action": "Call fl_verify to have FL load this revision and read its notes back."
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_render",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "s08-acc-render-1"
+          },
+          "result": {
+            "status": "rendered",
+            "render_id": "r-9ebc53e64350-crender1",
+            "project_id": "emf-s08-acceptance",
+            "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "operation_id": "s08-acc-render-1",
+            "rendered_at": "2026-11-04T20:14:46.018Z",
+            "host": {
+              "adapter": "windows-fl-cli",
+              "fl_version": "26.1.7.5654"
+            },
+            "command": "FL64.exe /R /Ewav \"<workspace>\\projects\\emf-s08-acceptance\\renders\\r-9ebc53e64350-crender1\\emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "duration_ms": 7065,
+            "expected_body_quarters": 32,
+            "tempo_bpm": 120,
+            "render_settings": "FL CLI defaults (not selectable)",
+            "wav": {
+              "ok": true,
+              "problems": [],
+              "sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+              "bytes": 3525428,
+              "format": "pcm16-wav",
+              "sample_rate": 44100,
+              "channels": 2,
+              "frames": 881311,
+              "duration_seconds": 19.98437641723356,
+              "peak": 0.985992431640625,
+              "body_frames": 705600,
+              "first_onset_frame_above_minus40dbfs": 2
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify_export",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "render_id": "r-9ebc53e64350-crender1"
+          },
+          "result": {
+            "render_id": "r-9ebc53e64350-crender1",
+            "ok": true,
+            "problems": [],
+            "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "wav": {
+              "ok": true,
+              "problems": [],
+              "sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+              "bytes": 3525428,
+              "format": "pcm16-wav",
+              "sample_rate": 44100,
+              "channels": 2,
+              "frames": 881311,
+              "duration_seconds": 19.98437641723356,
+              "peak": 0.985992431640625,
+              "body_frames": 705600,
+              "first_onset_frame_above_minus40dbfs": 2
+            },
+            "provenance": {
+              "fl_version": "26.1.7.5654",
+              "command": "FL64.exe /R /Ewav \"<workspace>\\projects\\emf-s08-acceptance\\renders\\r-9ebc53e64350-crender1\\emf-s08-acceptance.flp\"",
+              "rendered_at": "2026-11-04T20:14:46.018Z",
+              "operation_id": "s08-acc-render-1"
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_build_pack",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "render_id": "r-9ebc53e64350-crender1",
+            "pack_id": "emf-s08-a-minor-sketch",
+            "pack_revision": 1,
+            "asset_id": "a-minor-sketch-120",
+            "title": "A minor sketch, 120 BPM",
+            "bars": 8,
+            "phrase_bars": 4,
+            "key": "A minor",
+            "genres": [
+              "electronic"
+            ],
+            "states": [
+              "explore"
+            ],
+            "operation_id": "s08-acc-pack-1"
+          },
+          "result": {
+            "status": "pack_built",
+            "pack_id": "emf-s08-a-minor-sketch",
+            "revision": 1,
+            "schema": "em.audio-pack.v0",
+            "validation": "PASS (S01 loadPack: manifest, rights evidence, bytes, SHA-256, PCM metadata)",
+            "audio": [
+              {
+                "sample_rate": 44100,
+                "channels": 2,
+                "frames": 881311,
+                "data_offset": 80,
+                "data_bytes": 3525244,
+                "peak": 0.985992431640625,
+                "id": "a-minor-sketch-120",
+                "path": "audio/a-minor-sketch-120.wav",
+                "sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+                "bytes": 3525428,
+                "duration_seconds": 19.98437641723356
+              }
+            ],
+            "web_crypto_sha256": "2a931b4b87ea246a5c1a9a7ac0751cd454c7123407aa14f92925428b692e0688",
+            "location": "workspace packs/emf-s08-a-minor-sketch"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_release_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "released": true
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "Claude holds writer lease (60 s); duplicate operation id with different payload",
+      "calls": [
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 60
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "holder": "claude-code:139556bb",
+            "acquired_at": "2026-11-04T20:15:53.575Z",
+            "expires_at": "2026-11-04T20:16:53.575Z",
+            "previous_holder": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_apply_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "change_id": "chg-0000000000000000",
+            "operation_id": "s08-acc-apply-1"
+          },
+          "result": {
+            "error": {
+              "code": "OPERATION_ID_CONFLICT",
+              "message": "OPERATION_ID_CONFLICT: s08-acc-apply-1 was used with a different payload",
+              "effects_possible": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "Codex inspects the same project while Claude holds the lease",
+      "calls": [
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_list_projects",
+          "arguments": {},
+          "result": {
+            "projects": [
+              {
+                "project_id": "emf-s08-acceptance",
+                "created_from": "fl-factory/create-a-chord-progression",
+                "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2"
+              }
+            ]
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "include_notes": false
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": {
+              "holder": "claude-code:139556bb",
+              "acquired_at": "2026-11-04T20:15:53.575Z",
+              "expires_at": "2026-11-04T20:16:53.575Z",
+              "previous_holder": null
+            },
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 120
+          },
+          "result": {
+            "error": {
+              "code": "LEASE_CONFLICT",
+              "message": "LEASE_CONFLICT: writer lease held by claude-code:139556bb until 2026-11-04T20:16:53.575Z",
+              "effects_possible": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "Codex bounded edit attempted before lease expiry (stops on LEASE_CONFLICT)",
+      "calls": [
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "include_notes": true
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                },
+                "notes": "48 notes omitted"
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                },
+                "notes": "40 notes omitted"
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                },
+                "notes": "31 notes omitted"
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                },
+                "notes": "102 notes omitted"
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": {
+              "holder": "claude-code:139556bb",
+              "acquired_at": "2026-11-04T20:15:53.575Z",
+              "expires_at": "2026-11-04T20:16:53.575Z",
+              "previous_holder": null
+            },
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_prepare_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "expected_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "targets": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "note_count": 31
+              }
+            ]
+          },
+          "result": {
+            "change_id": "chg-fb5b9559f3ac7466",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "summary": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "notes_before": 31,
+                "notes_after": 31
+              }
+            ],
+            "tempo_bpm": {
+              "before": 120,
+              "after": 120
+            },
+            "song_length_quarters": {
+              "before": 32,
+              "after": 32
+            },
+            "next_action": "Acquire the writer lease, then call fl_apply_edit with this change_id and a new caller-known operation_id."
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 300
+          },
+          "result": {
+            "error": {
+              "code": "LEASE_CONFLICT",
+              "message": "LEASE_CONFLICT: writer lease held by claude-code:139556bb until 2026-11-04T20:16:53.575Z",
+              "effects_possible": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "Codex bounded edit after lease expiry: one Lead note 76→81, FL-side verify",
+      "calls": [
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "include_notes": true
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                },
+                "notes": "48 notes omitted"
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                },
+                "notes": "40 notes omitted"
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                },
+                "notes": "31 notes omitted"
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                },
+                "notes": "102 notes omitted"
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": null,
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_prepare_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "expected_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "targets": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "note_count": 31
+              }
+            ]
+          },
+          "result": {
+            "change_id": "chg-fb5b9559f3ac7466",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "summary": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "notes_before": 31,
+                "notes_after": 31
+              }
+            ],
+            "tempo_bpm": {
+              "before": 120,
+              "after": 120
+            },
+            "song_length_quarters": {
+              "before": 32,
+              "after": 32
+            },
+            "next_action": "Acquire the writer lease, then call fl_apply_edit with this change_id and a new caller-known operation_id."
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 300
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "holder": "codex-mcp-client:eacc80b0",
+            "acquired_at": "2026-11-04T20:17:30.061Z",
+            "expires_at": "2026-11-04T20:22:30.061Z",
+            "previous_holder": "claude-code:139556bb"
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_apply_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "change_id": "chg-fb5b9559f3ac7466",
+            "operation_id": "s08-codex-apply-1"
+          },
+          "result": {
+            "status": "applied_file_verified",
+            "operation_id": "s08-codex-apply-1",
+            "change_id": "chg-fb5b9559f3ac7466",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "readback": {
+              "ok": true,
+              "revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+              "mismatches": [],
+              "method": "reparse of the persisted project file"
+            },
+            "next_action": "Call fl_verify for FL-side readback before declaring the musical edit complete."
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_verify",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "method": "FL Studio CLI MIDI export of the saved project (FL parses and re-emits the notes)",
+            "host_command": "FL64.exe /M\"<workspace>\\projects\\emf-s08-acceptance\\verify\\1058b3c29976342a\\emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "fl_midi_tempo_bpm": 120,
+            "file_tempo_bpm": 120,
+            "song_length_quarters": 32,
+            "channels": [
+              {
+                "channel": 0,
+                "name": "Chords",
+                "expected_notes": 48,
+                "fl_exported_notes": 48,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 1,
+                "name": "Bass",
+                "expected_notes": 40,
+                "fl_exported_notes": 40,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 2,
+                "name": "Lead",
+                "expected_notes": 31,
+                "fl_exported_notes": 31,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 3,
+                "name": "Drums",
+                "expected_notes": 102,
+                "fl_exported_notes": 102,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              }
+            ],
+            "compared": "key, start, length and velocity of every song-time note per channel (multiset)",
+            "fl_export_convention": {
+              "notes_ending_at_song_end_exported_one_tick_short": 6
+            },
+            "verified": true
+          }
+        },
+        {
+          "client": "codex-cli 0.166.0-alpha.6",
+          "tool": "fl_release_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "released": true
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "FL Studio GUI open on the project: competing-writer refusals",
+      "calls": [
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": null,
+            "fl_gui_holding_project": "emf-s08-acceptance.flp - FL Studio 2026"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_render",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "s08-live-busy-render-1"
+          },
+          "result": {
+            "error": {
+              "code": "HOST_BUSY",
+              "message": "HOST_BUSY: FL Studio is already running (emf-s08-acceptance.flp - FL Studio 2026); the CLI hands off and renders nothing. Close FL first.",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "error": {
+              "code": "HOST_BUSY",
+              "message": "HOST_BUSY: FL Studio is already running (emf-s08-acceptance.flp - FL Studio 2026); the CLI hands off and renders nothing. Close FL first.",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 120
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "holder": "claude-code:3c94476a",
+            "acquired_at": "2026-11-04T20:19:08.505Z",
+            "expires_at": "2026-11-04T20:21:08.505Z",
+            "previous_holder": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_list_backups",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "backups": [
+              "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d"
+            ]
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_restore",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "expected_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "operation_id": "s08-live-busy-restore-1"
+          },
+          "result": {
+            "error": {
+              "code": "HOST_BUSY",
+              "message": "HOST_BUSY: FL Studio has this project open (emf-s08-acceptance.flp - FL Studio 2026)",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_release_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "released": true
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "Wrong project/pattern, stale revision, reconcile, recovery from backup",
+      "calls": [
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-missing"
+          },
+          "result": {
+            "error": {
+              "code": "UNKNOWN_PROJECT",
+              "message": "UNKNOWN_PROJECT: no project emf-s08-missing",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": null,
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_prepare_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "expected_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "targets": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Melody"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "note_count": 0
+              }
+            ]
+          },
+          "result": {
+            "error": {
+              "code": "TARGET_MISMATCH",
+              "message": "TARGET_MISMATCH: targets[0]: pattern 3 is \"Lead\", expected \"Melody\"",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_prepare_edit",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "expected_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "targets": [
+              {
+                "pattern": {
+                  "index": 3,
+                  "expected_name": "Lead"
+                },
+                "channel": {
+                  "index": 2,
+                  "expected_name": "Lead"
+                },
+                "note_count": 0
+              }
+            ]
+          },
+          "result": {
+            "error": {
+              "code": "TARGET_CHANGED",
+              "message": "TARGET_CHANGED: project is at 1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f, not 9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_operation_status",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "s08-codex-apply-1"
+          },
+          "result": {
+            "operation_id": "s08-codex-apply-1",
+            "status": "completed",
+            "kind": "apply",
+            "record": {
+              "operation_id": "s08-codex-apply-1",
+              "kind": "apply",
+              "project_id": "emf-s08-acceptance",
+              "payload_hash": "3b0cda5c21e78224ba809b8411fa079afb7e5852df98bfb82a3476dea25b006e",
+              "client_id": "codex-mcp-client:eacc80b0",
+              "state": "completed",
+              "at": "2026-11-04T20:17:36.497Z",
+              "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+              "result": {
+                "status": "applied_file_verified",
+                "operation_id": "s08-codex-apply-1",
+                "change_id": "chg-fb5b9559f3ac7466",
+                "project_id": "emf-s08-acceptance",
+                "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+                "after_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+                "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+                "readback": {
+                  "ok": true,
+                  "revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+                  "mismatches": [],
+                  "method": "reparse of the persisted project file"
+                },
+                "next_action": "Call fl_verify for FL-side readback before declaring the musical edit complete."
+              }
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_operation_status",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "s08-live-busy-render-1"
+          },
+          "result": {
+            "operation_id": "s08-live-busy-render-1",
+            "status": "failed",
+            "kind": "render",
+            "record": {
+              "operation_id": "s08-live-busy-render-1",
+              "kind": "render",
+              "project_id": "emf-s08-acceptance",
+              "payload_hash": "8a30a0b496a1d98d1c28c0e0f9620351dae3610cbabd9e3470970c35b19e671b",
+              "client_id": "claude-code:3c94476a",
+              "state": "failed",
+              "at": "2026-11-04T20:19:07.713Z",
+              "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+              "error": {
+                "code": "HOST_BUSY",
+                "message": "HOST_BUSY: FL Studio is already running (emf-s08-acceptance.flp - FL Studio 2026); the CLI hands off and renders nothing. Close FL first."
+              }
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_acquire_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "ttl_seconds": 300
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "holder": "claude-code:1e70b470",
+            "acquired_at": "2026-11-04T20:20:04.671Z",
+            "expires_at": "2026-11-04T20:25:04.671Z",
+            "previous_holder": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_list_backups",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "backups": [
+              "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "f3afb1e9802c24ade65ed9dd776fe8f809053ebb3778927fe5c2c7e7ab118a4d"
+            ]
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_restore",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "expected_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "operation_id": "s08-live-restore-stale-1"
+          },
+          "result": {
+            "error": {
+              "code": "TARGET_CHANGED",
+              "message": "TARGET_CHANGED: project is at 1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f, not 9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "effects_possible": false
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_restore",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "expected_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "operation_id": "s08-live-restore-1"
+          },
+          "result": {
+            "status": "restored",
+            "operation_id": "s08-live-restore-1",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "preserved_previous_as_backup": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_restore",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "backup_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "expected_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "operation_id": "s08-live-restore-1"
+          },
+          "result": {
+            "status": "restored",
+            "operation_id": "s08-live-restore-1",
+            "project_id": "emf-s08-acceptance",
+            "before_revision": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "after_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "preserved_previous_as_backup": "1058b3c29976342a4fcf31ccf73f63b37eb91f3eb9951ae793c8ebece0de406f",
+            "replayed": true
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": {
+              "holder": "claude-code:1e70b470",
+              "acquired_at": "2026-11-04T20:20:04.671Z",
+              "expires_at": "2026-11-04T20:25:04.671Z",
+              "previous_holder": null
+            },
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "method": "FL Studio CLI MIDI export of the saved project (FL parses and re-emits the notes)",
+            "host_command": "FL64.exe /M\"<workspace>\\projects\\emf-s08-acceptance\\verify\\9ebc53e64350d18d\\emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "fl_midi_tempo_bpm": 120,
+            "file_tempo_bpm": 120,
+            "song_length_quarters": 32,
+            "channels": [
+              {
+                "channel": 0,
+                "name": "Chords",
+                "expected_notes": 48,
+                "fl_exported_notes": 48,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 1,
+                "name": "Bass",
+                "expected_notes": 40,
+                "fl_exported_notes": 40,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 2,
+                "name": "Lead",
+                "expected_notes": 31,
+                "fl_exported_notes": 31,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 3,
+                "name": "Drums",
+                "expected_notes": 102,
+                "fl_exported_notes": 102,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              }
+            ],
+            "compared": "key, start, length and velocity of every song-time note per channel (multiset)",
+            "fl_export_convention": {
+              "notes_ending_at_song_end_exported_one_tick_short": 6
+            },
+            "verified": true
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_release_writer",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "released": true
+          }
+        }
+      ]
+    },
+    {
+      "purpose": "After review fixes: verify, render, verify_export and status again through the updated .mcp.json (paths redacted)",
+      "calls": [
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_capabilities",
+          "arguments": {},
+          "result": {
+            "contract_version": "em.fl-authoring.v0",
+            "bridge_version": "0.1.0",
+            "host": {
+              "platform": "win32",
+              "adapter": "windows-fl-cli",
+              "available": true,
+              "fl_executable": "C:\\Program Files\\Image-Line\\FL Studio 2026\\FL64.exe",
+              "fl_version": "26.1.7.5654",
+              "reason": null
+            },
+            "writer": {
+              "model": "single broker per workspace; writer lease + cross-process lock; caller operation IDs",
+              "client_id": "claude-code:6849e17e"
+            },
+            "operations": {
+              "supported": [
+                "fl_create_project (copy of an allowlisted FL factory template into the private workspace)",
+                "fl_inspect (offline read of the saved project: version, tempo, meter, channels, patterns, notes, playlist clips)",
+                "fl_prepare_edit / fl_apply_edit (replace one channel's notes inside a named pattern; tempo; clip length)",
+                "fl_verify (file readback + FL-side readback through FL's own MIDI export)",
+                "fl_save (named checkpoint, hash-checked; FL-side readback is fl_verify)",
+                "fl_render (official FL CLI WAV render) and fl_verify_export",
+                "fl_build_pack (em.audio-pack.v0, validated with the S01 loader)",
+                "fl_operation_status (reconcile by operation_id) and fl_restore (backup recovery)"
+              ],
+              "partial": [
+                "arrangement: only resizing existing, untrimmed pattern clips",
+                "project format: writes only FL 24.x-layout projects (verified); other layouts are read-only or rejected"
+              ],
+              "unsupported": [
+                "live edits inside a running FL GUI session (no MIDI input port on this host for controller scripting; render/export refuses while FL is open)",
+                "creating channels, loading plugins/samples, mixer and plugin-parameter edits",
+                "arbitrary Python, GUI clicks or filesystem paths from agents",
+                "render settings (sample rate, bit depth, stems): FL CLI uses the project/app defaults (observed PCM16 stereo 44.1 kHz)"
+              ]
+            },
+            "templates": [
+              "fl-factory/create-a-chord-progression"
+            ],
+            "workspace": "private per-user workspace (not exposed as a path)"
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_inspect",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "fl_version": "24.2.99.4720",
+            "layout_verified": true,
+            "ppq": 96,
+            "tempo_bpm": 120,
+            "time_signature": [
+              4,
+              4
+            ],
+            "channels": [
+              {
+                "index": 0,
+                "name": "Chords",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 1,
+                "name": "Bass",
+                "plugin": "DirectWave"
+              },
+              {
+                "index": 2,
+                "name": "Lead",
+                "plugin": "Sytrus"
+              },
+              {
+                "index": 3,
+                "name": "Drums",
+                "plugin": "FPC"
+              }
+            ],
+            "patterns": [
+              {
+                "index": 1,
+                "name": "Chords",
+                "note_count": 48,
+                "notes_by_channel": {
+                  "0": 48
+                }
+              },
+              {
+                "index": 2,
+                "name": "Bass",
+                "note_count": 40,
+                "notes_by_channel": {
+                  "1": 40
+                }
+              },
+              {
+                "index": 3,
+                "name": "Lead",
+                "note_count": 31,
+                "notes_by_channel": {
+                  "2": 31
+                }
+              },
+              {
+                "index": 4,
+                "name": "Drums",
+                "note_count": 102,
+                "notes_by_channel": {
+                  "3": 102
+                }
+              }
+            ],
+            "playlist": [
+              {
+                "pattern": 1,
+                "track": 0,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 2,
+                "track": 1,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 3,
+                "track": 2,
+                "start_quarters": 0,
+                "length_quarters": 32
+              },
+              {
+                "pattern": 4,
+                "track": 3,
+                "start_quarters": 0,
+                "length_quarters": 32
+              }
+            ],
+            "playlist_error": null,
+            "song_length_quarters": 32,
+            "writer_lease": null,
+            "fl_gui_holding_project": null
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify",
+          "arguments": {
+            "project_id": "emf-s08-acceptance"
+          },
+          "result": {
+            "project_id": "emf-s08-acceptance",
+            "revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "method": "FL Studio CLI MIDI export of the saved project (FL parses and re-emits the notes)",
+            "host_command": "FL64.exe /M\"<workspace>/.../emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "fl_midi_tempo_bpm": 120,
+            "file_tempo_bpm": 120,
+            "song_length_quarters": 32,
+            "channels": [
+              {
+                "channel": 0,
+                "name": "Chords",
+                "expected_notes": 48,
+                "fl_exported_notes": 48,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 1,
+                "name": "Bass",
+                "expected_notes": 40,
+                "fl_exported_notes": 40,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 2,
+                "name": "Lead",
+                "expected_notes": 31,
+                "fl_exported_notes": 31,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              },
+              {
+                "channel": 3,
+                "name": "Drums",
+                "expected_notes": 102,
+                "fl_exported_notes": 102,
+                "missing": 0,
+                "extra": 0,
+                "match": true,
+                "track": "found"
+              }
+            ],
+            "compared": "key, start, length and velocity of every song-time note per channel (multiset)",
+            "fl_export_convention": {
+              "notes_ending_at_song_end_exported_one_tick_short": 6
+            },
+            "problems": [],
+            "verified": true
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_render",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "op-recheck-render-20261104"
+          },
+          "result": {
+            "status": "rendered",
+            "render_id": "r-9ebc53e64350-90134d2f3eac",
+            "project_id": "emf-s08-acceptance",
+            "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "operation_id": "op-recheck-render-20261104",
+            "rendered_at": "2026-11-04T20:35:35.495Z",
+            "host": {
+              "adapter": "windows-fl-cli",
+              "fl_version": "26.1.7.5654"
+            },
+            "command": "FL64.exe /R /Ewav \"<workspace>/.../emf-s08-acceptance.flp\"",
+            "exit_code": 0,
+            "duration_ms": 5304,
+            "expected_body_quarters": 32,
+            "tempo_bpm": 120,
+            "render_settings": "FL CLI defaults (not selectable)",
+            "wav": {
+              "ok": true,
+              "problems": [],
+              "sha256": "199dada2a36722b61860a77dd90700f5940aa4a415fa83f800eb59d9b0c30726",
+              "bytes": 3525428,
+              "format": "pcm16-wav",
+              "sample_rate": 44100,
+              "channels": 2,
+              "frames": 881311,
+              "duration_seconds": 19.98437641723356,
+              "peak": 0.986328125,
+              "body_frames": 705600,
+              "first_onset_frame_above_minus40dbfs": 2
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_verify_export",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "render_id": "r-9ebc53e64350-90134d2f3eac"
+          },
+          "result": {
+            "render_id": "r-9ebc53e64350-90134d2f3eac",
+            "ok": true,
+            "problems": [],
+            "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+            "wav": {
+              "ok": true,
+              "problems": [],
+              "sha256": "199dada2a36722b61860a77dd90700f5940aa4a415fa83f800eb59d9b0c30726",
+              "bytes": 3525428,
+              "format": "pcm16-wav",
+              "sample_rate": 44100,
+              "channels": 2,
+              "frames": 881311,
+              "duration_seconds": 19.98437641723356,
+              "peak": 0.986328125,
+              "body_frames": 705600,
+              "first_onset_frame_above_minus40dbfs": 2
+            },
+            "provenance": {
+              "fl_version": "26.1.7.5654",
+              "command": "FL64.exe /R /Ewav \"<workspace>/.../emf-s08-acceptance.flp\"",
+              "rendered_at": "2026-11-04T20:35:35.495Z",
+              "operation_id": "op-recheck-render-20261104"
+            }
+          }
+        },
+        {
+          "client": "claude-code 2.1.318 (claude -p, sonnet)",
+          "tool": "fl_operation_status",
+          "arguments": {
+            "project_id": "emf-s08-acceptance",
+            "operation_id": "op-recheck-render-20261104"
+          },
+          "result": {
+            "operation_id": "op-recheck-render-20261104",
+            "status": "completed",
+            "kind": "render",
+            "record": {
+              "operation_id": "op-recheck-render-20261104",
+              "kind": "render",
+              "project_id": "emf-s08-acceptance",
+              "payload_hash": "b4ecfdc4a03cccf47b9f2769270ddca24c38517764a95dd1acd3e780ee6c7d9d",
+              "client_id": "claude-code:6849e17e",
+              "state": "completed",
+              "at": "2026-11-04T20:35:35.504Z",
+              "before_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+              "result": {
+                "status": "rendered",
+                "render_id": "r-9ebc53e64350-90134d2f3eac",
+                "project_id": "emf-s08-acceptance",
+                "source_revision": "9ebc53e64350d18d0c226926a8b4a2e8014318ca346117e8240e7bdec847f8f2",
+                "operation_id": "op-recheck-render-20261104",
+                "rendered_at": "2026-11-04T20:35:35.495Z",
+                "host": {
+                  "adapter": "windows-fl-cli",
+                  "fl_version": "26.1.7.5654"
+                },
+                "command": "FL64.exe /R /Ewav \"<workspace>/.../emf-s08-acceptance.flp\"",
+                "exit_code": 0,
+                "duration_ms": 5304,
+                "expected_body_quarters": 32,
+                "tempo_bpm": 120,
+                "render_settings": "FL CLI defaults (not selectable)",
+                "wav": {
+                  "ok": true,
+                  "problems": [],
+                  "sha256": "199dada2a36722b61860a77dd90700f5940aa4a415fa83f800eb59d9b0c30726",
+                  "bytes": 3525428,
+                  "format": "pcm16-wav",
+                  "sample_rate": 44100,
+                  "channels": 2,
+                  "frames": 881311,
+                  "duration_seconds": 19.98437641723356,
+                  "peak": 0.986328125,
+                  "body_frames": 705600,
+                  "first_onset_frame_above_minus40dbfs": 2
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
