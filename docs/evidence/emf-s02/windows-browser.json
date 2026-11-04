@@ -1,0 +1,31 @@
+{
+  "browser": "151.0.7922.34",
+  "platform": "win32",
+  "node": "v24.22.2",
+  "playwright": "1.62.1",
+  "checks": [
+    {
+      "name": "Seven native offline audio checks",
+      "status": "PASS"
+    },
+    {
+      "name": "Live A → B, Now/Next, frozen pause/resume and mute indicator",
+      "status": "PASS"
+    },
+    {
+      "name": "Play B and same-origin ownership conflict/release",
+      "status": "PASS"
+    },
+    {
+      "name": "Stop clears pending UI state; replacement and reload stay explicit",
+      "status": "PASS"
+    },
+    {
+      "name": "Desktop/mobile layout and no page script errors",
+      "status": "PASS"
+    }
+  ],
+  "offlineReport": "offline.json",
+  "physicalOutput": "NOT TESTED",
+  "listening": "NOT TESTED"
+}

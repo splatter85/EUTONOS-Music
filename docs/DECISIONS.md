@@ -1,14 +1,14 @@
 # Design decisions and open questions
 
 Document ID: `EM-D011`  
-Status: proposed design decisions, revised 2026-11-03.
+Status: current design decisions, including bounded S01/S02 implementation updates, revised 2026-11-04.
 
 Owner direction: Mission Control music first, possible growth later, focus on making it work. Other engineering decisions below are this review's recommendations within that direction, not unrun qualification results. The initial versions of EM-DEC001–010 are preserved at baseline `ee7125e`; their stable identities remain.
 
 | ID | Current decision | Reason and reconsideration trigger |
 | --- | --- | --- |
 | EM-DEC001 | MC is the first real consumer; neutral state interface remains separately testable | A reusable seam helps testing now. Add other consumers only for concrete need. |
-| EM-DEC002 | Investigate Web Audio first; choose one pilot backend at EMF03 | Revises presumed native architecture. Choose native when required lifecycle/resource/audio behavior or independent persistence warrants it. |
+| EM-DEC002 | Native Web Audio buffer sources and gain automation selected for the S02 cloud player | One context owns starts, fades and stops; native offline/live Chromium evidence is recorded in the S02 handoff. Reconsider only for a measured lifecycle/resource/output requirement; physical reference-host qualification remains open. |
 | EM-DEC003 | One audio clock and one playback owner | Avoid competing sessions. A future multi-output design needs explicit qualification. |
 | EM-DEC004 | Recorded/procedural sources share musical context and roles | Preserve constrained handoff first, then generalize with listening evidence. |
 | EM-DEC005 | DAW/model work prepares future material outside audio deadlines | Ordinary listening remains useful when production is late, absent or offline. |
@@ -16,7 +16,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC007 | Compatibility is directed and version/scenario-specific | Start with a few authored routes; generalize only within tested content classes. |
 | EM-DEC008 | Three-day endurance and musical breadth are separate | Seed counts and graph reachability do not establish enjoyment. |
 | EM-DEC009 | Intended-use provenance is required for distributed packs | Private authoring, compositions, stems, reusable sounds and weights are distinct decisions. |
-| EM-DEC010 | Work follows the current bounded assignment; S01 implementation/publication is authorized | Supersedes the original documentation-only restriction for this assigned slice. No runtime or listening stage closes without its actual evidence. |
+| EM-DEC010 | Work follows the current bounded assignment; S01 and S02 implementation/publication were authorized | Later slice ordering is not automatic dispatch. No runtime or listening stage closes without its actual evidence. |
 | EM-DEC011 | Audible proof precedes broad infrastructure | EMF04 demonstrates a controlled recorded/generated journey; EMF05 reviews it before breadth. |
 | EM-DEC012 | FL MCP and production jobs stay in full EMF but do not block usable MC pilot | EMF15/16 are retained. Advance only a narrow helper when a measured bottleneck justifies it. |
 | EM-DEC013 | Adaptation is optional and tested against fixed-state music | No productivity or attention inference from activity counts alone. |
@@ -51,3 +51,9 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 **EM-DEC021:** The owner requires **Windows, macOS and Linux** support. Windows may lead the FL Studio/MCP integration; shared pack/playback/control code remains portable and OS-specific authoring behavior stays behind explicit adapters. Automated checks run on all three OSes. Browser lifecycle, audio output and FL compatibility require separate real-host evidence.
 
 **EM-DEC022:** Implement a small versioned `em.audio-pack.v0` with PCM16 WAV, authored constant-tempo 4/4 cues, bounded data and exact media/reference validation. Use original, reproducible synthetic fixtures for contract/timing work, marked `fixture-only`. Descriptive recipe references do not constitute a generator. The common source and request harness do not constitute a DJ or audio renderer. [Executable boundary and omissions](S01_FOUNDATION.md).
+
+## S02 renderer and transport — 2026-11-04
+
+**EM-DEC023:** Use one `AudioContext` with native `AudioBufferSourceNode` and `GainNode` for the small recording player. Convert authored file-domain cues into output-clock frames, including pickups and selected entry offsets. Schedule incoming start, complementary linear fades and outgoing stop in advance on that one clock; UI animation only reads state. Native checks pass at 48 kHz and 44.1 kHz on the named Windows/macOS/Linux Chromium runners. A one-frame natural decoder EOF difference is recorded separately from exact cue boundaries. [Implementation and evidence](handoffs/EMF-S02-HANDOFF.md).
+
+**EM-DEC024:** Pause gates output and suspends the same clock, retaining a pending handoff and the cooperating-tab ownership lease. Stop/replacement releases active/future sources and invalidates generation. Rejected Resume ownership suspends the retained timeline. A hidden page requires explicit Resume; reload starts stopped. Same-origin Web Locks prevent competing demo tabs but do not claim OS-wide or distributed ownership. Reconsider these bounded policies only against a concrete later lifecycle requirement and real-host evidence.

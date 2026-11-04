@@ -1,0 +1,83 @@
+{
+  "sourceCommit": "c7f75321bf034517fd0b2fde41298285b89f26b9",
+  "sourceTree": "433493c05ee4d04fa5705cd82a094ff2dc5204c9",
+  "workflowRun": 41903543079,
+  "workflowUrl": "https://github.com/splatter85/EUTONOS-Music/actions/runs/41903543079",
+  "observedDate": "2026-11-04",
+  "platforms": {
+    "linux": {
+      "jobId": 126832006821,
+      "os": "Ubuntu 26.04.1 LTS",
+      "image": "ubuntu-26.04",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "artifactId": 13360500024,
+      "artifactName": "s02-browser-ubuntu-latest",
+      "digest": "sha256:afa684a6f974f5b444f56c4986275842183ba7e6210726d70c8f078268210566",
+      "zipBytes": 378636,
+      "tests": {
+        "total": 54,
+        "passed": 54,
+        "failed": 0,
+        "skipped": 0
+      },
+      "deterministicFixtureFiles": 7,
+      "validatedMediaFiles": 6,
+      "artifactDigestVerified": true,
+      "imageVersion": "20261025.179.1"
+    },
+    "windows": {
+      "jobId": 126832007193,
+      "os": "Microsoft Windows Server 2025 10.0.26100 Datacenter",
+      "image": "windows-2025-vs2026",
+      "node": "v24.22.2",
+      "npm": "11.19.1",
+      "artifactId": 13360011467,
+      "artifactName": "s02-browser-windows-latest",
+      "digest": "sha256:99b5f2b578f0f88ae9ec5625348df0c6862c4a73a0867ecfe84ab8395daf9e35",
+      "zipBytes": 248193,
+      "tests": {
+        "total": 54,
+        "passed": 54,
+        "failed": 0,
+        "skipped": 0
+      },
+      "deterministicFixtureFiles": 7,
+      "validatedMediaFiles": 6,
+      "artifactDigestVerified": true,
+      "imageVersion": "20261103.298.1"
+    },
+    "macos": {
+      "jobId": 126832006128,
+      "os": "macOS 26.6.2",
+      "image": "macos-26-arm64",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "artifactId": 13358159071,
+      "artifactName": "s02-browser-macos-latest",
+      "digest": "sha256:458df2e93e59dd8180e45d0bcb722c5cd86bf7d5e90368daa51b289a8fbc6f94",
+      "zipBytes": 384679,
+      "tests": {
+        "total": 54,
+        "passed": 54,
+        "failed": 0,
+        "skipped": 0
+      },
+      "deterministicFixtureFiles": 7,
+      "validatedMediaFiles": 6,
+      "artifactDigestVerified": true
+    }
+  },
+  "retainedSha256": {
+    "linux-browser.json": "fd0edb75cfa25b6f2f67d45fe127752b21657acf14b7956ba47737f7369d4b86",
+    "linux-offline.json": "0753e060c9067e4c49ef3d3ae4939ed0f04438a557ce23fd6bd58e6c3ebccf39",
+    "macos-browser.json": "324eafd6bb8e9e71575b22cf98b788bd0f3d6d927d71f3c0f31321366e1c3e9f",
+    "macos-offline.json": "b51a6ad0b0364940fa391ea123b7386bf2c839e89d616612941766498c0feb67",
+    "player-mobile.png": "ba42221b58c0a537d49fd61a59dbd6cb1820da7acb1b8786ffa65c453a9c09d5",
+    "player-ready.png": "718019c98b4f777e8c75670f609a90dd2cb079d03aee5e3ebc0111d17e9e5f64",
+    "windows-browser.json": "5fbbb42f544c639e3fe51f5f32756551fb3b3c75a58c03714cb9ffb20f147ab6",
+    "windows-offline.json": "5f69057bcc536b4efc201ead1927f6cc9525bc3f0a7e73ce35f27504bc44a298"
+  },
+  "physicalOutput": "NOT TESTED",
+  "listening": "NOT TESTED"
+}
