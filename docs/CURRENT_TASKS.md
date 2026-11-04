@@ -11,6 +11,23 @@ Updated 2026-11-04 — S08 PC FL authoring closeout (cloud pickup unchanged).
 | --- | --- | --- | --- |
 | 1 | **EMF-S03** — thin deterministic DJ and request integration | **ChatGPT/GitHub coding environment** | Connect S01's control contract to the S02 player for state/genre/Next/queue/Hold, with explicit queue priority, cancellation, idempotent retries, no-match fallback, deterministic tests and a published handoff. |
 
+EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only; the campaign above owns the actual next slice.
+
+```tokenslang-work
+{
+  "profile": "eutonos.tokenslang.work.v1",
+  "work_id": "eutonos-music-development-entry",
+  "goal": "Resolve current authorized work from this Current Tasks page and the EMF campaign; this compatibility entry selects no product slice.",
+  "status": "selected",
+  "required": [
+    { "path": "docs/CURRENT_TASKS.md" },
+    { "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md" },
+    { "path": "AGENTS.md" }
+  ],
+  "optional": []
+}
+```
+
 **First check:** use Node 24.x; run `npm ci --ignore-scripts` and `npm run check`. For the current small player, run `npm run demo` and open http://127.0.0.1:4173/. The [S02 guide](S02_PLAYER.md) covers Play A/B and the scheduled transition.
 
 **After S03:** S04 procedural generator → S05 recorded/procedural handoffs → S06 importer/mock FL producer → S07 integrated app, tests and scaffold review. These remain subsequent assignments.
