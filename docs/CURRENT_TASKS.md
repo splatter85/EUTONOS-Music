@@ -37,3 +37,8 @@ EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this d
 **Owner notices in slice closeouts:** S01 provided the checked pack revision and PC S08 opening; S07 will provide the tested cloud SHA/run commands for PC S09 after FL exports exist. There is no asynchronous notification. Cloud work with eligible fixtures does not wait for installed FL Studio.
 
 The S02 handoff records 54 passing Node tests, unchanged deterministic fixtures and native Chromium offline/live-browser evidence on Windows, macOS and Linux. Physical audio output, human listening, real FL/MCP and full MVP acceptance remain unverified. Overall effort percentage is unknown.
+
+
+```tokenslang-ram-links
+{"links":[{"memories":["RAM/record-9358f1df11ab8a840eaa4fe313f7c9a30f057e5f5dad8a4ac6599dabd11a2618.json"],"work_id":"eutonos-music-development-entry"}],"profile":"eutonos.tokenslang.ram-links.v2"}
+```
