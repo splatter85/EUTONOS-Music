@@ -1,0 +1,66 @@
+{
+  "schema_version": "em.asset_manifest.draft1",
+  "example_only": true,
+  "status": "not_authored",
+  "id": "demo.warm-a",
+  "revision": 1,
+  "kind": "stem_bundle",
+  "display_name": "Warm progressive study A",
+  "source_project": null,
+  "media": [
+    {"id": "demo.warm-a.drums", "role": "drums", "path": null, "sha256": null},
+    {"id": "demo.warm-a.bass", "role": "bass", "path": null, "sha256": null},
+    {"id": "demo.warm-a.harmony", "role": "harmony", "path": null, "sha256": null},
+    {"id": "demo.warm-a.lead", "role": "lead", "path": null, "sha256": null}
+  ],
+  "technical": {
+    "sample_rate_hz": null,
+    "channels_per_stem": null,
+    "frames_per_stem": null,
+    "source_frame_at_quarter_zero": null,
+    "render_path_latency_frames": null,
+    "tail_frames_after_main_region": null
+  },
+  "time": {
+    "bpm_unit": "quarter_note",
+    "tempo_map": [{"start_quarters": 0, "bpm": 124}],
+    "meter_map": [{"start_quarters": 0, "numerator": 4, "denominator": 4}],
+    "main_length_quarters": 128,
+    "intended_pickup_quarters": 0,
+    "annotations_status": "authored_plan_without_audio"
+  },
+  "harmony": {
+    "tonal_center": "A",
+    "pitch_collection": "natural_minor",
+    "cycle_quarters": 32,
+    "repeat_cycle_through_main_region": true,
+    "regions": [
+      {"start_quarters": 0, "duration_quarters": 8, "chord": "Am"},
+      {"start_quarters": 8, "duration_quarters": 8, "chord": "F"},
+      {"start_quarters": 16, "duration_quarters": 8, "chord": "C"},
+      {"start_quarters": 24, "duration_quarters": 8, "chord": "G"}
+    ]
+  },
+  "sections": [
+    {"id": "demo.warm-a.main", "start_quarters": 0, "duration_quarters": 64},
+    {"id": "demo.warm-a.develop", "start_quarters": 64, "duration_quarters": 64}
+  ],
+  "cues": [
+    {"id": "demo.warm-a.main.entry", "section_id": "demo.warm-a.main", "position_quarters": 0, "kind": "entry"},
+    {"id": "demo.warm-a.main.exit", "section_id": "demo.warm-a.main", "position_quarters": 32, "kind": "exit"},
+    {"id": "demo.warm-a.develop.entry", "section_id": "demo.warm-a.develop", "position_quarters": 64, "kind": "entry"}
+  ],
+  "candidate_continuations": [
+    {
+      "from_section_id": "demo.warm-a.main",
+      "to_section_id": "demo.warm-a.develop",
+      "boundary_quarters": 64,
+      "review_status": "not_evaluated"
+    }
+  ],
+  "intended_state_support": {"profiles": ["browse", "explore", "drive"], "calibration_status": "not_evaluated"},
+  "transformations": {"reviewed_tempo_ranges": [], "reviewed_transpositions": []},
+  "mix_plan": {"status": "not_authored", "approved_stem_combinations": [], "shared_processing_dependencies": []},
+  "rights": {"status": "unresolved", "evidence": [], "permitted_distribution_scopes": []},
+  "review": {"technical": "not_evaluated", "musical": "not_evaluated", "eligible_for_playback": false}
+}

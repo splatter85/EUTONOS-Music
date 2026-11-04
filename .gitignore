@@ -1,0 +1,16 @@
+# Local production material and model/cache data are not public repo content.
+/local/
+/models/
+/renders/
+/cache/
+/.venv/
+/node_modules/
+/build/
+/dist/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

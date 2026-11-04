@@ -1,0 +1,32 @@
+{
+  "schema_version": "em.production_brief.draft1",
+  "example_only": true,
+  "id": "demo.brief.warm-progressive",
+  "status": "not_started",
+  "spoken_direction": "Make a warm progressive groove with a short memorable answer. Give me a restrained version and a fuller version. Keep the bass identity, leave space, and let the fuller version add movement without simply getting louder.",
+  "musical_translation": {
+    "quarter_note_bpm": 124,
+    "meter": [4, 4],
+    "tonal_center": "A",
+    "initial_harmony": ["Am", "F", "C", "G"],
+    "bars_per_chord": 2,
+    "phrase_bars": 8,
+    "foreground": "Two-bar question and answer with rests",
+    "roles": ["drums", "bass", "harmony", "lead"],
+    "vocals": "none",
+    "preserve": ["bass_identity", "harmony_timeline", "recognizable_motif_opening"],
+    "may_change": ["approved_percussion", "motif_answer", "articulation", "role_entry_timing"]
+  },
+  "host_plan": {
+    "application": "FL Studio",
+    "actual_build": null,
+    "discovered_capabilities": [],
+    "plugin_inventory": [],
+    "target_project_session_id": null,
+    "default_note_handoff_if_automation_is_unavailable": "Editable MIDI or a documented manual Piano roll script application"
+  },
+  "requested_outputs": ["editable_source", "reference_mix", "aligned_stem_bundle", "metadata_draft", "audition_notes"],
+  "intended_distribution": {"scope": "to_be_selected", "source_permissions": "must_be_checked_for_the_selected_output_form"},
+  "review": {"technical": "not_evaluated", "musical": "not_evaluated", "voice_permissions": "not_applicable_to_this_instrumental_example"},
+  "agent_reporting": "Separate prepared instructions, applied edits, readback, exported files and listening acceptance. Do not claim the piece sounds good without evaluating the rendered sound."
+}

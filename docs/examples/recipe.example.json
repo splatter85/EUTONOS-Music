@@ -1,0 +1,60 @@
+{
+  "schema_version": "em.recipe.draft1",
+  "example_only": true,
+  "id": "demo.recipe.warm-progressive",
+  "version": "0.1.0",
+  "status": "unimplemented",
+  "identity": {
+    "goal": "Warm progressive movement with a recognizable opening and changing answers",
+    "reference_bundle_id": "demo.warm-a",
+    "motif_id": "demo.motif.warm-question",
+    "motif_status": "to_be_composed",
+    "vocals": "absent"
+  },
+  "time": {"meter": [4, 4], "reference_bpm": 124, "bpm_unit": "quarter_note", "phrase_quarters": 32},
+  "harmony": {
+    "tonal_center": "A",
+    "pitch_collection": "natural_minor",
+    "cycle_quarters": 32,
+    "regions": [
+      {"start_quarters": 0, "duration_quarters": 8, "chord": "Am"},
+      {"start_quarters": 8, "duration_quarters": 8, "chord": "F"},
+      {"start_quarters": 16, "duration_quarters": 8, "chord": "C"},
+      {"start_quarters": 24, "duration_quarters": 8, "chord": "G"}
+    ],
+    "policy": "Use the committed shared harmony during accompaniment or handoff"
+  },
+  "palette": {
+    "id": "demo.palette.warm",
+    "revision": 1,
+    "status": "not_authored",
+    "required_roles": ["drums", "bass", "harmony", "lead"],
+    "assets": [],
+    "rights_evidence": []
+  },
+  "roles": {
+    "drums": {"protected_kick_offsets_per_bar_quarters": [0, 1, 2, 3], "fills": "Only at approved phrase endings"},
+    "bass": {"maximum_polyphony": 1, "harmony_source": "shared_plan", "sub_ownership": "exclusive_by_mix_plan"},
+    "harmony": {"voicings": "Approved close voice-leading set to be authored", "tail_policy": "Review sustained notes at each chord boundary"},
+    "lead": {"grammar": "Retain opening, choose a reviewed answer, leave audible rests", "maximum_foreground_lines": 1}
+  },
+  "variation": {
+    "seed_policy": "Independent streams per recipe version, session seed, phrase and role",
+    "foreground_changes_per_phrase_max": 1,
+    "candidate_choices": ["hat_ending", "motif_answer", "chord_inversion"],
+    "approved_choice_sets": [],
+    "change_identity_only_at": "planned_section_boundary"
+  },
+  "sections": [
+    {"id": "hold", "duration_quarters": 32, "purpose": "Establish the motif and groove"},
+    {"id": "develop", "duration_quarters": 32, "purpose": "Develop one approved musical relationship"},
+    {"id": "release", "duration_quarters": 32, "purpose": "Reduce foreground density and prepare an exit"}
+  ],
+  "state_mapping": {
+    "status": "to_be_auditioned",
+    "energy": "Coordinate articulation and approved role additions",
+    "atmosphere": "Adjust reviewed texture and tail choices",
+    "variation": "Select an authored development budget independently of energy"
+  },
+  "review": {"technical": "not_evaluated", "musical": "not_evaluated", "accepted_seeds": [], "eligible_for_playback": false}
+}

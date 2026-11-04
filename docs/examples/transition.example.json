@@ -1,0 +1,31 @@
+{
+  "schema_version": "em.transition.draft1",
+  "example_only": true,
+  "id": "demo.transition.warm-a-to-procedural",
+  "revision": 1,
+  "status": "candidate_unreviewed",
+  "source": {"bundle_id": "demo.warm-a", "revision": 1, "section_id": "demo.warm-a.main", "exit_cue_id": "demo.warm-a.main.exit", "start_quarters": 32},
+  "target": {"recipe_id": "demo.recipe.warm-progressive", "version": "0.1.0", "section_id": "hold", "start_quarters": 0},
+  "method": "stem_substitution_with_related_procedural_continuation",
+  "time": {"duration_bars": 8, "meter": [4, 4], "duration_quarters": 32, "bpm": 124, "tempo_delta_bpm": 0},
+  "harmony_alignment": {"source_cycle_phase_quarters": 0, "target_cycle_phase_quarters": 0, "required_chord_sequence": ["Am", "F", "C", "G"], "quarters_per_chord": 8},
+  "role_handoffs": [
+    {"role": "drums", "start_quarters": 0, "end_quarters": 2, "strategy": "Reviewed coordinated groove handoff; no independent competing kick pattern"},
+    {"role": "harmony", "start_quarters": 8, "end_quarters": 16, "strategy": "Complementary voicings under the same chord timeline; tail collision must be auditioned"},
+    {"role": "bass", "start_quarters": 16, "end_quarters": 16, "strategy": "Transfer exclusive low-end ownership at the boundary; define envelope overlap from actual sounds"},
+    {"role": "lead", "start_quarters": 24, "end_quarters": 28, "strategy": "Finish the recorded phrase, preserve its approved tail, then admit the procedural answer"}
+  ],
+  "preparation": {
+    "must_have": ["source_media_decoded", "target_events_and_palette_ready", "shared_harmony_committed", "mix_plan_reserved", "device_session_owned"],
+    "required_source_frame_maps": [],
+    "measured_path_latency_frames": null,
+    "readiness_status": "not_evaluated"
+  },
+  "vocal_policy": "No vocals in either side of this example",
+  "fallback": {
+    "before_start": "Continue a separately reviewed source route if available; otherwise use an explicit controlled fade/stop",
+    "after_start": "Follow the separately reviewed recovery plan for the affected role",
+    "status": "must_be_implemented_and_tested"
+  },
+  "review": {"technical": "not_evaluated", "musical": "not_evaluated", "rights": "not_evaluated", "eligible_for_selection": false}
+}

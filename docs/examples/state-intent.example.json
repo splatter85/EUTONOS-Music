@@ -1,0 +1,22 @@
+{
+  "example_only": true,
+  "status": "illustrative_request_for_an_unimplemented_api",
+  "request": {
+    "schema_version": "em.intent.v0",
+    "command_id": "demo-command-001",
+    "session_id": "demo-session",
+    "expected_revision": 12,
+    "source_id": "manual-test-app",
+    "target": {"profile": "drive", "energy": 0.65, "atmosphere": 0.4, "variation": 0.35},
+    "transition": {"preferred_bars": 16, "max_tempo_delta_bpm": 3, "contrast": "moderate", "boundary": "phrase"},
+    "minimum_stay_seconds": 60,
+    "expires_after_seconds": 180
+  },
+  "notes": [
+    "Values are fictional and have not been calibrated by listening.",
+    "This is an independent control example, not a command that forces the eight-bar example transition.",
+    "The server chooses a valid plan; an accepted request does not mean it is already audible.",
+    "Lookup or replay the original command ID after a timeout before creating another command.",
+    "Expiry limits pending start time; dwell begins at actual audible entry."
+  ]
+}
