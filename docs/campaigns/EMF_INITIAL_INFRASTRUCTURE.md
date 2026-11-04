@@ -3,9 +3,9 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS — EMF-S01 in review**
+Status: **IN_PROGRESS — EMF-S01 COMPLETE; EMF-S02 READY**
 Recorded and revised: 2026-11-03, America/Chicago  
-Progress estimate: **unknown**; S01 foundation work is assigned, while playback, musical acceptance and the DAW bridge remain unqualified.
+Progress estimate: **unknown**; S01 foundation is verified, while playback, musical acceptance and the DAW bridge remain unqualified.
 
 ## Outcome
 
@@ -45,7 +45,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
 
-**Current slice status:** **S01 IN_REVIEW**. Local engineering checks and independent inspection pass; GitHub publication/readback and three-platform CI are pending. S02 is the next cloud slice after verified S01 closeout; S08 is then available as an optional parallel PC assignment. The evidence-backed [S01 handoff](../handoffs/EMF-S01-HANDOFF.md) is being finalized.
+**Current slice status:** **S01 COMPLETE** for its engineering contract/fixture scope. **S02 READY — CLOUD** is the primary next assignment. **S08 READY — PC host intake** is available in parallel; actual installed capabilities remain unknown. Local checks, independent inspection, source publication/readback and Windows/macOS/Linux CI are verified in the [S01 handoff](../handoffs/EMF-S01-HANDOFF.md). All other slices retain their stated prerequisites and remain planned; no next slice starts automatically.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
@@ -68,7 +68,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 - **Handoff #1, after S01 is published:** tell owner the checked Git SHA, pack contract and setup constraints: *“You can pull now to start PC slice S08 in parallel; I'll continue S02–S07 in the cloud.”* This notification is part of the closeout, **not a background automation**. Missing PC integration does not stop the cloud sequence.
 - **Handoff #2, after S07 is published:** provide exact build SHA, run commands, artifact/demo, checks and caveats: *“Pull this tested revision for S09 once S08 has produced eligible FL exports.”*
 - **Join at S09.** Do not make two implementations of the asset contract, queue or DJ. PC work changes only the producer adapter and supplies real files into the same validated format. Real audio-device testing, listening and host compatibility cannot be declared successful from GitHub CI alone.
-- **Next now:** finish S01 publication/readback and closeout. Subsequent implementation slices run when selected; no automatic DAW operations, model downloads, product release or changes to the Mission Control repo are authorized by the slice order.
+- **Next now:** S02 CLOUD, with optional S08 PC in parallel. Subsequent implementation slices run when selected; no automatic DAW operations, model downloads, product release or changes to the Mission Control repo are authorized by the slice order.
 
 ## Stage map and sole status owner
 
@@ -136,9 +136,9 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 ## Current checkpoint
 
-S01 **IN_REVIEW**, 2026-11-04: inspected clean `main` at `10987524f3ad7b4f6434c2df7c571346f08a08bc`; work branch `work/emf-s01-foundation-20261104`. The portable TypeScript pack/source/control boundary, original two-recording/four-sample fixture pack and strict validators exist. `npm run check` passed **28 tests**, byte-identical regeneration and all six WAV validations. Independent FFmpeg decoding passed **6/6**. Bounded non-author inspection found no remaining blocking defect after harmony, Hold, clock-domain and receipt-limit corrections. Windows/macOS/Linux is explicit in the product and CI matrix. Remote publication/readback and CI are the remaining S01 closeout checks; no actual playback or listening has occurred.
+S01 **COMPLETE**, 2026-11-04. Intake `main` was `10987524f3ad7b4f6434c2df7c571346f08a08bc`; published implementation is [`8aad03c882fdff0ae900edb7045cc28138aea0ae`](https://github.com/splatter85/EUTONOS-Music/commit/8aad03c882fdff0ae900edb7045cc28138aea0ae), with exact remote/local code/data tree agreement. The portable TypeScript pack/source/control boundary, original two-recording/four-sample pack and validators are executable. `npm run check` passed **28 tests**, byte-identical regeneration and all six WAV validations locally and in [GitHub CI on Windows, macOS and Linux](https://github.com/splatter85/EUTONOS-Music/actions/runs/41891295002). Independent FFmpeg decoding passed **6/6**. Non-author review found no remaining blocking defect after the recorded corrections. This closeout changes documentation only; the tested code/data/workflow remain unchanged. Physical playback/listening and FL/MCP/MC remain unverified. [Detailed handoff](../handoffs/EMF-S01-HANDOFF.md).
 
-Next: **EMF-S01 in CLOUD** prepares the source/asset/request contract, original fixtures and tests. On its published closeout give the owner the SHA for optional **PC S08 in parallel**; finish CLOUD S02–S07 and hand off the verified build for S09. Real FL audio and owner listening remain required for standalone-MVP acceptance. No MC integration before S10. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
+Next: **EMF-S02 — CLOUD** builds the small browser player and checked A→B transition. The owner may now pull the checked S01 revision for **PC S08 in parallel**; cloud S02–S07 do not wait for FL. S09 later joins the paths. Real FL audio and owner listening remain required for standalone-MVP acceptance. No MC integration before S10. Overall effort remains unknown; stage counts are not estimates of runtime completion.
 
 ## Resume and closeout
 

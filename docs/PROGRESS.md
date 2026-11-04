@@ -80,3 +80,13 @@ The one existing EMF campaign now contains ordered execution slices EMF-S01–S1
 ## 2026-11-04 — every-slice handoff policy and first pickup
 
 The owner selected a **two-part handoff for each EMF execution slice**: a detailed, checked, published `docs/handoffs/EMF-Sxx-HANDOFF.md` plus a mini copy-ready handoff given in the completing agent's chat message. The [Work Model](WORK_MODEL.md#per-slice-handoff-policy) owns this policy; [handoff folder](handoffs/README.md) contains the template and an [EMF-S01 pickup brief](handoffs/EMF-S01-PICKUP.md). The campaign remains the sole slice status owner. **S01 remains unstarted; no implementation code, audio or tests were delivered by preparing this pickup.**
+
+## 2026-11-04 — S01 portable foundation
+
+Implementation source: [`8aad03c882fdff0ae900edb7045cc28138aea0ae`](https://github.com/splatter85/EUTONOS-Music/commit/8aad03c882fdff0ae900edb7045cc28138aea0ae), based on intake `10987524f3ad7b4f6434c2df7c571346f08a08bc`. Its published Git tree `fde149879bbbbaed95dc9f9e7366700d2ad02c68` matches the reviewed local code/data tree. Earlier progress entries above remain historical snapshots.
+
+S01 delivers `em.audio-pack.v0`, the common source lifecycle, typed local request/queue contract, original PCM16 recording A/B plus four sample inputs, deterministic fixture construction and validation. The owner added **Windows/macOS/Linux** as targets, with Windows allowed to lead real FL work; canonical requirements and the CI matrix now reflect that direction.
+
+Local `npm run check` passed **28/28 tests**, deterministic comparison of six WAVs plus the manifest, and all media/rights-evidence validation. Independent FFmpeg 7.1.5 decoding passed for all six files. The [bounded independent review](reviews/EMF_S01_FOUNDATION_REVIEW.md) retained the implementation after addressing harmony semantics, a receipt cap that could block Stop/Mute, Hold policy and clock-frame units. GitHub [run 41891295002](https://github.com/splatter85/EUTONOS-Music/actions/runs/41891295002) completed successfully on **Linux, Windows and macOS**, with 28 tests and the identical fixture/validation checks on each. The closeout is documentation only; tested code/data and workflow are unchanged.
+
+The [detailed S01 handoff](handoffs/EMF-S01-HANDOFF.md) carries exact versions, commands, hashes, publication evidence, limitations and the S02 CLOUD pickup. Real audio output/listening, browser playback, full DJ/generator, FL/MCP and Mission Control are not verified or implemented by this slice. The full campaign remains in progress; effort percentage is unknown. After verified S01 closeout the owner can start S08 PC in parallel with cloud S02–S07.
