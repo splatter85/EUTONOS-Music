@@ -23,6 +23,8 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [Validation](VALIDATION.md) | Musical proof, actual consumer, listening and operational qualification |
 | [Examples](examples/README.md) | Illustrative data contracts, not implemented schemas |
 
+[First playable](FIRST_PLAYABLE.md) is the current standalone three-layer MVP contract and supersedes prior MC-first delivery sequencing.
+
 ## Learning and creation
 
 The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary, FL workflow, arrangement/mixing/taste, recipe authoring, agent workflow and vocal production. These are creator resources; listening does not require reading them. Technical possibilities in a guide do not automatically enter the pilot scope.

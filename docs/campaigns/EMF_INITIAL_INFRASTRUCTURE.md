@@ -9,9 +9,9 @@ Progress estimate: **unknown**; no runtime, musical corpus or DAW bridge has bee
 
 ## Outcome
 
-Build the initial music player/generator for EUTONOS Mission Control, retaining neutral state and content contracts so future growth is possible. Demonstrate quality recorded playback, several authored procedural identities, deliberate hybrid transitions, understandable controls, persistent catalogue/history and a bounded FL Studio authoring MCP path.
+Build a **standalone three-layer MVP** first: a simple Visual Basic AI/FL Studio production controller, a procedural generator and a DJ controlled through a tiny state/next-song/genre app. Connect EUTONOS Mission Control only after this works. Demonstrate quality recorded playback, several authored procedural identities, deliberate hybrid transitions, understandable controls, persistent catalogue/history and a bounded FL Studio authoring MCP path.
 
-A useful Mission Control pilot comes before the full authoring bridge. This is a delivery milestone inside the campaign, not cancellation of EMF15/EMF16 or a claim the whole campaign is finished. The full acceptance contract below retains those outcomes.
+The basic **AI authoring controller is part of MVP**; broader FL automation is later. Mission Control integration is only after the standalone system is proven. This is a delivery milestone inside the campaign, not cancellation of EMF15/EMF16 or a claim the whole campaign is finished. The full acceptance contract below retains those outcomes.
 
 ## Scope and authorization
 
@@ -25,17 +25,17 @@ Read [Product goal](../PRODUCT_GOAL.md), [First playable](../FIRST_PLAYABLE.md),
 
 Actual workstation, FL version, musical assets and Mission Control interface must be inspected when implementation starts. Published upstream documentation does not prove their installed state.
 
-## Delivery milestones
+## Delivery milestones — superseding implementation order
 
-**M1 — audible proof:** EMF01–EMF05. Two recordings, one credible procedural identity, variations, a roughly twenty-minute controlled journey, manual state/hold and deliberate handoffs. A minimal actual MC state adapter is included where available; simulation is labeled and cannot satisfy real integration. Review the result before broadening.
+**M1 — three-layer standalone MVP:** EMF01 (environment), EMF02 (two original recordings and palette), EMF03 (one renderer), **EMF15 early** (small Visual Basic AI-to-FL content controller), EMF04 (procedural generator + DJ + standalone app), EMF05 (actual listening/scaffold review). The app requests next song, genre and state; the DJ transitions recorded A → procedural → different recorded B. One real agent-caused editable FL change and verified export is required.
 
-**M2 — usable Mission Control pilot:** EMF06–EMF14 plus their targeted runtime/listening checks. Several musical families, small approved pack, simple controls, history, real MC integration and failure isolation. No FL MCP or model dependency for listening. Pilot acceptance is scoped; it is not the final campaign/release gate.
+**M2 — harden and broaden:** EMF06–EMF13 extend imported content, state, variations, app, DJ history and transition options without blocking M1.
 
-**M3 — authoring and production:** EMF15–EMF16. Retain bounded FL automation and optional production-job isolation. Advance a narrow authoring helper only when a concrete fixture-production bottleneck warrants it.
+**M3 — integrate Mission Control afterward:** EMF14 uses the **already working** request contract. EMF16 optional production jobs can wait.
 
-**M4 — assembled qualification and acceptance:** EMF17–EMF19. Full reviewed scope, Windows evidence and explicit owner handoff.
+**M4 — assembled qualification:** EMF17–EMF19. Broader genre coverage, all-DAW automation, vocals and three-day variety stay later.
 
-The twenty stage identities remain useful checkpoints, not twenty independent product launches or mandatory chats. Stage count is not an effort estimate. All future work below is still planned.
+These 20 stage IDs are stable historical identities, **not strict execution order**. EMF15 is intentionally early. M1 scoped MVP is distinct from completing the entire campaign.
 
 ## Stage map and sole status owner
 
@@ -45,8 +45,8 @@ The twenty stage identities remain useful checkpoints, not twenty independent pr
 | **EMF01** | PLANNED | Campaign adequacy review | EMF00, actual environment intake | Bounded KEEP/CHANGE/DEFER findings and the smallest audible investigation. This paper review does not close the host-aware gate. |
 | **EMF02** | PLANNED | Production and fixture baseline | EMF01 | Small eligible original fixture set, sound palette, actual production inventory and one repeatable export; manual FL work is valid. Broader families are completed before M2. |
 | **EMF03** | PLANNED | Audio backend decision | EMF01, basic EMF02 fixtures | Investigate Web Audio first; select one renderer using timing/lifecycle/resource evidence. Native only if justified. |
-| **EMF04** | PLANNED | Executable scaffold | EMF02–03 | One playback owner/clock, basic control and an audible recorded → procedural → different-recording proof, with minimal MC explicit-state route or visibly incomplete simulation. |
-| **EMF05** | PLANNED | Scaffold correctness and efficiency review | EMF04 | Review actual ownership, musical proof, callbacks, recovery, consumer path and simpler options before dependent breadth. |
+| **EMF04** | PLANNED | Small working standalone app | EMF02–03 and early EMF15 | Verified real FL sound used by one procedural recipe; basic DJ transitions recorded A → procedural → recorded B and handles test-app state/genre/next-song requests. |
+| **EMF05** | PLANNED | MVP audio/scaffold review | EMF04 | Observe the entire creation → playback → transition sequence; inspect code and actual sound, retain specific corrections. |
 | **EMF06** | PLANNED | Versioned library and importer | EMF05 | Readiness-dependent metadata, hashes, intended-use eligibility, cues and useful errors; no mandatory annotation wall. |
 | **EMF07** | PLANNED | Transport and state lifecycle | EMF05–06 | Requested/planned/audible state, musical dwell, bounded wait, hold, duplicate/revision/expiry and restart behavior. |
 | **EMF08** | PLANNED | Manual listening app | EMF07 | Simple MC-facing panel plus advanced lab, pending display, skip/favorite, save-vibe and accessible controls. |
@@ -55,9 +55,9 @@ The twenty stage identities remain useful checkpoints, not twenty independent pr
 | **EMF11** | PLANNED | Hybrid musical handoffs | EMF09–10 | Generalize the small proof within supported content; verify shared context, bass/vocal/tail ownership and latency alignment. |
 | **EMF12** | PLANNED | DJ selection and persistent history | EMF11 | Deterministic eligibility/recency/preference rules, fixed-state identity changes, replayable versions/seeds and bounded logs. |
 | **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
-| **EMF14** | PLANNED | External API and playback MCP | EMF07–13 | Harden the early adapter: actual Mission Control consumer, shared contract, retry/conflict/reconnect/hold, failure isolation and supported playback-agent tools. |
-| **EMF15** | PLANNED — after M2 | Bounded FL Studio MCP bridge | EMF02, EMF05 | Actual capability discovery, supported project-copy edit and artifact readback, including uncertain-outcome reconciliation. |
-| **EMF16** | PLANNED — after M2 | Optional production-job boundary | EMF06, EMF15 | One selected production route or explicit unsupported provider state; preparation, cancellation, provenance and review cannot interrupt playback. |
+| **EMF14** | PLANNED — after MVP | Mission Control adapter and playback MCP/API | EMF05 and necessary state paths | MC sends the same state/genre/next-song commands to the proven DJ; manual requests first, optional activity mapping later. |
+| **EMF15** | PLANNED — early MVP | Visual Basic AI/FL Studio controller and bounded MCP/script path | EMF01–02 | Tiny VB.NET UI and one supported Codex/Claude workflow make editable musical content in disposable FL project and produce verified WAV/loop; manual export permitted if clearly required. |
+| **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
 | **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
 | **EMF18** | PLANNED | Windows listening and operational qualification | EMF17 | Named environment, real work sessions, recovery/load evidence and scope-matched endurance. |
 | **EMF19** | PLANNED | Owner acceptance and release handoff | EMF18 | Explicit listening decision, accepted limits, verified target state, setup/known issues and selected next work. |
@@ -105,7 +105,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 EMF00's original documentation result is preserved. This revision adds [EM-REVIEW-001](../reviews/MISSION_CONTROL_FIRST_REVIEW.md), answers forty questions, retains ten strengths and changes sequencing around first sound and MC. No implementation stage or runtime completion check has been closed. No audio was generated, rendered or listened to; no local environment/MC source integration was performed. Native board filing is unavailable here; readable owners are used.
 
-Next: when implementation is selected, EMF01 inspects the actual environment, then EMF02/EMF03 prepare the small musical proof. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
+Next: EMF01 inspects the actual FL/agent/audio environment; then EMF02/EMF03 prepare content/backend, **early EMF15** establishes the AI-to-FL controller, and EMF04 proves the standalone app and DJ. No MC integration until M1 works. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
 
 ## Resume and closeout
 

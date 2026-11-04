@@ -33,3 +33,11 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 Actual palette/family preferences, default dwell/contrast/variation, renderer behavior, host/plugin capabilities, resource budgets and first distributable fixture pack need experiments. Project/code/content licenses and any selected voice/model route remain explicit decisions. None is silently resolved by calling a repo public or by this review naming a candidate.
 
 [EM-REVIEW-001](reviews/MISSION_CONTROL_FIRST_REVIEW.md) answers the forty scrutiny questions and names checks that could change these decisions. [First playable](FIRST_PLAYABLE.md) and [Delivery plan](DELIVERY_PLAN.md) translate them into a smaller path to sound. The full [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) retains status and acceptance authority.
+
+## Owner narrowing — standalone MVP, 2026-11-03
+
+**EM-DEC011:** Standalone creation controller, procedural performer and DJ plus a tiny app precede Mission Control. This supersedes the previous MC-first *delivery order*, not the neutral interfaces.
+
+**EM-DEC012:** “Visual Basic AI controller” is provisionally interpreted as a tiny VB.NET Windows UI using one real Codex/Claude → FL Studio editable creation/export route. If the owner meant a visually basic controller rather than the VB.NET language, substitute its shell without changing the audio/content contract.
+
+**EM-DEC013:** Start with two compatible recordings, one original sound palette/recipe, and approved transitions. Defer broader automation, genre mixing, vocals and 72-hour variety. No runtime work has yet passed.

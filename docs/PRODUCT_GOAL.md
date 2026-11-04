@@ -3,9 +3,12 @@
 Document ID: `EM-D001`  
 Status: preliminary design, revised 2026-11-03 after the owner's Mission Control-first clarification. No runtime qualification is claimed.
 
+
+> **Current scope override (2026-11-03):** [First playable](FIRST_PLAYABLE.md) defines the standalone three-layer MVP. Existing MC-first language in older background sections describes the future consumer, not the initial implementation order. Mission Control integration must wait until the standalone test app works.
+
 ## Purpose and first product
 
-Build an enjoyable state-driven music player/generator for **EUTONOS Mission Control**. It combines the quality of authored recordings, the development of a procedural performer and the selection/transition judgment of a DJ. The initial value is a soundtrack people choose to use while working in Mission Control, not a general streaming service or a standalone production platform.
+Build an enjoyable **standalone three-layer** music player/generator, then integrate it into **EUTONOS Mission Control**. It combines the quality of authored recordings, the development of a procedural performer and the selection/transition judgment of a DJ. The initial value is a soundtrack people choose to use while working in Mission Control, not a general streaming service or a standalone production platform.
 
 The owner explicitly leaves room for something bigger if it is excellent. Preserve a neutral state interface, versioned assets/recipes and separable authoring because they already help this use case. Do not prebuild speculative accounts, cloud services, marketplaces, multiple DAWs or multiple production renderers. A concrete new consumer or recurring need can justify a later expansion.
 

@@ -3,6 +3,10 @@
 Document ID: `EM-D004`  
 Status: revised proposal, 2026-11-03. No described runtime is implemented here.
 
+## Current MVP sequence
+
+The small **Visual Basic AI/FL Studio controller → procedural generator → DJ + standalone test app** is the first build. Mission Control is a later caller of the same DJ requests. All earlier statements favoring MC integration inside the first proof are superseded by [First playable](FIRST_PLAYABLE.md).
+
 ## Main decision
 
 Build the Mission Control soundtrack with **one renderer, one playback owner and one musical clock**. Keep authoring outside playback. Start the audible investigation with Web Audio; select the pilot renderer in EMF03 using actual evidence. This revises the initial presumption that a compiled native worker was required from the start. Native playback remains a candidate, not a rejected future.
@@ -34,7 +38,7 @@ Combine ordinary control, catalogue and selection work where practical. These bo
 
 ## Mission Control adapter and control service
 
-Mission Control is the first real consumer, not an eventual phase after a generic platform. Begin with explicit state controls, then a conservative optional adapter for verified aggregate activity signals. Do not read typing content or assume global native-app observation. Adapter signal freshness and smoothing are separate from the engine's musical dwell and scheduling. Music failure must leave work controls and messaging usable.
+The standalone test app is the first real consumer. Mission Control is integrated only after the independent music system works. Begin with explicit state controls, then a conservative optional adapter for verified aggregate activity signals. Do not read typing content or assume global native-app observation. Adapter signal freshness and smoothing are separate from the engine's musical dwell and scheduling. Music failure must leave work controls and messaging usable.
 
 Control owns requested targets, revision checks, manual priority, hold and command receipts. The audio owner supplies audible state. The browser cannot infer completion from accepting a request. A thin single-listener façade can cover capabilities/state, intent, transport, hold and operation lookup without implementing every proposed MCP or multi-client feature first. It must retain the correctness semantics in [State/API](STATE_AND_CONTROL_API.md).
 
