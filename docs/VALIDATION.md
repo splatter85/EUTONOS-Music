@@ -1,91 +1,78 @@
 # Validation and listening evidence
 
 Document ID: `EM-D008`  
-Status: proposed qualification plan, 2026-11-03. Documentation checks are separate from these future runtime checks.
+Status: proposed qualification plan, revised 2026-11-03. Documentation checks are not runtime or listening tests.
 
 ## Evidence categories
 
-Keep four categories visible: documented upstream capability, inspection-based inference, measured implementation behavior, and human listening judgment. A test can establish timing without establishing taste. A listening preference can establish usefulness for a listener without establishing portability to every machine or genre.
+Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.
 
-Every qualification record names the commit, backend, OS/hardware, sample rate/buffer settings, asset and recipe versions, configuration, event sequence, and evidence location. Preserve unresolved defects and limits rather than averaging them into a passing score.
+Use READY / REVISE / BLOCKED / NOT VERIFIED for required musical outcomes with a short observation and next action. Engineering checks can retain their test-specific pass/fail result. Do not average a required failure into a passing taste score. Never claim an agent listened based on MIDI, screenshots or signal statistics.
 
-## Small meaningful fixtures
+## First proof, then pilot fixtures
 
-The first campaign should use rights-cleared material that exercises real boundaries:
+The small [audible proof](FIRST_PLAYABLE.md) needs two distinct recordings, one good procedural identity with multiple variations, deliberate handoffs, rise/release, hold and a repeatable state trace. Use aligned eligible assets and known tempo/meter/harmony. Roughly twenty minutes is a proposed experiment format, not an evidence-derived guarantee. Placeholder signals may verify timing but cannot satisfy musical acceptance.
 
-- Two related recorded pieces and at least one synchronized stem bundle.
-- Three musically distinct recipe families with a documented sound palette.
-- Multiple reviewed seeds at low, medium and high supported intensity.
-- A direct phrase mix, a role substitution, a rhythm/texture bridge, and an intentionally incompatible pair.
-- A phrase with a pickup or effect tail; a vocal fixture only if its rights and source are clear.
-- A tempo-changing or non-4/4 fixture to ensure the contract fails explicitly or handles it, rather than silently assuming a constant 4/4 grid.
+The usable pilot adds at least three distinct families, several preselected/held-out seeds across supported intensities, a reviewed stem bundle, a non-direct bridge, a deliberately incompatible pair and a pickup/tail case. A non-4/4 or changing-tempo fixture must either work under a stated implementation or be explicitly rejected/fallbacked. It must not silently be interpreted as fixed 4/4. A vocal fixture is optional until an eligible source is selected.
 
-The implementation may initially support only a subset. Unsupported cases must be rejected or routed to a documented fallback. Fixtures demonstrate scope; they do not stand in for the eventual broad library.
+Fixture readiness is operation-specific: playable, cue-mixable or hybrid-ready, as defined in First playable. Unknown harmony prevents unsupported pitched accompaniment but does not require rejecting ordinary permitted listening. Review generated recipe envelopes rather than claiming every possible seed was heard; novel model-rendered assets remain separate review candidates.
+
+## Before broad infrastructure
+
+First run two diagnostic comparisons: one musical pattern through different palettes, and different patterns through one palette, at matched gain. Then hear recorded → procedural → different recorded with context before and after each handoff. If the music is poor, identify composition, sound, arrangement, mixing or transition causes and change the smallest relevant piece. Do not respond by building a larger framework before another audition.
+
+EMF05 reviews the actual scaffold and this evidence. This document-only update does not satisfy that gate, nor the host-aware EMF01 or assembled EMF17 review.
 
 ## Engineering checks
 
-| Area | Meaningful check | Required outcome |
+| Area | Exercise | Required outcome |
 | --- | --- | --- |
-| Audio clock | Repeat a scheduled multi-source transition and compare intended/rendered positions | Timing stays within the backend's predeclared tolerance with no accumulating musical drift. |
-| Callback work | Inspect and instrument the render path under load | No model/network/file-write work or unbounded allocation/blocking in the real-time callback. |
-| Stem alignment | Load an aligned bundle and repeat substitutions | Shared timeline preserved; no unintended offset, restart, or skipped pickup. |
-| Gain/tails | Render transitions with full context and measure output | No unintended clipping, discontinuity or chopped tail; listening confirms balance. |
-| Phase/low end | Exercise overlapping bass and processed stems | Plan transfers roles intentionally; reviewed stretch path preserves acceptable cohesion. |
-| Requests | Duplicate, reorder, expire and retry intents | Idempotent receipts, explicit conflicts, no duplicate audible operation. |
-| Holds | Change external requests while holding recipe/state | Hold scope is respected; release produces a fresh planned transition. |
-| Source failure | Missing/corrupt/unavailable next asset | Existing valid continuation or explicit fallback; visible failure reason. |
-| Model failure | Timeout/crash/late completion of producer job | Playback remains independent; only eligible reviewed output reaches the library. |
-| Device/lifecycle | Disconnect device, suspend/resume, close/reopen browser | Defined stopped/resumable state; one playback owner and no unexpected duplicate output. |
-| Recovery | Restart during queued and active operations | New engine generation; stale commands rejected; unknown authoring outcomes reconciled. |
-| Catalogue | Modify media or metadata revision | Dependent transition/review scope is invalidated or rechecked; old evidence remains historical. |
-| Graph | Add an isolated asset or one-way dead end | Visible reachability/coverage issue; no invented compatibility. |
-| Eligibility | Mark an item private-only or unreviewed | Public pack/export/automatic-selection policies respect the intended scope. |
-| Reproduction | Replay seed/versions/event sequence | Same symbolic plan where promised; exact audio only where separately supported. |
+| Audio clock | Repeat multi-source schedules against rendered positions | Predeclared environment-specific timing tolerance; no accumulating musical drift |
+| Render path | Inspect/instrument under load | No model/network/file-write work or unbounded blocking/allocation on the audio deadline |
+| Stems and latency | Repeat substitutions and pickups | Correct frame mapping, latency compensation and musical offsets |
+| Gain and tails | Measure/hear complete transitions | No unintended clipping/discontinuity/chopped tails; acceptable balance |
+| Low end and vocals | Deliberately conflicting layers | Explicit ownership and reviewed overlap or rejection |
+| Requests | Duplicate, stale, reordered, expired and rapid intents | Original receipt recovery, explicit conflicts, no duplicate audible effect |
+| Holds and wait | Automatic requests during hold; unachievable target | Manual control wins; fresh intent on release; bounded and visible wait |
+| Source failure | Missing/corrupt/unprepared next asset | Valid continuation, alternate or intentional ending; no invented loopability |
+| Production failure | Stall/kill a producer job | Prepared playback remains independent; unreviewed output never silently replaces assets |
+| Lifecycle | Background, close/reopen page, duplicate tab, sleep/resume, device loss | Actual backend behavior disclosed; one owner, no surprise restart |
+| Recovery | Restart during queued/active effects | New engine generation; stale plans refused; uncertain authoring reconciled |
+| Data/versioning | Change a media/manifest/recipe revision | Current applicability rechecked; historical evidence preserved |
+| Graph/coverage | Isolated source, one-way route, strict exclusions | Visible reachability and omission reasons without violating exclusions |
+| Rights/trust | Private-only media, path escape, executable recipe instruction | Correct intended-use boundary, restricted roots and allowed operations |
+| Reproduction | Replay versions, seed and trace | Same symbolic plan where promised; exact audio only where separately supported |
+| MC isolation | Disconnect/crash music while work controls are used | Mission Control navigation, messaging and work remain usable |
+| Adapter inference | Agent flood, reading pause, stale signals | No content collection or unsupported mental-state/engagement conclusions |
 
-Fix the measured environment and tolerances before a qualification run. If a tolerance changes, record why and rerun the affected evidence. Do not repeatedly broaden tests after the concrete risk is resolved.
+Choose measured resource/timing budgets on the named reference environment before qualification. Measure ordinary playback alongside representative development load and with optional generation both off and on. A GPU-equipped development workstation is not evidence of acceptable resource use elsewhere.
 
-## Listening review
+## Listener evidence
 
-Use matched playback gain for comparisons and enough context to hear a phrase develop. Review the actual rendered output, not only MIDI or spectra. Mark each dimension **acceptable**, **needs revision**, **blocked**, or **not evaluated**, with a short observation and next action.
+Review groove, harmonic/melodic relationship, sound, arrangement, transition, perceived state fit, useful variety and work-session distraction. Include sufficient musical context. Record who actually listened and to which version. Preserve adverse seeds and failures rather than only flattering excerpts.
 
-| Dimension | Listening questions |
-| --- | --- |
-| Groove | Does the rhythm feel intentional? Do accents and timing support the style? |
-| Harmonic/melodic coherence | Do parts relate? Does a motif develop and return? Are tensions purposeful? |
-| Sound quality | Do instruments have convincing tone and expression? Are artifacts distracting? |
-| Arrangement | Does the piece move at a useful pace with enough repetition and contrast? |
-| Transition | Does the next passage feel connected? Are phrase, bass, vocal and tail handoffs convincing? |
-| State fit | Is the perceived energy/texture appropriate without relying on louder playback? |
-| Variety | Are different seeds/families perceptibly different in useful ways? |
-| Work-session usefulness | Does the soundtrack remain enjoyable without demanding unwanted attention? |
+Compare fixed-state and adaptive playback using the same relevant pack/settings and matched playback levels; counterbalance/repeat sessions where practical. A chosen ordinary mix can serve as a practical comparator. This is a small personal product experiment, not a controlled claim of improved cognition or productivity. Track enjoyment, unwanted switches, mute/hold/skip reasons, distraction and whether the listener voluntarily uses it again. Session duration and typing speed alone do not establish benefit.
 
-A suggested initial audition set is three recipes, three selected seeds per recipe, and three supported intensity levels. This is a proposed sampling plan, not a statistical quality guarantee. Include at least a few seeds chosen without listening first so the review does not only retain a flattering demonstration.
+## Real consumer and onboarding
 
-## Long runs
+A deterministic test client verifies the contract, not the actual Mission Control integration. A usable pilot requires the real MC path on an inspected current version, with pending/audible status, manual priority, disconnect/reconnect and failure isolation. Simulation remains NOT VERIFIED for that requirement. This documentation task did not inspect or modify separate MC source.
 
-Use increasing duration only to resolve a remaining endurance or variety risk:
+Test a fresh listening setup: an approved starter pack, explicit Play, no account/DAW/model requirement, simple defaults, accessible keyboard/focus behavior, clear missing-asset/unsupported-control errors and one playback owner. Production setup is not part of listening onboarding.
 
-1. A short controlled run proves basic operations and transition types.
-2. A real work-session run reveals interaction and repetition issues.
-3. A longer unattended soak checks resource limits, queue behavior and catalogue traversal.
-4. A 72-hour run is a later long-horizon qualification with explicit eligible-catalogue and variety goals.
+## Longer runs and variety
 
-A small fixture library can qualify endurance while repeating music; label that result accordingly. It cannot pass the three-day musical-variety goal. A large library can pass coverage without making every transition pleasant; listening evidence remains required.
+Use a short musical proof, real work sessions, longer technical soak and finally a later 72-hour qualification as the relevant risks justify them. A small repeating corpus can test endurance but cannot satisfy three-day breadth. A large reachable catalogue can still be boring; actual listening is required.
 
-Capture source/recipe/motif coverage, repeats by category, selection reasons, rejected candidates, transition failures/fallbacks, underruns, memory/cache/disk trends and producer-job interference. Logs must be bounded and retained outside real-time audio work.
+Capture bounded logs for identity/motif/recipe/palette repetitions, eligibility/coverage, rejected candidates, transitions/fallbacks, underruns, memory/cache/disk trends and production interference. Broad touring is opt-in and constrained by listener exclusions. Examine representative intervals across the run, not only its opening.
 
-## FL bridge qualification
+## Authoring and voice checks
 
-Use a disposable copy of an original project. Record the actual FL version, scripting API capabilities, required user actions and plugins used. Demonstrate capability discovery, a bounded note edit, stale-project rejection, operation-status reconciliation, an explicit apply gate where needed, a render/export workflow, and the resulting audible asset.
+EMF15 uses a disposable project copy and actual FL build/plugins. Verify discovered operations, intended-target editing, stale-project refusal, original-operation reconciliation, export workflow and the resulting audible artifact. An MCP response or created file is not proof of the desired musical result.
 
-Readback must inspect the affected scope or produced artifact. A keyboard shortcut firing is not proof the right project received the edit. A successful render file existing is not proof it contains the intended musical change. See [FL integration](FL_STUDIO_INTEGRATION.md).
+Selected model/voice routes pin code/checkpoint/dependencies and intended-use terms. Measure time/memory on the actual host and hear pronunciation, pitch/timing, expression, continuity, artifacts and repair effort. Test a revision, not only a first generation. These later checks do not block the first instrumental listening proof.
 
-## Model and voice qualification
+## Decisions from failed tests
 
-Pin the code/checkpoint/dependency versions and exact intended-use eligibility. Measure time and memory on the selected machine. Compare pronunciation, note/timing adherence, phrasing, voice continuity, artifacts, stem bleed and repair effort. Test at least one revision request, not only first-pass generation. See [Vocal production](guides/VOCAL_PRODUCTION.md).
+Prefer the fixed mode when it wins the listening comparison; repair a weak recipe rather than call seed count success; choose native audio if a required browser behavior fails; automate a narrow FL task when it is the actual bottleneck. Each new experiment must identify the decision it can change. KEEP findings create no mandatory cleanup work; CHANGE addresses demonstrated problems; DEFER retains worthwhile ideas outside the current boundary.
 
-## Acceptance records
-
-A record contains the outcome, evidence, current limits and the next action. For a failure, distinguish reproduced defect, inspection-based risk, and suggested improvement. A later file hash mismatch does not erase the historical observation; it means current applicability needs fresh judgment against the new revision.
-
-Campaign reviews use **KEEP / CHANGE / DEFER**. They do not silently expand scope or treat a speculative enhancement as a blocking defect. The owner listening gate decides whether the supported musical experience is useful enough for the initial release.
+A later source hash mismatch does not erase an earlier event. Preserve the original evidence and separately assess relevance to the current implementation. Campaign milestones, Git publication, target integration, runtime qualification and owner acceptance remain distinct.

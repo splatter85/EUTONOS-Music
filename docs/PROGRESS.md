@@ -51,3 +51,16 @@ The public files contain original planning/educational text and fictional data. 
 ## Resume
 
 Read [AGENTS.md](../AGENTS.md), [Current Tasks](CURRENT_TASKS.md), the EMF campaign and the documents attached to the selected stage. Recheck the actual repository and workstation before converting proposals into implementation claims. Preserve this checkpoint as historical evidence and record later delivered behavior in a new entry.
+
+
+## 2026-11-03 — Mission Control-first scrutiny and sequence revision
+
+Review input: `ee7125e95a0e73a3e6616e7832602b63778e2b03`. The earlier sections above are the original baseline record, preserved byte-for-byte; they are historical evidence, not tests rerun during this review.
+
+The owner clarified that MC music is the first product while larger opportunity remains possible. [EM-REVIEW-001](reviews/MISSION_CONTROL_FIRST_REVIEW.md) answers forty questions, labels the missing prior-question reconstruction honestly and retains ten design strengths. [First playable](FIRST_PLAYABLE.md) now defines the thin audible proof and useful MC pilot. Canonical goals, architecture, delivery, catalogues, UI, validation, decisions, instructions and current campaign/queue reflect that sequence.
+
+The change is dependency order and acceptance focus, not removal of the FL MCP bridge, vocals, local models or broad library. EMF00–EMF19, EMF-C01–C12 and requirement/feature/capability IDs are retained. EMF01–EMF19 remain planned; all runtime checks remain pending. A single-assistant documentation review does not satisfy an independent or environment-aware implementation gate.
+
+Validation for this revision: passed for the 16 changed/new Markdown files: 119 relative links resolve against the pinned baseline path inventory plus the candidate files; the one changed-file fenced block closes; source-reference definitions resolve; all 40 numbered answers and ten strengths are present; 14 requirements, 16 features, 12 capabilities, 20 stage IDs and 12 campaign check IDs are retained; no future runtime stage/check was marked complete. The original Progress prefix matches its source-pinned Git blob exactly. Manual consistency review checked pilot-versus-full-campaign scope, listener priority, renderer qualification and retained authoring work. Unchanged guides/examples were not re-tested in this turn. No independent reviewer was available for this revision.
+
+The commit containing this entry is the source checkpoint. Final handback reports only publication/readback actually observed. No runtime code, audio, assets, model/plugin installation, FL operation, actual MC connection or listening result was produced. No separate repository or workstation was changed. Next implementation pickup remains EMF01 with the small audible proof as its target; overall implementation effort is unknown.

@@ -1,184 +1,118 @@
 # Preliminary architecture
 
 Document ID: `EM-D004`  
-Status: proposed design, 2026-11-03. No component below is implemented in this repository.
+Status: revised proposal, 2026-11-03. No described runtime is implemented here.
 
 ## Main decision
 
-Use a **local playback engine with a browser control interface** as the reference architecture. A browser-only renderer remains an option to measure in the initial backend spike. The system should not require a DAW, GPU model, or agent session merely to play an already approved library.
+Build the Mission Control soundtrack with **one renderer, one playback owner and one musical clock**. Keep authoring outside playback. Start the audible investigation with Web Audio; select the pilot renderer in EMF03 using actual evidence. This revises the initial presumption that a compiled native worker was required from the start. Native playback remains a candidate, not a rejected future.
 
-The musical director chooses a future arrangement. The audio engine performs it against one sample clock. Authoring tools produce assets and recipes ahead of time. This separation allows rich sound without asking the browser or a language model to invent and render the next beat under a deadline.
+Web Audio documents scheduled sample/synthesis playback. Browser lifecycle can suspend or discard pages, so background/persistence behavior must be tested rather than inferred. Choose native output when a required lifecycle, resource or audio behavior cannot be met, or when playback independent of a closed browser becomes required. Do not implement both production renderers before one works. [A1][A2]
 
-## Responsibilities
+[First playable](FIRST_PLAYABLE.md) defines the small proof and usable pilot. The full library, state, authoring and vocal documents describe the wider contract, not mandatory simultaneous implementation. Older authoring guidance describes a native deployment; its native-service wording applies when that renderer is selected, not as a separate prerequisite for the browser proof. This document owns the current backend decision.
+
+## Ownership, not a fleet of services
 
 ```mermaid
 flowchart TD
-    UI["Browser controls"] --> CTRL["State and control service"]
-    EXT["External apps and playback MCP"] --> CTRL
-    CTRL --> DJ["DJ and arrangement planner"]
-    CAT["Library, recipes and history"] --> DJ
-    DJ --> AUDIO["Audio scheduler and mixer"]
-    PROC["Procedural performer"] --> AUDIO
-    DJ --> PROC
-    AUDIO --> OUT["Local audio device"]
-    FL["FL Studio and authoring MCP"] --> JOB["Production and import jobs"]
-    MODEL["Optional local models or agent sessions"] --> JOB
-    JOB --> REVIEW["Analysis and listening review"]
-    REVIEW --> CAT
+    MC[Mission Control adapter] --> CTRL[Control policy and receipts]
+    UI[Listening lab] --> CTRL
+    CTRL --> DJ[DJ and arrangement planner]
+    CAT[Versioned content and recent history] --> DJ
+    DJ --> AUDIO[One selected renderer and audio clock]
+    DJ --> PROC[Recipe performer]
+    PROC --> AUDIO
+    AUDIO --> OUT[Selected output]
     AUDIO --> CTRL
+    FL[FL Studio and optional authoring MCP] --> JOB[Production jobs]
+    MODEL[Optional model or agent workflow] --> JOB
+    JOB --> REVIEW[Technical and listening review]
+    REVIEW --> CAT
 ```
 
-The boxes describe ownership boundaries, not a requirement for a separate process or microservice for each box. The first implementation should combine ordinary control/catalog/planning work in one service and keep only real-time rendering isolated where needed.
+Combine ordinary control, catalogue and selection work where practical. These boxes define responsibilities, not mandatory processes. A native audio worker is justified by the selected renderer; a Python service is an authoring/control candidate, not a compulsory dependency of a browser-only proof. Start with versioned files and a small bounded history; introduce SQLite when query/persistence needs justify it, without creating a second asset authority.
 
-### Control service
+## Mission Control adapter and control service
 
-Owns the requested state, its revision, manual overrides, source authority, settings and command receipts. It reports the audible state supplied by the engine rather than guessing that an accepted command has already taken effect.
+Mission Control is the first real consumer, not an eventual phase after a generic platform. Begin with explicit state controls, then a conservative optional adapter for verified aggregate activity signals. Do not read typing content or assume global native-app observation. Adapter signal freshness and smoothing are separate from the engine's musical dwell and scheduling. Music failure must leave work controls and messaging usable.
 
-State intent is consumer-neutral. The first test app supplies it directly. A later Mission Control adapter can derive it from activity without changing the music engine. An incoming “Surge” request is not an instruction to increase loudness or discard the current musical phrase.
+Control owns requested targets, revision checks, manual priority, hold and command receipts. The audio owner supplies audible state. The browser cannot infer completion from accepting a request. A thin single-listener façade can cover capabilities/state, intent, transport, hold and operation lookup without implementing every proposed MCP or multi-client feature first. It must retain the correctness semantics in [State/API](STATE_AND_CONTROL_API.md).
 
-### DJ and arrangement planner
+## DJ and arrangement planner
 
-Owns candidate selection, recency and diversity policy, compatible routes through the library, and the next prepared mix plan. It chooses between recorded and procedural sources, including a procedural bridge used to reach a recording that cannot be mixed directly.
+The initial DJ is deterministic: filter eligible sources, then select by state fit, recent identity/motif use, explicit preference and compatible route. Start with a few authored transitions. A general transition graph and coverage diagnostics develop in EMF13; neither all-pairs analysis nor model-based recommendation blocks the proof.
 
-It operates on phrase/section timescales. It can consider several alternatives and explain why one was selected. It must prepare an executable plan before asking the audio engine to use it. When no suitable plan is ready, the current approved material continues through a valid continuation or an explicit fallback.
+The planner operates over phrases/sections, prepares assets before committing and exposes why a transition waits. It can develop within a state, retain an identity across state changes, or plan a larger change. Dwell begins at audible entry. Give pending transitions a stated maximum-wait policy and a fallback; do not let musical patience become indefinite refusal. Manual stop/mute is not phrase-quantized.
 
-### Procedural performer
+When a target is unachievable, prefer a valid current continuation, prepared alternate, bridge or deliberate ending/fade. A non-loopable source cannot be continued indefinitely. A lost production job or missing next asset does not excuse arbitrary incompatible playback.
 
-Owns notes, rhythmic choices, expressive controls and bounded synthesis/sample playback inside a recipe. It receives the same musical timeline, harmonic plan and role allocation used by recorded sources.
+## Procedural performer and sound
 
-It cannot independently change the global key or tempo while accompanying a recording. The arrangement plan may grant it a new harmonic section or a transition corridor. Recipes and seeds are versioned so a performance can be reproduced at the symbolic level; byte-identical audio requires additional control of plugins, DSP versions, assets and environment and is not assumed.
+A recipe defines groove, harmony, register, motifs, articulation, development and supported control envelopes; the palette supplies actually usable sounds. Use sample-based drums and expressive bass/harmony/melodic roles or suitable synthesis. Placeholder oscillators can test timing, but do not establish the quality result.
 
-### Audio engine
+The performer shares the current tempo/meter/chord region and role plan with recordings. It cannot independently change global harmony or tempo during accompaniment. Review recipe/version/palette and bounded parameter behavior using selected and held-out seeds. Do not require a human to approve every possible future note sequence, and do not mistake sampled testing for proof all seeds sound good. Runtime checks constrain invalid notes, missing assets, excessive voices and unsafe plans; artistic quality still needs listening.
 
-Owns the sample clock, transport, scheduled commands, output buffering, decoding/streaming, gain ramps, effect tails, voice limits and the active mix. Control/network/model work stays outside its real-time callback.
+FL supplies editable compositions, stems, sections, transitions and eligible sounds. Exported audio carries a rendered sound; it does not install FL plugins in the player. Manual production and import are valid first routes. [A3]
 
-One engine owns audible playback for a session. The initial backend permits **one audible session per selected output device**, including auditions. Starting another session or audition requires an explicit ownership transfer or returns a conflict; it cannot silently mix independent sessions. Browser tabs subscribe to the existing session. Opening a second tab must not start another soundtrack. Device changes and suspend/resume are explicit states, with a short bounded fade/recovery policy and visible status.
+## Shared musical timeline and handoff
 
-### Library and production workers
+Execution uses the renderer's authoritative audio timeline, mapped to sample positions and musical time. Wall clocks belong to logs. Represent sample rate, position, tempo/meter, transport status and engine generation. The first supported fixture can be constant-tempo 4/4; reject or explicitly fall back on unsupported meters/tempo maps, rather than silently misinterpreting them.
 
-The library stores immutable assets and versioned descriptions; a local index supports search. Production workers run expensive or unreliable tasks: DAW rendering, model inference, analysis, sample conversion, offline time stretching and derived previews. Worker completion submits candidates for validation and listening review. It does not silently replace material in the live set.
+Each prepared plan binds source/recipe revisions, frame offsets, musical cues, harmony, role assignments, permitted variations, gain/filter automation, tails, prepare deadline and fallback. Account for decoder, resampler, stretch, synthesis/plugin and buffer latency/padding. Do not erase intentional pickups or slow attacks while compensating processing latency.
 
-## Proposed implementation baseline
+Example: a recorded section approaches its reviewed exit; procedural percussion enters; bass ownership transfers at a defined boundary; the lead finishes while a related harmonic passage continues; another recording is introduced at its approved entry. The small proof constrains this context deliberately. Pitched accompaniment of arbitrary unknown recordings is not initially supported.
 
-These are starting candidates for EMF03, not installed dependencies or a locked stack.
+Sample-aligned scheduling does not guarantee waveform phase coherence. Avoid unreviewed low-end or lead/vocal doubling; inspect actual combinations. Harmony tags are leads, not a substitute for the chord region actually being overlapped. [Library/transitions](LIBRARY_AND_TRANSITIONS.md) owns full directed route and cue semantics.
 
-| Area | Small initial proposal | Reason and decision test |
+## Audio ownership and lifecycle
+
+One audible session owns the selected output, including auditions. Additional tabs observe/control it rather than start another player. An audition explicitly transfers ownership from a checkpointed main session and leaves an explicit resume choice. Native playback can remain running without the control tab only under a chosen policy. Browser-only playback must report its actual page dependency. Remote control does not imply remote audio streaming.
+
+Decode/preload outside the audio deadline; stream or bound residency for long content. Keep current and near-future samples resident with explicit limits. Do not put model calls, network access, filesystem writes, unbounded allocation or blocking control work in a real-time callback. Rate-limit production and analysis to protect ordinary development work. Native miniaudio is a documented playback/mixing candidate, not an adaptive music solution by itself. [A4]
+
+An accepted command is queued intent; scheduled/started/completed events identify exact plan and engine revisions. A restart creates a new generation; stale plans cannot execute against it. Persist only confirmed checkpoints and reconcile unknown effects. Default crash recovery is stopped/resumable, not unexpected loud playback. Device loss should expose suspended state and only recover to an available selected device.
+
+## Backend and processing decisions
+
+| Area | First choice to investigate | Condition for more machinery |
 | --- | --- | --- |
-| Browser UI | TypeScript with a small component layer | State controls, timeline and audition UI; avoid duplicating the planner in the frontend. |
-| Control/catalog/jobs/MCP | One Python service, local SQLite index, files for immutable media | Shares an ecosystem with FL Piano roll scripting and production tooling; measure startup and packaging. |
-| Real-time native output | A compiled audio worker, with C++/miniaudio as the leading small candidate | Playback, mixing and device support without putting Python or model work in the callback. |
-| Browser renderer comparison | Web Audio with AudioWorklet where custom DSP is needed | Useful for a portable audition build; compare lifecycle, memory, timing and background behavior. |
-| Time stretching | First use authored compatible tempos or cached variants; evaluate a dedicated library later | Quality, licensing, latency and multi-stem phase behavior require evidence. |
-| Model execution | Optional job adapters, separate environment/process | No model dependency for ordinary playback; isolate GPU memory and failure. |
+| Audition renderer | Web Audio, optional library for musical scheduling | Required background/device/resource behavior fails or independent native persistence is selected |
+| Pilot renderer | One winner from EMF03, not two implementations | Another measured consumer requirement warrants a port |
+| Catalogue | Versioned manifests plus small index/history | Query or persistence behavior justifies SQLite |
+| Time/pitch | Authored compatible tempos and prepared variants | A required transition needs reviewed independent time stretching |
+| Production | Existing FL workflow and editable scripts/MIDI | Repeated work justifies the bounded EMF15 bridge |
+| Models/voices | Off during ordinary playback | A selected production job has a useful tested result and applicable terms |
 
-Miniaudio documents cross-platform playback/capture, decoding and mixing, and offers a permissive license choice. Its callback documentation also identifies operations that must not run inside the callback. It is a candidate foundation, not a complete adaptive music engine. [A1], [A2]
+Changing buffer playback speed resamples the sound; do not present that as independent pitch-preserving tempo adjustment. Dedicated stretching requires its own quality, latency and license decision. [A5]
 
-AudioWorklet supplies audio processing outside the browser's main UI thread. It does not by itself solve lifecycle suspension, long-library memory, musical arrangement or recovery. [A3]
+## Persistence, trust and local access
 
-The backend spike should prefer the smallest solution that passes a two-deck/stem transition, a procedural voice test, bounded resource use, device recovery, and basic background operation. Do not build both production backends before one works. Record the decision and revisit only when an actual limitation warrants it.
+Retain immutable media hashes, versioned recipes/manifests, cue/review scope, saved vibes, preferences and bounded listening/operation history. A saved seed/setup is not necessarily a byte-identical audio replay; exact recordings need explicit rendering. Cache keys include asset/recipe/DSP/model/configuration versions where relevant. Do not evict active-plan assets.
 
-## Shared musical timeline
+Treat packs, metadata and lyrics as data. A declarative recipe runs through allowed operations and limits; arbitrary uploaded Python, plugins or shell commands require a separate explicit trust/install decision. Production outputs are candidates and cannot silently become live assets. Private source material never uploads merely because a repo is public or an agent requests it.
 
-Use a monotonic audio sample counter for execution and an explicit mapping to musical time. Wall-clock time is for logs, not for scheduling a beat.
+Playback MCP and authoring MCP have separate scopes. A music-state caller cannot edit an FL project. Prefer a local stdio MCP transport for an agent-launched adapter where appropriate; HTTP deployments must follow the selected MCP specification, including origin handling and loopback binding. Authenticate ordinary local writes, constrain paths to registered roots and never treat localhost as automatic authority. [A6]
 
-A transport snapshot contains sample rate, sample position, tempo map, meter map, bar/beat position, transport status, and a generation/revision number. Bar lengths are derived from meter; the core contract must not silently assume every genre uses 4/4.
+## Failure contract
 
-An arrangement plan adds:
-
-- Section identity and start/end positions.
-- Harmonic regions: key/mode where meaningful, chord timeline, tuning reference and confidence.
-- Instrument roles: who owns kick, sub/bass, harmony, lead and vocals during an overlap.
-- Motif/recipe identity, seed and variation permissions.
-- Allowed entry/exit cues, pickup notes and reverb/delay tail policy.
-- Timing for automation, prepared assets, fallback and cancellation points.
-
-Each prepared mix plan maps source-frame offsets to the transport and accounts for decoder, resampler, stretch, plugin and buffering latency/padding before its execution boundary. Intentional pickups and instrument attacks are musical timing, not processing latency to erase. The backend spike includes an alignment fixture across recorded and procedural paths.
-
-The engine acknowledges the exact plan revision and scheduled audio start. “Accepted” means validated/queued; “started” and “completed” require engine events. If the plan is no longer valid at execution time, it is rejected or replaced through the documented fallback, not silently interpreted against a different clock.
-
-## Recorded sources
-
-Support three levels of control:
-
-1. **Finished recording:** least editable, but easy to listen to and catalogue. Transitions use approved cues, bounded processing and bridges.
-2. **Stem bundle:** synchronized parts with a shared timeline. The DJ can allocate roles and remove collisions during a mix.
-3. **Composable sections:** authored loops, variations, transitions and endings with metadata. The engine can construct a longer performance while preserving authored structure.
-
-A recording may have tempo changes, an uncertain downbeat, pickup notes, a non-looping tail, or a vocal extending beyond a nominal section. Metadata must represent these facts. Analysis can propose annotations; a creator can correct them. Low confidence narrows the allowed transitions rather than being hidden behind a numeric estimate.
-
-## Procedural sources
-
-A recipe defines musical behavior; a sound palette supplies the actual sonic material. The initial performer should support sample-based drums, a useful bass instrument, chord/pad material, and at least one expressive melodic role. Synthesis is allowed, but a small collection of unshaped oscillators is not the quality benchmark.
-
-Keep variation organized at several scales: expressive detail, pattern alternatives, motif development, section form, and recipe selection. A recipe is permitted only where it has been reviewed. A hard-techno recipe need not support every quiet state.
-
-The initial version should use deterministic symbolic choices and a bounded number of voices/effects. Later neural generations become prepared assets or plans, not privileged writes into the render callback.
-
-## The handoff that makes the hybrid work
-
-Suppose a recorded progressive-house section is ending. The next procedural section inherits its tempo, meter, harmonic context and a selected motif. The planner prepares compatible instrument sounds, then transfers roles at explicit musical positions: percussion first, bass at a low-end handoff, harmony on an approved change. A tail or held chord can bridge the texture change. A later recording is prepared against the same plan and enters at a reviewed cue.
-
-This can also operate with an instrumental recording under a procedural lead, or procedural percussion around an authored pad. Each combination is reviewed as a mix; individually good stems are not assumed to sound good when stacked. Sample-aligned scheduling does not guarantee waveform phase coherence between unrelated recorded and synthesized sounds. Role handoffs, low-end assessment and listening remain necessary.
-
-If the next recording has incompatible harmony or tempo, the director uses a known bridge, a breakdown that releases pitched material, or a cached alternate. The plan describes that route and its duration. It never promises that arbitrary files can be superimposed cleanly.
-
-See [Library and transitions](LIBRARY_AND_TRANSITIONS.md) for the edge contract and coverage rules.
-
-## Processing, latency and resource ownership
-
-Decode and load the next material before its deadline. Use streaming with bounded read-ahead for long recordings; keep only active/near-future sample sets resident. Preallocate real-time voices and command buffers. Rate-limit analysis and model jobs so they cannot starve playback.
-
-Control messages need responsive acknowledgment, but musical execution may intentionally wait for a boundary. The UI displays both quantities. Queue limits and backpressure prevent a busy external consumer from creating thousands of obsolete transitions.
-
-Independent tempo/pitch adjustment needs a suitable algorithm. Rubber Band documents offline and real-time stretching modes, including latency/padding considerations and separate licensing terms; it is an evaluation candidate, not a selected dependency. [A4] Start by proving clean transitions at authored compatible tempos, then evaluate small changes and more demanding material with listening evidence.
-
-## Persistence and restart
-
-Persist the library catalogue, asset hashes, recipe versions, listening history, preferences, saved vibes and a bounded event log. Store the last confirmed arrangement position and engine generation as a checkpoint. A recovered checkpoint describes what was last observed, not proof that playback reached a later position.
-
-After a crash, the default is stopped or explicitly resumable playback. Do not unexpectedly restart loud audio. Reconcile queued production operations by operation ID and artifact evidence before retrying. A restarted engine gets a new generation number so stale scheduled commands cannot execute in the new session.
-
-Save-this-vibe captures a reproducible recipe/asset selection plus control settings. Replaying a snapshot should state whether it restores a musical setup or an exact rendered recording.
-
-## Browser versus local audio
-
-The browser is a control surface in the reference architecture; sound comes from the local engine's selected output device. Closing a browser tab can leave native playback running if the listener chose that behavior. Remote browser control does not automatically stream audio to the remote device.
-
-A browser-only edition must explicitly qualify autoplay/user-gesture handling, page lifecycle, file access, memory budgets and background behavior. It should use the same high-level musical contracts, but need not have identical backend implementation. Backend handoff must stop one playback owner before starting another.
-
-## Two MCP roles
-
-**Playback MCP** exposes bounded state and library operations to a controlling agent. **Authoring MCP** talks to FL Studio and production jobs. They may be distributed together, but have separate capability scopes and lifecycles. A listener should not need DAW-edit authority just to change the music state.
-
-Prefer local stdio for an agent-launched server where practical. If an HTTP transport is used, follow the current MCP transport requirements for origin handling, local binding and authentication. [A5] The ordinary browser/API service also needs explicit origin and session controls; localhost is not a substitute for request validation.
-
-Using Codex or Claude as an existing MCP client does not imply permission or a documented mechanism to embed their subscriptions as an unattended inference API. Provider adapters must use supported interfaces and explicit configuration.
-
-## Failure behavior
-
-| Failure | Intended response |
+| Failure | Required behavior |
 | --- | --- |
-| New asset missing or invalid | Keep the current valid continuation; remove the failed candidate and report why. |
-| Model job late or failed | Continue cached/curated material; expose job state without interrupting audio. |
-| No compatible direct transition | Search approved bridge routes within the transition budget; offer a deliberate fallback if none exists. |
-| Too many state requests | Coalesce by source/revision, preserve manual hold, acknowledge superseded intents. |
-| FL operation outcome unknown | Inspect project/artifact evidence; do not blindly apply the same edit twice. |
-| Audio device lost | Ramp/stop where possible, expose suspended state, recover only to an available selected device. |
-| Output overload | Enforce voice/effect limits, degrade optional layers in a documented order, log underruns. |
-| Index damaged | Rebuild from versioned manifests and immutable assets; preserve history separately. |
+| Missing/unprepared next source | Valid continuation/alternate/ending with a visible reason |
+| Late model or FL job | Prepared playback continues independently; job outcome stays explicit |
+| No allowed route | Approved bridge or deliberate fallback within policy, never invented compatibility |
+| Noisy state input | Coalesce pending intent, respect manual hold, preserve safe started-transition behavior |
+| Renderer crash/device loss | Visible stopped/suspended state; no stale-generation replay or duplicate owner |
+| Load pressure | Bound voices/cache/jobs; report dropouts and degraded optional layers |
+| Unknown FL effect | Inspect project/artifact evidence before retrying the original operation |
+| Music subsystem failure | Mission Control work, messaging and navigation remain usable |
 
 ## Sources and limits
 
-- [A1 — miniaudio overview](https://miniaud.io/)
-- [A2 — miniaudio programming manual](https://miniaud.io/docs/manual/index.html)
-- [A3 — MDN AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet)
-- [A4 — Rubber Band API](https://www.breakfastquay.com/rubberband/code-doc/index.html) and [official repository/license](https://github.com/breakfastquay/rubberband)
-- [A5 — MCP Streamable HTTP transport](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/streamable-http.mdx)
+Primary sources checked 2026-11-03. They establish upstream mechanisms, not project performance or listening acceptance.
 
-Reviewed 2026-11-03. Source capabilities are documented; backend quality, compatibility, packaging, performance and licenses for the eventual dependency combination still require the campaign's decisions and checks.
-
-[A1]: https://miniaud.io/
-[A2]: https://miniaud.io/docs/manual/index.html
-[A3]: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet
-[A4]: https://www.breakfastquay.com/rubberband/code-doc/index.html
-[A5]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/streamable-http.mdx
+[A1]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Advanced_techniques
+[A2]: https://developer.chrome.com/docs/web-platform/page-lifecycle-api
+[A3]: https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/fformats_save_export.htm
+[A4]: https://miniaud.io/docs/manual/index.html
+[A5]: https://developer.mozilla.org/en-US/docs/Web/API/AudioBufferSourceNode/playbackRate
+[A6]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/streamable-http.mdx

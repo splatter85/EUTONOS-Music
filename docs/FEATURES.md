@@ -1,35 +1,35 @@
 # Preliminary features
 
 Document ID: `EM-D002`  
-Status: proposed feature catalogue, 2026-11-03.
+Status: proposed catalogue, revised 2026-11-03. All runtime features remain planned.
 
-A feature is a named component or interface a user can point to. Every runtime entry below is **planned**. The delivered artifacts today are documentation and examples only. [Capabilities](CAPABILITIES.md) describes what a person should be able to accomplish using these features.
+The first product is the Mission Control music experience. Delivery labels below select when a feature is useful; they do not remove the larger scope or claim implementation. The guidebook is documentation already present.
 
-| Stable ID | Feature | Initial behavior | Canonical design |
-| --- | --- | --- | --- |
-| EM-F001 | State controller | Named states, continuous musical controls, hold/release, requested versus audible state | [State/API](STATE_AND_CONTROL_API.md) |
-| EM-F002 | Local audio engine | One playback clock, asset streaming, synchronized stems, scheduled fades and output-device handling | [Architecture](ARCHITECTURE.md) |
-| EM-F003 | Browser listening app | Transport controls, state selector, transition and variation sliders, timeline, audition comparison | [Test app](TEST_APP.md) |
-| EM-F004 | Music library | Versioned tracks, stems, instruments, cues, recipes, assessments and eligibility | [Library](LIBRARY_AND_TRANSITIONS.md) |
-| EM-F005 | DJ selector | State-aware selection with recency, variety, coverage and preference constraints | [Library](LIBRARY_AND_TRANSITIONS.md) |
-| EM-F006 | Transition planner | Directed compatible routes, phrase-aligned plans, bridges, fallback paths and preview | [Library](LIBRARY_AND_TRANSITIONS.md) |
-| EM-F007 | Procedural performer | Recipe-based notes, sample playback/synthesis, coherent variations and musical development | [Recipe guide](guides/RECIPE_AUTHORING.md) |
-| EM-F008 | Hybrid arrangement engine | Recorded/procedural accompaniment and source handoffs under one musical plan | [Architecture](ARCHITECTURE.md) |
-| EM-F009 | External control API | Revisioned state intent, idempotent commands, observable execution and replay | [State/API](STATE_AND_CONTROL_API.md) |
-| EM-F010 | Playback MCP adapter | Agent tools for state, queue, inspection, hold and bounded audition control | [State/API](STATE_AND_CONTROL_API.md) |
-| EM-F011 | FL Studio MCP bridge | Capability discovery, supported MIDI/Piano roll/controller operations, render preparation and artifact readback | [FL integration](FL_STUDIO_INTEGRATION.md) |
-| EM-F012 | Production job adapters | Optional local model or agent-authored production jobs that yield reviewable artifacts | [Architecture](ARCHITECTURE.md) |
-| EM-F013 | Vocal production pipeline | Provider-specific singing/voice workflows, phrase preparation and review | [Vocal models](VOCALS_AND_MODELS.md) |
-| EM-F014 | Production guidebook | Theory, genre recipes, sound production, arrangement, mixing and natural-language briefs | [Guide index](guides/README.md) |
-| EM-F015 | Session memory and favorites | Persisted seed, selected assets, history, preferences and save-this-vibe snapshots | [Library](LIBRARY_AND_TRANSITIONS.md) |
-| EM-F016 | Qualification and diagnostics | Timing/resource evidence, transition logs, listening sheets and long-run coverage reports | [Validation](VALIDATION.md) |
+| Stable ID | Feature | Delivery | Initial behavior | Canonical owner |
+| --- | --- | --- | --- | --- |
+| EM-F001 | State controller | Pilot | Profiles, hold and requested/planned/audible state | [Design](STATE_AND_CONTROL_API.md) |
+| EM-F002 | Local audio engine | Pilot | One selected renderer, clock and playback owner | [Design](ARCHITECTURE.md) |
+| EM-F003 | Browser listening app | Pilot | Simple MC panel and separate advanced listening lab | [Design](TEST_APP.md) |
+| EM-F004 | Music library | Pilot, then expand | Versioned sources with operation-specific readiness | [Design](LIBRARY_AND_TRANSITIONS.md) |
+| EM-F005 | DJ selector | Pilot | Deterministic state/recency/preference selection | [Design](LIBRARY_AND_TRANSITIONS.md) |
+| EM-F006 | Transition planner | Pilot | Authored routes first; directed bridges and diagnostic growth | [Design](LIBRARY_AND_TRANSITIONS.md) |
+| EM-F007 | Procedural performer | Proof then pilot | One credible identity first, several families for pilot | [Design](guides/RECIPE_AUTHORING.md) |
+| EM-F008 | Hybrid arrangement engine | Proof then pilot | Shared musical plan and explicit role handoff | [Design](ARCHITECTURE.md) |
+| EM-F009 | External control API | Thin proof then pilot | Mission Control first; correct revision/receipt semantics | [Design](STATE_AND_CONTROL_API.md) |
+| EM-F010 | Playback MCP adapter | Pilot hardening | Bounded agent playback tools; not needed to start first sound | [Design](STATE_AND_CONTROL_API.md) |
+| EM-F011 | FL Studio MCP bridge | After usable pilot | Supported capability discovery/edit/export/readback; EMF15 retained | [Design](FL_STUDIO_INTEGRATION.md) |
+| EM-F012 | Production job adapters | After usable pilot | Ahead-of-playback jobs and reviewed artifacts; EMF16 retained | [Design](ARCHITECTURE.md) |
+| EM-F013 | Vocal production pipeline | Later selected route | Provider-specific controllable singing/voice workflow | [Design](VOCALS_AND_MODELS.md) |
+| EM-F014 | Production guidebook | Documentation present | Detailed learning/reference; not a listening prerequisite | [Design](guides/README.md) |
+| EM-F015 | Session memory and favorites | Pilot | Versions/seeds/history, scoped feedback and saved vibes | [Design](LIBRARY_AND_TRANSITIONS.md) |
+| EM-F016 | Qualification and diagnostics | Proof onward | Engineering and actual listening evidence, separately | [Design](VALIDATION.md) |
 
-## Initial infrastructure versus expansion
+## Scope
 
-The initial campaign admits a minimal vertical path through these interfaces, not every proposed production feature. It should prove local playback, a modest approved library, several recipes, hybrid transitions, external state control, a useful FL bridge slice, and the boundaries around optional model jobs.
+[First playable](FIRST_PLAYABLE.md) defines the thin proof and usable pilot. Manual FL production is a valid source of initial content; a listener does not need the authoring bridge, GPU, model or agent account. The bridge and production boundary remain full-campaign work after the pilot, not abandoned features.
 
-Broader genre packs, more DAWs, commercial voice-provider integrations, advanced stretching, remote audio streaming, and a large public pack catalogue are expansions. See [Delivery plan](DELIVERY_PLAN.md).
+Broad genre packs, more DAWs, more voice/model providers, independent stretching, remote audio streaming and public catalogue services are later opportunities. A new consumer must justify expansion; the neutral API alone does not require a platform.
 
-## Feature status changes
+## Status rule
 
-A feature becomes implemented only when code and a reproducible demonstration exist. It becomes qualified only for the named backends, content classes and scenarios tested. A documentation update cannot promote a runtime feature to complete. Preserve stable IDs when moving or splitting work; record aliases or supersession when meaning changes.
+Preserve feature IDs. A feature is implemented only with code and a reproducible demonstration; qualified only for tested environments/content. Documentation, seeds and upstream demos cannot promote a runtime feature to complete. [Capabilities](CAPABILITIES.md) keeps the person-facing outcomes separate from these components.

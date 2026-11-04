@@ -4,135 +4,111 @@ Campaign ID: `campaign-emf-001`
 Short ID: `EMF`  
 Owner document: this file  
 Status: **PLANNED**  
-Recorded: 2026-11-03, America/Chicago  
-Progress estimate: **unknown**; no runtime, DAW bridge or musical corpus has been implemented/qualified here.
+Recorded and revised: 2026-11-03, America/Chicago  
+Progress estimate: **unknown**; no runtime, musical corpus or DAW bridge has been implemented or qualified.
 
 ## Outcome
 
-Build the initial infrastructure for an independent, externally state-controlled music player/generator. Demonstrate recorded playback, several procedural musical identities, deliberate hybrid transitions, an understandable browser test app, a persistent local catalogue/history, and a bounded FL Studio authoring MCP integration.
+Build the initial music player/generator for EUTONOS Mission Control, retaining neutral state and content contracts so future growth is possible. Demonstrate quality recorded playback, several authored procedural identities, deliberate hybrid transitions, understandable controls, persistent catalogue/history and a bounded FL Studio authoring MCP path.
 
-The engine should be useful with approved local content and without a running model or DAW. Optional production adapters prepare future content outside the real-time path. A separate external application can control the same state interface as the test app.
+A useful Mission Control pilot comes before the full authoring bridge. This is a delivery milestone inside the campaign, not cancellation of EMF15/EMF16 or a claim the whole campaign is finished. The full acceptance contract below retains those outcomes.
 
 ## Scope and authorization
 
-The initial owner request authorizes this public documentation baseline, production guides, queue and campaign. EMF00 records that completed planning work. The remaining stages are an implementation plan to pick up when implementation is selected. Stage order and a “ready” handoff do not create authority to install software, operate a DAW, publish audio or purchase services.
+EMF00 preserves the completed initial documentation baseline. The current owner clarification authorizes answering the design challenges and adjusting the GitHub documentation. It does not start runtime implementation, installation, model downloads, DAW operations, publishing audio, purchases or changes to the separate Mission Control repository.
 
-This is an EUTONOS-style readable campaign with stable IDs, one status owner, bounded stages, explicit evidence and three named review gates. There is no native EUTONOS board configuration or managed-write CLI in this new repository. Do not invent a native receipt or hand-author a fake structured native board. If native tooling is adopted later, preserve these IDs as aliases and migrate once through the supported route.
+When implementation is selected, follow its assigned scope without needless per-stage permission requests. Stage ordering is dependency/priority, not automatic dispatch. This new repo has readable EUTONOS-style owners, not native board configuration. Keep the existing IDs; do not fabricate a native filing or RAM receipt.
 
 ## Inputs
 
-- [Product goal and requirements](../PRODUCT_GOAL.md).
-- [Architecture](../ARCHITECTURE.md), [library/transitions](../LIBRARY_AND_TRANSITIONS.md), [state/API](../STATE_AND_CONTROL_API.md), and [test app](../TEST_APP.md).
-- [FL Studio integration](../FL_STUDIO_INTEGRATION.md), [vocal/model options](../VOCALS_AND_MODELS.md), and [production guides](../guides/README.md).
-- [Validation plan](../VALIDATION.md).
-- An inspected local production/playback environment and explicitly eligible source material, obtained during the implementation stages.
+Read [Product goal](../PRODUCT_GOAL.md), [First playable](../FIRST_PLAYABLE.md), [Architecture](../ARCHITECTURE.md), [Library/transitions](../LIBRARY_AND_TRANSITIONS.md), [State/API](../STATE_AND_CONTROL_API.md), [Test app](../TEST_APP.md) and [Validation](../VALIDATION.md). The [40-question review](../reviews/MISSION_CONTROL_FIRST_REVIEW.md) explains the revised delivery sequence. FL/model stages additionally read [FL integration](../FL_STUDIO_INTEGRATION.md), [Vocals/models](../VOCALS_AND_MODELS.md) and the relevant [guides](../guides/README.md).
 
-## Initial release boundaries
+Actual workstation, FL version, musical assets and Mission Control interface must be inspected when implementation starts. Published upstream documentation does not prove their installed state.
 
-Include the smallest implementation that proves the musical and operational contracts. Qualify a named Windows reference environment first; other platforms receive explicit tested/untested status.
+## Delivery milestones
 
-The first release may have a small library. It must support real expansion, multiple recipe identities and bounded history, but it does not claim three days of distinct music. Full genre coverage, a large distributable library, universal seamless transitions, remote audio streaming, automatic mastering and unrestricted DAW control are outside this campaign's acceptance.
+**M1 — audible proof:** EMF01–EMF05. Two recordings, one credible procedural identity, variations, a roughly twenty-minute controlled journey, manual state/hold and deliberate handoffs. A minimal actual MC state adapter is included where available; simulation is labeled and cannot satisfy real integration. Review the result before broadening.
 
-## Stage map
+**M2 — usable Mission Control pilot:** EMF06–EMF14 plus their targeted runtime/listening checks. Several musical families, small approved pack, simple controls, history, real MC integration and failure isolation. No FL MCP or model dependency for listening. Pilot acceptance is scoped; it is not the final campaign/release gate.
 
-Each ID is stable. Stage position is not effort percentage. All stages other than EMF00 are **PLANNED**. A stage can be split only when a separable outcome or failure boundary warrants it; record the relationship and preserve existing evidence.
+**M3 — authoring and production:** EMF15–EMF16. Retain bounded FL automation and optional production-job isolation. Advance a narrow authoring helper only when a concrete fixture-production bottleneck warrants it.
 
-| Stage | Outcome | Depends on | Exit evidence |
-| --- | --- | --- | --- |
-| **EMF00** | Documentation and research baseline | Owner brief | Navigable product/architecture/guides/campaign/examples; document review and publication readback. **Complete for documentation only.** |
-| **EMF01** | Campaign adequacy review | EMF00, actual repo/environment intake | Bounded KEEP/CHANGE/DEFER findings; smallest credible implementation plan and open decisions. |
-| **EMF02** | Production and fixture baseline | EMF01 | Actual FL/version/capability inventory, three proposed musical families, eligible original fixtures, rights scope and one repeatable export. |
-| **EMF03** | Audio backend decision | EMF01, basic fixtures | Native/browser comparison for scheduled two-source playback, procedural role, lifecycle and resource use; one selected initial backend. |
-| **EMF04** | Executable scaffold | EMF02–03 | Local service, one playback owner, basic asset load/play, browser connection and operation receipts; no broad feature layering yet. |
-| **EMF05** | Scaffold correctness and efficiency review | EMF04 | Review actual ownership, callback/control separation, data flow, packaging, recovery and simpler alternatives; corrections re-reviewed. |
-| **EMF06** | Versioned library and importer | EMF05 | Validated manifests, hashes, eligibility, cue/harmony annotations, rebuildable index and a useful error report. |
-| **EMF07** | Transport and state lifecycle | EMF05–06 | Shared audio/musical timeline, requested/planned/audible state, dwell/hold, revision/expiry and restart semantics. |
-| **EMF08** | Manual listening app | EMF07 | State selector and named sliders, actual/pending display, explicit transport, save-vibe and basic audition workflow. |
-| **EMF09** | Recorded transition path | EMF06–08 | Reviewed phrase mix, role substitution and fallback on fixtures, with measured timing and listening notes. |
-| **EMF10** | Procedural recipe performer | EMF06–08 | Several distinct authored recipes, reviewed palettes, deterministic symbolic variation, bounded voices/effects and seed audition results. |
-| **EMF11** | Hybrid musical handoffs | EMF09–10 | Recorded → procedural → different recording, shared context, explicit bass/vocal/tail ownership and latency alignment. |
-| **EMF12** | DJ selection and persistent history | EMF11 | Eligibility filtering, recency/diversity selection, favorites, bounded logs and reproducible source/seed history. |
-| **EMF13** | Transition graph and coverage | EMF12 | Directed routes, bridges, dead-end diagnosis and an eligible-library coverage report; no false “all assets always reachable” claim. |
-| **EMF14** | External API and playback MCP | EMF07–13 | Independent client drives the same contract; duplicate/retry/conflict/reconnect/hold scenarios verified. |
-| **EMF15** | Bounded FL Studio MCP bridge | EMF02, EMF05 | Capability discovery, supported note/edit workflow, apply/readback behavior, export plan and artifact evidence in a disposable project copy. |
-| **EMF16** | Optional production-job boundary | EMF06, EMF15 | One selected local/agent production route or an explicit unsupported status; queued jobs, provenance, cancellation/reconciliation and review before eligibility. |
-| **EMF17** | Final assembled implementation review | EMF06–16 | Bounded whole-system review of public paths, interactions, remaining risks and qualification scope; material corrections re-reviewed. |
-| **EMF18** | Windows listening and operational qualification | EMF17 | Named environment, required failure scenarios, real-session listening and endurance evidence for the initial supported scope. |
-| **EMF19** | Owner acceptance and release handoff | EMF18 | Owner listening decision, exact accepted limits, supported setup, known issues and selected next work. |
+**M4 — assembled qualification and acceptance:** EMF17–EMF19. Full reviewed scope, Windows evidence and explicit owner handoff.
 
-Stages with independent prerequisites may be investigated in parallel after scope is assigned. Do not bypass a review or start dependent implementation while a material contract correction remains unresolved.
+The twenty stage identities remain useful checkpoints, not twenty independent product launches or mandatory chats. Stage count is not an effort estimate. All future work below is still planned.
+
+## Stage map and sole status owner
+
+| Stage | Status | Outcome | Depends on | Exit evidence |
+| --- | --- | --- | --- | --- |
+| **EMF00** | **COMPLETE — documentation only** | Original documentation/research baseline | Initial owner brief | Baseline `ee7125e` and retained [Progress](../PROGRESS.md) evidence. |
+| **EMF01** | PLANNED | Campaign adequacy review | EMF00, actual environment intake | Bounded KEEP/CHANGE/DEFER findings and the smallest audible investigation. This paper review does not close the host-aware gate. |
+| **EMF02** | PLANNED | Production and fixture baseline | EMF01 | Small eligible original fixture set, sound palette, actual production inventory and one repeatable export; manual FL work is valid. Broader families are completed before M2. |
+| **EMF03** | PLANNED | Audio backend decision | EMF01, basic EMF02 fixtures | Investigate Web Audio first; select one renderer using timing/lifecycle/resource evidence. Native only if justified. |
+| **EMF04** | PLANNED | Executable scaffold | EMF02–03 | One playback owner/clock, basic control and an audible recorded → procedural → different-recording proof, with minimal MC explicit-state route or visibly incomplete simulation. |
+| **EMF05** | PLANNED | Scaffold correctness and efficiency review | EMF04 | Review actual ownership, musical proof, callbacks, recovery, consumer path and simpler options before dependent breadth. |
+| **EMF06** | PLANNED | Versioned library and importer | EMF05 | Readiness-dependent metadata, hashes, intended-use eligibility, cues and useful errors; no mandatory annotation wall. |
+| **EMF07** | PLANNED | Transport and state lifecycle | EMF05–06 | Requested/planned/audible state, musical dwell, bounded wait, hold, duplicate/revision/expiry and restart behavior. |
+| **EMF08** | PLANNED | Manual listening app | EMF07 | Simple MC-facing panel plus advanced lab, pending display, skip/favorite, save-vibe and accessible controls. |
+| **EMF09** | PLANNED | Recorded transition path | EMF06–08 | Reviewed phrase mix, role substitution and safe fallback, extending the thin proof. |
+| **EMF10** | PLANNED | Procedural recipe performer | EMF06–08 | At least three distinct families, palettes and bounded development; selected and held-out seeds heard across supported states. |
+| **EMF11** | PLANNED | Hybrid musical handoffs | EMF09–10 | Generalize the small proof within supported content; verify shared context, bass/vocal/tail ownership and latency alignment. |
+| **EMF12** | PLANNED | DJ selection and persistent history | EMF11 | Deterministic eligibility/recency/preference rules, fixed-state identity changes, replayable versions/seeds and bounded logs. |
+| **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
+| **EMF14** | PLANNED | External API and playback MCP | EMF07–13 | Harden the early adapter: actual Mission Control consumer, shared contract, retry/conflict/reconnect/hold, failure isolation and supported playback-agent tools. |
+| **EMF15** | PLANNED — after M2 | Bounded FL Studio MCP bridge | EMF02, EMF05 | Actual capability discovery, supported project-copy edit and artifact readback, including uncertain-outcome reconciliation. |
+| **EMF16** | PLANNED — after M2 | Optional production-job boundary | EMF06, EMF15 | One selected production route or explicit unsupported provider state; preparation, cancellation, provenance and review cannot interrupt playback. |
+| **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
+| **EMF18** | PLANNED | Windows listening and operational qualification | EMF17 | Named environment, real work sessions, recovery/load evidence and scope-matched endurance. |
+| **EMF19** | PLANNED | Owner acceptance and release handoff | EMF18 | Explicit listening decision, accepted limits, verified target state, setup/known issues and selected next work. |
+
+Independent work may proceed within an assigned scope when prerequisites and write boundaries permit. Do not skip a material review correction or interpret the review table as approval of untested code. A usable pilot needs targeted checks and owner listening feedback before use; it does not wait for authoring extensions but does not inherit full release acceptance either.
 
 ## Named review gates
 
 ### EMF01 — campaign adequacy review
 
-**Scope:** the owner's required experience, current repository, actual FL/playback environment, candidate dependencies, required content and consumers. Challenge assumptions that would require a general DAW automation platform, a universal music model, or multiple production backends before the first audible result.
-
-**Prerequisites:** EMF00, current source read, and enough environment discovery to distinguish documented capability from installed capability.
-
-**Exit:** KEEP/CHANGE/DEFER findings, revised stage boundaries if needed, first fixtures/backend spike plan, and a single next executable stage. Planning review in this documentation turn is not a substitute for this environment-aware gate.
-
-**Model preference:** higher-capability model for independent review, advisory; actual owner choice and availability govern.
+Scope: intended MC experience, actual source/consumer/FL environment, fixtures and candidate renderer. Challenge the need for a general production platform before sound. Prerequisites: source inspection and enough real environment evidence to distinguish available capability from documentation. Exit: KEEP/CHANGE/DEFER, bounded fixture/backend plan and one next executable step. The documentation review is an input, not evidence the environment was checked. Model preference: higher-capability, advisory; owner choice and actual availability govern.
 
 ### EMF05 — scaffold correctness and efficiency review
 
-**Scope:** real scaffold code and immediate consumers: audio callback, scheduler, transport ownership, IPC/API, browser session, file/index handling and packaging. Look for duplicate clocks, Python/UI/model work in real-time rendering, unbounded queues, uncertain retry behavior and simpler alternatives.
-
-**Prerequisites:** a runnable scaffold and its actual test evidence.
-
-**Exit:** a bounded list of material corrections or KEEP, with re-review of changed contracts before substantial dependent layers. Do not turn the review into unrequested implementation.
-
-**Model preference:** higher-capability model, advisory.
+Scope: actual renderer/clock, control/MC path, prepared musical handoffs, file/data handling, startup and recovery. Prerequisite: runnable scaffold and recorded execution/listening evidence. Exit: small set of material corrections or KEEP; affected contracts re-reviewed before broadening. A poor musical result should trigger a targeted music change, not another layer of framework. Model preference: higher-capability, advisory. Independent review is required for this gate where the assigned review contract calls for it; no such review occurred in this docs-only update.
 
 ### EMF17 — final assembled implementation review
 
-**Scope:** recorded/procedural hybrid playback, graph/selection/history, browser/external controls, FL bridge, production jobs, eligibility and recovery across their boundaries.
+Scope: recorded/procedural DJ, library/history/graph, MC and agent controls, FL bridge, production jobs, eligibility and recovery. Prerequisites: completed implementation for the declared scope and source-pinned evidence. Exit: KEEP/CHANGE/DEFER and qualification matching actual behavior. Do not infer the owner's taste approval. Model preference: higher-capability, advisory.
 
-**Prerequisites:** implementation stages complete for their declared scope, exact source pins and observed evidence available.
+Reviews are bounded review-only checkpoints; they do not silently implement or widen scope. Preserve unaffected evidence and re-review material fixes. Safety checks required earlier are not delayed to a named gate.
 
-**Exit:** KEEP/CHANGE/DEFER, corrected material issues re-reviewed, and a qualification plan matching the actual supported paths. The review cannot declare subjective music acceptance for the owner.
+## Full campaign completion criteria
 
-**Model preference:** higher-capability model, advisory.
+These IDs and meanings are retained. M1 and M2 are smaller milestone evidence, not a waiver of the campaign contract.
 
-## Completion criteria
-
-| Check ID | Required result | Initial state |
+| Check ID | Required result | State |
 | --- | --- | --- |
 | EMF-C01 | Reproducible setup and one selected reference playback backend | Pending |
-| EMF-C02 | Externally requested states with visible pending and audible outcomes | Pending |
-| EMF-C03 | Several distinct musical recipes and a reviewed recorded/stem fixture set | Pending |
+| EMF-C02 | Externally requested states with visible pending and audible outcomes, including actual MC | Pending |
+| EMF-C03 | Several distinct recipes and a reviewed recorded/stem fixture set | Pending |
 | EMF-C04 | Recorded/procedural/recorded handoffs and at least one non-direct bridge | Pending |
 | EMF-C05 | Persistent catalogue/history, identity/seed replay and eligibility filtering | Pending |
-| EMF-C06 | Transition route/coverage diagnostics and intentional fallback behavior | Pending |
+| EMF-C06 | Transition route/coverage diagnostics and intentional fallback | Pending |
 | EMF-C07 | Useful bounded FL authoring MCP operation with actual artifact readback | Pending |
-| EMF-C08 | Optional producer jobs cannot interrupt audio or silently admit unreviewed output | Pending |
+| EMF-C08 | Optional producer jobs cannot interrupt audio or silently admit output | Pending |
 | EMF-C09 | Three named reviews completed for the implementation they cover | Pending |
-| EMF-C10 | Required failure/recovery, resource and listening checks on the reference environment | Pending |
-| EMF-C11 | Current docs and setup reflect implemented behavior and known limitations | Pending |
+| EMF-C10 | Required failure/recovery, resources and listening checks on the reference environment | Pending |
+| EMF-C11 | Current docs/setup match implemented behavior and limitations | Pending |
 | EMF-C12 | Explicit owner acceptance of the initial musical experience | Pending |
 
-A verified check requires linked evidence. Related stage completion does not automatically verify every parent check. All required checks and EMF19 must be satisfied before the campaign is completed. A model route can remain unsupported if that limit is explicit and instrumental playback/production boundaries are accepted; this does not count as shipping singing capability.
+All required checks and EMF19 must be satisfied for full completion. A provider may remain unsupported with an explicit limit; that does not remove the production-boundary test or claim singing has shipped. Three-day breadth, arbitrary-song accompaniment, all genres, all FL actions, remote streaming and a broad public pack catalogue are later outcomes, not hidden criteria for the first pilot.
 
 ## Current checkpoint
 
-- **Completed:** EMF00 documentation baseline and source research. This is design material, not audio or runtime acceptance.
-- **Implementation:** not started.
-- **Native board filing:** not available/configured in this repository; readable owner used.
-- **Git delivery:** inspect the published commit containing this baseline. Do not infer future branch integration from this document.
-- **Effort estimate:** unknown because backend selection, FL host compatibility, musical assets and listening iteration have not been measured.
-- **Next stage:** EMF01, when implementation is selected.
+EMF00's original documentation result is preserved. This revision adds [EM-REVIEW-001](../reviews/MISSION_CONTROL_FIRST_REVIEW.md), answers forty questions, retains ten strengths and changes sequencing around first sound and MC. No implementation stage or runtime completion check has been closed. No audio was generated, rendered or listened to; no local environment/MC source integration was performed. Native board filing is unavailable here; readable owners are used.
 
-## Resume instructions
+Next: when implementation is selected, EMF01 inspects the actual environment, then EMF02/EMF03 prepare the small musical proof. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
 
-1. Inspect current branch/head and working changes; preserve unrelated work.
-2. Read the goal, this checkpoint and the next stage's canonical documents.
-3. Verify any claimed completed artifact at its recorded revision; assess current applicability separately.
-4. Record the assigned scope and the next concrete check before substantive implementation.
-5. If a write/tool outcome is unknown, inspect actual effects before retrying; preserve operation IDs.
-6. Update this owner at meaningful checkpoints and keep Current Tasks as a concise pointer.
+## Resume and closeout
 
-## Stage closeout
+Inspect branch/HEAD/working changes and preserve unrelated work. Read the current goal, first-playable contract and selected stage. Verify old evidence at its original version and assess current applicability separately. Record the assigned scope and next check before substantive work. Reconcile uncertain side effects before retrying; do not invent operation identities.
 
-Report the practical result, meaningful checks and remaining limits; stage position out of the current map; estimated overall effort with its basis or unknown; plan unchanged/updated/review due; any instruction changes; and the next stage's prerequisites/purpose. Keep native filing, commit/publication, integration, runtime qualification and owner acceptance as separate facts.
-
-The default implementation work can use a capable coding model. Music judgment should use actual listening and the owner's preferences. More reasoning or a larger model does not substitute for audition evidence.
+At a meaningful checkpoint report practical outcome, checks/limits, position in the current milestone/stage map, effort with basis or unknown, plan assessment, instruction changes and the next concrete step. Keep native filing, Git publication/integration, installation, runtime qualification and owner acceptance separate. Actual listening—not model size or reasoning effort—determines musical acceptance.

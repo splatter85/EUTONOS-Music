@@ -1,54 +1,51 @@
 # Delivery plan
 
 Document ID: `EM-D009`  
-Status: proposed sequence, 2026-11-03.
+Status: revised proposal, 2026-11-03 — Mission Control first; broader opportunity remains open.
 
-## Current authorization and finish line
+## Current assignment
 
-The current request authorizes a public repository documentation baseline: product goals, preliminary features/capabilities/architecture, detailed music/FL/voice guides, Current Tasks, and an initial infrastructure campaign. It does not ask this turn to install tools, operate a DAW, download model weights, build the runtime, publish music, or purchase services.
+The owner asked for design scrutiny, answers and GitHub adjustments. This delivers documentation changes, not runtime code, software/model installation, DAW operations or a music release. [Current Tasks](CURRENT_TASKS.md) selects the next pickup and [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) remains the only stage/status owner.
 
-The documentation baseline is delivered separately from implementation. [Current Tasks](CURRENT_TASKS.md) identifies the next pickup; the [campaign owner](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns its status, stage map and acceptance.
+## Milestone 1 — hear the idea before building the framework
 
-## Phase A — initial infrastructure
+EMF01–EMF05: inspect the actual environment; prepare a small eligible fixture; investigate one renderer; build the audible scaffold; review it. The proof is roughly twenty minutes with two different recordings, one procedural identity with variations, recorded/generated handoffs, rise/release, hold and a replayable state sequence. Manual FL export is valid. Include the smallest actual Mission Control explicit-state route available; a simulated route is labeled and cannot close real integration acceptance.
 
-Build a thin, audible vertical path with a small, reviewed fixture corpus. The key result is a controllable local system that can play recordings, perform several recipes, transition between them, remember recent selections and accept state from another client. Include a bounded working FL authoring bridge and a documented optional production-job interface.
+This changes the old sequencing: listening and consumer fit come before a broad importer, general graph, full FL MCP server or model setup. EMF03 starts with the Web Audio candidate and chooses one renderer from evidence; native output is justified by actual requirements, not by assumed sophistication.
 
-The first model/voice exercise should qualify one selected route or explicitly leave it unsupported with a clear next action. Do not make an optional singing model a hidden prerequisite for instrumental playback.
+## Milestone 2 — useful in Mission Control
 
-## Phase B — musical breadth
+EMF06–EMF14: broaden the small versioned pack, state lifecycle, simple panel/lab, recorded transitions, several recipes, hybrid handoffs, selection/history, route diagnostics and external control. The actual MC consumer is mandatory for the usable pilot; it is no longer a late phase after production infrastructure.
 
-Develop more original recorded material, compatible section sets, instrument palettes and recipe families. Add variation through different musical vocabulary, groove, sound and form. Expand the transition graph with reviewed bridges. Evaluate catalogue coverage and long-session musical experience.
+Keep first-run listening independent of FL, models, agents and a GPU. Compare fixed-state and adaptive sessions. Respect mute/hold, isolate failures, qualify normal background and concurrent-work behavior on the selected environment, and publish honest limits. A small accepted pilot is not the whole campaign's final acceptance or a three-day breadth claim.
 
-The three-day variety target belongs here. It requires enough eligible content and listening evidence to justify the claim. The initial infrastructure's endurance tests can be reused only for the unchanged technical scope they actually tested.
+## Milestone 3 — remove measured production friction
 
-## Phase C — deeper production assistance
+EMF15–EMF16 remain planned and retain their original meanings: a useful bounded FL Studio authoring MCP operation and a safe optional production-job boundary. They are not removed, and they remain requirements for full EMF completion. They are not prerequisites for Milestones 1–2. Bring a narrowly useful authoring operation forward only if fixture production demonstrates a real bottleneck.
 
-Expand supported FL operations, reusable authoring templates, reference/audition workflows, and provider-specific singing/model adapters. Improve how plain-language feedback becomes precise revisions. Add another DAW only after the production abstraction and a real need are clear.
+Build one verified path, not every community bridge/provider. Natural-language instructions become explicit reversible changes and auditionable assets. A local model or vocal route can be unsupported with a clear reason; normal instrumental listening still works. Do not embed an existing agent subscription as an assumed unattended model API.
 
-Avoid creating a general-purpose agent platform inside the music system. Existing Codex/Claude sessions remain useful clients; local models are optional producers with bounded jobs and artifacts.
+## Milestone 4 — qualify the assembled initial system
 
-## Phase D — application integrations and packaging
+EMF17–EMF19: final bounded assembled review, Windows operational/listening qualification, and explicit owner acceptance/release handoff. Review actual implemented scopes, including authoring, and retain partial/unrun outcomes. Source integration, publication, install and owner listening approval remain different facts.
 
-Integrate external consumers such as Mission Control through the state API. Package a supported local installation and optional browser renderer where it has passed qualification. Keep remote-control/audio-streaming features explicit; a browser UI controlling a local machine is not automatically a cloud music service.
+## Later — musical breadth and earned expansion
 
-Choose the public project/code/content license and distribution strategy before shipping third-party dependencies or packs. Original compositions, reusable assets, model weights and voice libraries may need separate release policies.
+Grow original recordings, recipe identities, palettes and bridges. Qualify the three-day endurance and variety targets separately. Expand vocals, production adapters or another DAW when evidence warrants them. The detailed guidebook and provider research remain available for this work.
 
-## Smallest first musical experiment
+A real second consumer, repeated listener demand or a concrete creator workflow can justify a larger product. Neutral state and asset contracts already provide a useful seam. Do not build accounts, cloud hosting, remote streaming, a marketplace or a universal plugin framework speculatively. Mission Control being first is a launch focus, not a permanent ban on growth.
 
-Create or obtain eligible reference material for three different musical families. Compare a curated-stem approach, a procedural performance and a hybrid handoff using matched sound quality where possible. Listen before committing to a large implementation stack. Record what the engine needs to preserve: groove, motif, phrasing, sound palette and state response.
+## Decisions at the point they matter
 
-The first technical spike should answer a small number of concrete questions: which backend can schedule/mix reliably, what stays outside the audio callback, how the browser reconnects, and whether a compact compiled worker is justified. Select one production path after the evidence.
-
-## Dependencies and explicit decisions
-
-| Decision | Due before | Evidence |
+| Decision | Due | Evidence |
 | --- | --- | --- |
-| Initial musical families and fixture rights | Import/public fixture distribution | Audition references, source/permission records, creator intent |
-| Native/browser backend and language packaging | Broad runtime implementation | Bounded audio/lifecycle/resource spike |
-| Exact FL supported operation set | DAW automation implementation | Installed-version probes and reversible project test |
-| Stretching/time-pitch library | Transitions that need it | Listening, latency, phase and dependency-license review |
-| Local singing/model route | Model installation and pack generation | Hardware envelope, control needs and exact dependency eligibility |
-| Public project/content licenses | Code/asset release | Owner choice informed by the selected dependency and asset terms |
-| Default state/novelty settings | Initial owner acceptance | Real listening comparisons |
+| First fixture/palette | Before audible scaffold | Applicable use permission, actual sound, repeatable export |
+| Pilot renderer | EMF03 | Scheduling, lifecycle, sample memory, device/reconnect and packaging tradeoff |
+| Initial supported musical families | By usable pilot | Heard contrast and state fit, not genre labels alone |
+| Adaptation defaults | Before pilot acceptance | Fixed/adaptive comparisons, overrides and distraction notes |
+| FL operation set | EMF15 | Installed capability probe, reversible edit and intended artifact readback |
+| Models/vocals | Selected production experiment | Actual control, quality, resources and intended-use terms |
+| Code/content distribution licenses | Before the affected distribution | Explicit owner choice and actual dependency/asset conditions |
+| Three-day breadth | Later library qualification | Identity/motif coverage plus representative listening |
 
-These decisions should be made when needed, using existing authorization and concrete evidence. Do not turn ordinary implementation choices into a permanent approval chain.
+These are bounded decisions, not permanent approval chains. Stop a failing approach when its experiment answers the question; preserve the evidence and take the smallest useful next step.

@@ -1,28 +1,26 @@
 # Current Tasks
 
 Document ID: `EM-D010`  
-Updated: 2026-11-03, America/Chicago.
+Updated: 2026-11-03, America/Chicago — Mission Control-first review.
 
-This is a readable repo-local queue. EUTONOS native board tooling is not installed or configured in this repository. The linked campaign is the sole owner of stage status and acceptance; this page provides priority and the immediate pickup.
+This is the readable repo-local queue. Native EUTONOS board tooling is not configured here. The linked campaign owns stage status and acceptance; this page owns priority and immediate pickup.
 
-## Current campaign
+| Priority | Work | Status and immediate next step |
+| --- | --- | --- |
+| 1 | [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Planned; EMF00 documentation complete. Next: EMF01 environment-aware adequacy review, then the thin audible path in [First playable](FIRST_PLAYABLE.md). |
 
-| Priority | Campaign | Campaign status | Immediate next step |
-| --- | --- | --- | --- |
-| 1 | [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Planned; documentation baseline complete | EMF01: adequacy review and a bounded musical/backend investigation plan, when implementation work is selected. |
+## This review's result
 
-## Delivered in this planning baseline
+[EM-REVIEW-001](reviews/MISSION_CONTROL_FIRST_REVIEW.md) answers all 40 design questions and retains ten strengths. The owner clarified: Mission Control music first, broader opportunity remains open. The docs and campaign now prioritize an audible proof and real Mission Control pilot before full authoring automation. No implementation stage is marked complete by this review.
 
-- Product goal and explicit owner requirements.
-- Proposed features, capabilities, architecture and source contracts.
-- Library/transition/variety design and a manual listening-app specification.
-- FL Studio/MCP research and detailed music, genre, production and vocal guides.
-- Initial infrastructure campaign with review stages, acceptance criteria and restart instructions.
+## Immediate implementation pickup
 
-## Pickup contract
+Read [AGENTS](../AGENTS.md), [Product goal](PRODUCT_GOAL.md), [First playable](FIRST_PLAYABLE.md), the [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) and [Architecture](ARCHITECTURE.md). Inspect the actual repo/environment and available Mission Control integration surface. Prepare a small eligible fixture set, evaluate one renderer against the early proof, and identify the single next executable step. Full DAW MCP, local models, vocal generation and large-catalogue work must not block the first listening proof.
 
-Read [AGENTS.md](../AGENTS.md), [Product goal](PRODUCT_GOAL.md), the [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md), and the documents named by its next stage. Inspect the actual repository and environment before treating a proposal as implemented. Preserve the campaign ID and existing completed evidence.
+The initial experiment is two recordings, one good procedural identity, a controlled recorded → procedural → different-recording sequence, manual state/hold and actual listening. The usable pilot expands to several families and verifies the real Mission Control consumer. The native/browser choice remains unqualified until EMF03.
 
-The queue does not automatically authorize subsequent implementation, model downloads, tool installation, DAW operations or purchases. The current turn's requested deliverable is the documentation baseline. Keep the next handoff concrete and update it when the owner selects implementation work.
+## Scope and status
 
-Overall implementation effort: **unknown**. The architecture, production compatibility and musical corpus require investigation; completed document count is not an implementation estimate.
+The current assignment is design scrutiny and GitHub documentation adjustments. It does not request software/model installation, production code, FL operations, purchases, or changes to another repository. When implementation is assigned, complete the selected scope without unnecessary per-stage permission requests; keep genuinely separate external effects within their authorization.
+
+Overall implementation effort: **unknown**. Backend behavior, assets and musical iteration have not been measured. The current plan contains 20 stable stages grouped into delivery milestones; stage count is not progress percentage. Current status is always in the campaign.

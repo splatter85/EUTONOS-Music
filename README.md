@@ -1,51 +1,46 @@
 # EUTONOS Music
 
-A state-driven music player and procedural performer, with a DJ that keeps the music moving.
+**The music player/generator for EUTONOS Mission Control: authored music, procedural performance and a DJ that makes them flow.**
 
-**Project status: planning and research.** This repository currently contains the product definition, architecture proposal, production guides, illustrative data contracts, and an initial infrastructure campaign. It does not yet contain a working player, generator, FL Studio MCP server, model integration, or distributable music library.
+Start by making that experience genuinely enjoyable. A broader standalone product is possible if real use earns it; building a general music platform is not a prerequisite.
 
-## The experience
+**Status: design and research only.** No player, generator, test app, FL Studio MCP server, model adapter or distributable music library is implemented here yet.
 
-Start with a musical mood. Let a session remain there, develop, intensify, or relax. The music can come from finished tracks, coordinated stems, procedural performances, or combinations of them. A musical director chooses what comes next and how to get there, preserving phrasing and continuity while making room for genuinely different music over time.
+## The first experience
 
-The long-term target is a library and set of generators that can remain interesting across a three-day listening horizon. This is a variety and curation target, not a claim that a few random loops provide 72 hours of distinct music.
+Enable Music in Mission Control, press Play, choose a vibe, and let the soundtrack develop. It can hold a mood while changing musical identity, or preserve an identity while becoming more driving. Manual hold, pause and mute always outrank automatic state changes. The engine plans when a requested change becomes audible instead of treating a state request as a hard cut.
 
-External applications can request a state. The engine owns when and how that request becomes audible. Mission Control is one possible consumer; the music system should also work on its own.
+The intended system combines finished recordings, synchronized stems, authored procedural recipes and deliberate bridges. FL Studio supplies production quality and editable source material. Ordinary playback should not require FL Studio, an AI subscription, a GPU or a running model.
 
-## Proposed approach
-
-- **FL Studio is the production workshop.** Compose music, design sounds, prepare stems and instruments, and audition AI-assisted changes.
-- **A local engine owns playback.** The default architecture runs on the listener's computer, with a browser control interface. A browser-only renderer remains a comparison and portability option.
-- **The DJ chooses and transitions.** It uses musical compatibility, recent listening history, state constraints, and known entry/exit points.
-- **Recipes perform new variations.** Each recipe has its own sounds, musical vocabulary, motifs, arrangement rules, and supported states.
-- **AI works ahead of playback.** Codex, Claude, or explicitly configured local models can help author music and prepare assets. Model latency is kept outside the audio deadline.
-- **Vocals are produced deliberately.** Score-driven singing, full-song generation, voice conversion, and recorded performances are different production routes with different controls and permissions.
+The first audible experiment uses two recordings and one procedural identity in a recorded → procedural → different-recording journey. The usable Mission Control pilot adds several families, selection/history, real integration and listening evidence. The full FL authoring bridge, production jobs and later vocal/model routes remain planned; they do not block the first useful soundtrack.
 
 ## Start here
 
-| Read | Purpose |
+| Document | Purpose |
 | --- | --- |
-| [Product goal](docs/PRODUCT_GOAL.md) | Intended experience, boundaries, and measurable outcomes |
-| [Features](docs/FEATURES.md) and [capabilities](docs/CAPABILITIES.md) | Proposed components and what a person can accomplish with them |
-| [Architecture](docs/ARCHITECTURE.md) | Responsibilities, runtime choices, and audio/control separation |
-| [Library and transitions](docs/LIBRARY_AND_TRANSITIONS.md) | Asset assessment, transition graph, hybrid handoffs, and long-term variety |
-| [Test app](docs/TEST_APP.md) | State selector, musically meaningful sliders, and listening experiments |
-| [FL Studio integration](docs/FL_STUDIO_INTEGRATION.md) | Official APIs, community MCP candidates, and the proposed bridge |
-| [Vocals and models](docs/VOCALS_AND_MODELS.md) | Local singing/model options and their practical limits |
-| [Music and production guides](docs/guides/README.md) | Theory, genre recipes, arrangement, sound design, FL workflow, and agent collaboration |
-| [Current tasks](docs/CURRENT_TASKS.md) | Current campaign and exact next pickup |
-| [Initial infrastructure campaign](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Stages, dependencies, review gates, and acceptance |
+| [First playable](docs/FIRST_PLAYABLE.md) | Concrete audible-proof and usable-pilot boundaries |
+| [40-question review](docs/reviews/MISSION_CONTROL_FIRST_REVIEW.md) | Answers, design consequences, unresolved experiments and ten strengths |
+| [Product goal](docs/PRODUCT_GOAL.md) | Mission Control-first scope and preserved long-term requirements |
+| [Architecture](docs/ARCHITECTURE.md) | Shared musical timing, playback/production separation and renderer decision |
+| [Library and transitions](docs/LIBRARY_AND_TRANSITIONS.md) | Recorded/procedural continuity, compatibility, curation and variety |
+| [Music and production guides](docs/guides/README.md) | Detailed theory, genre, FL Studio, recipe, agent and vocal guidance |
+| [Current Tasks](docs/CURRENT_TASKS.md) | Immediate pickup and scope |
+| [EMF campaign](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Stable implementation stages grouped into useful milestones |
 
-The complete navigation map is [docs/README.md](docs/README.md). Read [AGENTS.md](AGENTS.md) before changing the repository.
+The [documentation map](docs/README.md) includes the feature/capability catalogues, test app, state API, FL integration, model research and validation. Read [AGENTS.md](AGENTS.md) before making changes.
 
-## First useful result
+## What stays ambitious
 
-A local listening app that plays a small, rights-cleared fixture library, performs several distinct musical recipes, accepts an external state request, and demonstrates recorded-to-procedural-to-recorded transitions. Its interface must show both the requested state and the actual audible state.
+Multiple musical recipes per mood; production-quality sound; smooth recorded/generated handoffs; a growing library; useful agent-assisted composition; and ultimately an interesting three-day listening horizon. Runtime endurance, catalogue coverage and enjoyable musical breadth are different claims and will be tested separately. A large seed count is not proof of interesting music.
 
-The first infrastructure release proves the mechanism. Building a broad, professionally curated library and qualifying three-day musical variety are later outcomes with their own evidence.
+## Implementation direction
 
-## Status and rights
+Use one playback owner and one audio clock, with a small browser interface and neutral state commands. Investigate Web Audio first for the audible proof; select one pilot backend from measured scheduling, lifecycle and resource behavior. Native local playback remains available if the required experience justifies it. Do not implement two production backends before one earns its place.
 
-All runtime features are proposed until their campaign acceptance evidence says otherwise. Example JSON is documentation, not an implemented API. No proprietary FL Studio content, third-party voice banks, model weights, credentials, or audio packs are bundled here. Public availability of this repository does not select an open-source license; the project license remains an explicit owner decision before code or reusable content distribution.
+## Rights and evidence
 
-Planning baseline: **2026-11-03**, America/Chicago.
+No proprietary FL sounds, private projects, voice banks, model weights or credentials are bundled. A purchased production tool does not automatically grant permission to redistribute its sound content as a reusable pack. Public availability of this repository does not select an open-source license; project and content licensing remain explicit owner decisions before distribution.
+
+All examples are design illustrations, not working APIs. See [Progress](docs/PROGRESS.md) for versioned evidence and limits.
+
+Updated: 2026-11-03, America/Chicago.
