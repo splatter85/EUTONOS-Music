@@ -2,6 +2,8 @@
 
 These files make the proposed design concrete enough to discuss. They are **fictional, unimplemented examples**, not validated runtime schemas, authored music, available media, approved transition edges or installation instructions.
 
+For executable v0 contracts and actual audio, use [S01 foundation](../S01_FOUNDATION.md) and [fixtures/s01](../../fixtures/s01/README.md). These historical larger examples deliberately remain separate.
+
 | File | Shows |
 | --- | --- |
 | [Asset manifest](asset-manifest.example.json) | A coordinated recorded stem bundle with musical position, sections, cues and explicitly missing media/review evidence. |

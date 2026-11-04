@@ -3,9 +3,9 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **PLANNED**  
+Status: **IN_PROGRESS — EMF-S01 in review**
 Recorded and revised: 2026-11-03, America/Chicago  
-Progress estimate: **unknown**; no runtime, musical corpus or DAW bridge has been implemented or qualified.
+Progress estimate: **unknown**; S01 foundation work is assigned, while playback, musical acceptance and the DAW bridge remain unqualified.
 
 ## Outcome
 
@@ -15,7 +15,9 @@ The basic **AI authoring controller is part of MVP**; broader FL automation is l
 
 ## Scope and authorization
 
-EMF00 preserves the completed initial documentation baseline. The current owner clarification authorizes answering the design challenges and adjusting the GitHub documentation. It does not start runtime implementation, installation, model downloads, DAW operations, publishing audio, purchases or changes to the separate Mission Control repository.
+EMF00 preserves the completed initial documentation baseline. On 2026-11-04 the owner assigned **S01 implementation, original eligible fixtures, automated validation and GitHub publication**, with a detailed repository handoff and mini chat handoff. This authorization is bounded to S01; subsequent slices, actual DAW operations and changes to the separate Mission Control repository remain separate assignments.
+
+**Platform requirement (owner, 2026-11-04): Windows, macOS and Linux.** Windows may lead the real FL Studio/MCP work, but the shared pack, playback and request contracts must stay portable. Use platform-neutral paths, scripts and browser-facing code; isolate host-specific authoring adapters. Cross-platform CI is engineering evidence, separate from browser/device/listening qualification on each OS. No claim of FL/MCP compatibility on an uninspected host.
 
 When implementation is selected, follow its assigned scope without needless per-stage permission requests. Stage ordering is dependency/priority, not automatic dispatch. This new repo has readable EUTONOS-style owners, not native board configuration. Keep the existing IDs; do not fabricate a native filing or RAM receipt.
 
@@ -41,7 +43,9 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 ## Execution slices — authoritative order and environment
 
-**CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation with actual FL Studio, Codex/Claude, installed plugins and audio output. **BOTH** means source and content joined and qualified on the PC.
+**CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
+
+**Current slice status:** **S01 IN_REVIEW**. Local engineering checks and independent inspection pass; GitHub publication/readback and three-platform CI are pending. S02 is the next cloud slice after verified S01 closeout; S08 is then available as an optional parallel PC assignment. The evidence-backed [S01 handoff](../handoffs/EMF-S01-HANDOFF.md) is being finalized.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
@@ -64,15 +68,15 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 - **Handoff #1, after S01 is published:** tell owner the checked Git SHA, pack contract and setup constraints: *“You can pull now to start PC slice S08 in parallel; I'll continue S02–S07 in the cloud.”* This notification is part of the closeout, **not a background automation**. Missing PC integration does not stop the cloud sequence.
 - **Handoff #2, after S07 is published:** provide exact build SHA, run commands, artifact/demo, checks and caveats: *“Pull this tested revision for S09 once S08 has produced eligible FL exports.”*
 - **Join at S09.** Do not make two implementations of the asset contract, queue or DJ. PC work changes only the producer adapter and supplies real files into the same validated format. Real audio-device testing, listening and host compatibility cannot be declared successful from GitHub CI alone.
-- **Next now:** EMF-S01 (CLOUD). Future implementation slices run when selected; this planning edit authorizes no software installs, DAW edits, model downloads, external releases or changes to the Mission Control repo.
+- **Next now:** finish S01 publication/readback and closeout. Subsequent implementation slices run when selected; no automatic DAW operations, model downloads, product release or changes to the Mission Control repo are authorized by the slice order.
 
 ## Stage map and sole status owner
 
 | Stage | Status | Outcome | Depends on | Exit evidence |
 | --- | --- | --- | --- | --- |
 | **EMF00** | **COMPLETE — documentation only** | Original documentation/research baseline | Initial owner brief | Baseline `ee7125e` and retained [Progress](../PROGRESS.md) evidence. |
-| **EMF01** | PLANNED | Contract/adequacy review | EMF00 | S01 cloud source, fixture, request and backend review; actual FL host capabilities inspected at S08 and cannot block cloud code. |
-| **EMF02** | PLANNED | Portable fixtures then FL production sources | EMF01 contract | S01 original fixture audio for cloud; S09 verifies eligible FL exports through same pack schema. |
+| **EMF01** | IN_PROGRESS — S01 cloud review checked | Contract/adequacy review | EMF00 | S01 [bounded review](../reviews/EMF_S01_FOUNDATION_REVIEW.md) covers cloud source, fixtures and requests. Actual renderer/FL host capabilities remain S02/S08 and cannot block the S01 contract. |
+| **EMF02** | IN_PROGRESS — S01 fixtures checked | Portable fixtures then FL production sources | EMF01 contract | Two original recordings and four sample inputs validated locally. S09 still must verify eligible FL exports through the same pack schema. |
 | **EMF03** | PLANNED | Initial renderer | S01 fixtures | S02 Web Audio/browser and timing checks; real Windows/audio-device qualification follows on PC. |
 | **EMF04** | PLANNED | Working standalone cloud scaffold | S01–05 | Browser DJ, sample-based procedural source, state/genre/next requests and hybrid transitions with eligible fixtures. **Not blocked by real FL MCP stage EMF15.** |
 | **EMF05** | PLANNED | Scaffold review and owner listening | S07 cloud proof; S09 PC integration | S07 reviews running scaffold and technical audio tests; S10 adds full FL-backed real PC listening and owner acceptance. |
@@ -88,7 +92,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF15** | PLANNED — PC parallel lane | Unified FL Studio MCP authoring control | S01 contract, actual PC environment | S06 cloud mocks do not prove FL. S08 PC verifies real editable changes/rendering; S09 imports outputs. S02–S07 remain independent. |
 | **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
 | **EMF17** | PLANNED | Final assembled implementation review | EMF06–16 | Review actual combined paths, including authoring and MC integration; re-review material corrections. |
-| **EMF18** | PLANNED | Windows listening and operational qualification | EMF17 | Named environment, real work sessions, recovery/load evidence and scope-matched endurance. |
+| **EMF18** | PLANNED | Windows-first and cross-platform listening/operational qualification | EMF17 | Named Windows reference environment plus macOS/Linux playback qualification, real work sessions, recovery/load evidence and scope-matched endurance. CI alone cannot close real-device/listening criteria. |
 | **EMF19** | PLANNED | Owner acceptance and release handoff | EMF18 | Explicit listening decision, accepted limits, verified target state, setup/known issues and selected next work. |
 
 Independent work may proceed within an assigned scope when prerequisites and write boundaries permit. Do not skip a material review correction or interpret the review table as approval of untested code. A usable pilot needs targeted checks and owner listening feedback before use; it does not wait for authoring extensions but does not inherit full release acceptance either.
@@ -132,7 +136,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 ## Current checkpoint
 
-EMF00's original documentation result is preserved. This revision adds [EM-REVIEW-001](../reviews/MISSION_CONTROL_FIRST_REVIEW.md), answers forty questions, retains ten strengths and changes sequencing around first sound and MC. No implementation stage or runtime completion check has been closed. No audio was generated, rendered or listened to; no local environment/MC source integration was performed. Native board filing is unavailable here; readable owners are used.
+S01 **IN_REVIEW**, 2026-11-04: inspected clean `main` at `10987524f3ad7b4f6434c2df7c571346f08a08bc`; work branch `work/emf-s01-foundation-20261104`. The portable TypeScript pack/source/control boundary, original two-recording/four-sample fixture pack and strict validators exist. `npm run check` passed **28 tests**, byte-identical regeneration and all six WAV validations. Independent FFmpeg decoding passed **6/6**. Bounded non-author inspection found no remaining blocking defect after harmony, Hold, clock-domain and receipt-limit corrections. Windows/macOS/Linux is explicit in the product and CI matrix. Remote publication/readback and CI are the remaining S01 closeout checks; no actual playback or listening has occurred.
 
 Next: **EMF-S01 in CLOUD** prepares the source/asset/request contract, original fixtures and tests. On its published closeout give the owner the SHA for optional **PC S08 in parallel**; finish CLOUD S02–S07 and hand off the verified build for S09. Real FL audio and owner listening remain required for standalone-MVP acceptance. No MC integration before S10. Overall effort remains unknown. Review documents and number of stages are not estimates of runtime completion.
 

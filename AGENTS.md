@@ -2,7 +2,9 @@
 
 ## Read first
 
-Read [README](README.md), [Product goal](docs/PRODUCT_GOAL.md), [Current Tasks](docs/CURRENT_TASKS.md), [First playable](docs/FIRST_PLAYABLE.md), and the selected campaign/stage. Then read the canonical documents for the area being changed. This repository remains a documentation baseline; no described endpoint, renderer, MCP bridge or model adapter is implemented.
+Read [README](README.md), [Product goal](docs/PRODUCT_GOAL.md), [Current Tasks](docs/CURRENT_TASKS.md), [First playable](docs/FIRST_PLAYABLE.md), and the selected campaign/stage. Then read the canonical documents for the area being changed. [S01 foundation](docs/S01_FOUNDATION.md) distinguishes executable contracts/fixtures from the wider proposed design; no endpoint, renderer, MCP bridge or model adapter is implemented in S01.
+
+**Owner platform requirement, 2026-11-04:** the music system must work on **Windows, macOS and Linux**. Windows may lead FL authoring integration. Keep shared contracts, pack paths, build/test commands and browser-facing code portable; isolate OS-specific authoring adapters and report actual per-platform verification. CI success does not establish audio-device, browser lifecycle, FL Studio or listening qualification.
 
 First build the standalone browser DJ, playlist/requests and procedural source **in ChatGPT/GitHub** with eligible fixtures. Follow the [single EMF CLOUD/PC slice order](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment). After S01 the owner may begin S08 FL Studio/MCP on PC concurrently, without blocking cloud S02–S07. S09 joins both; S10 is actual PC listening/standalone MVP acceptance; only afterward S12 integrates Mission Control. Preserve the real authoring requirement but never make FL installation a dependency of the cloud player.
 

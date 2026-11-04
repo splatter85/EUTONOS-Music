@@ -1,7 +1,11 @@
 # Preliminary architecture
 
 Document ID: `EM-D004`  
-Status: revised proposal, 2026-11-03. No described runtime is implemented here.
+Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, without a renderer or DJ planner.
+
+## Platform boundary
+
+The core targets **Windows, macOS and Linux** (owner, 2026-11-04). Browser-facing S01 modules use portable TypeScript and Web Crypto; `src/node.ts` contains the separate Node filesystem adapter. Pack paths use forward slashes and exact casing with no absolute host paths. Node scripts supply the same build/regeneration/validation commands on all three OSes. Windows is the first real FL Studio/MCP host; UI/MIDI/export adapters must declare their own verified platform capabilities. The Windows reference does not make the listener core Windows-only. CI is distinct from actual browser/audio-device and listening evidence.
 
 ## Current MVP sequence
 

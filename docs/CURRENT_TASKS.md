@@ -3,7 +3,7 @@
 Document ID: `EM-D010`  
 Updated 2026-11-04 — cloud-first execution slices.
 
-**Pickup for the next instance:** [EMF-S01-PICKUP](handoffs/EMF-S01-PICKUP.md), a detailed assignment brief. S01 remains **PLANNED**. Every slice later requires a checked [detailed repository closeout and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
+**Current work:** S01 implementation is in review; see the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint) and [S01 working handoff](handoffs/EMF-S01-HANDOFF.md). Finish its publication/readback and CI before advancing. Every slice requires a checked [detailed repository closeout and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 **One campaign:** [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). The campaign alone owns statuses, dependencies and acceptance. No native EUTONOS board is configured.
 
@@ -17,4 +17,4 @@ Updated 2026-11-04 — cloud-first execution slices.
 
 **Two owner notices required in slice closeouts:** S01 gives precise SHA and tells owner PC S08 can start; S07 gives tested SHA/run commands for PC S09 after FL exports exist. There is no asynchronous notification. Cloud music uses eligible fixtures and **does not wait for installed FL Studio**.
 
-Current status: **planning only**; no executable slice verified. Effort percent unknown.
+The local S01 engineering boundary is verified; remote publication and three-platform CI are pending. No browser playback, real FL/MCP, physical audio or listening acceptance is claimed. Effort percent unknown.

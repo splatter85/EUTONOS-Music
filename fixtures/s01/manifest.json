@@ -1,0 +1,386 @@
+{
+  "schema_version": "em.audio-pack.v0",
+  "id": "s01-foundation",
+  "revision": 1,
+  "assets": [
+    {
+      "id": "s01-recording-a",
+      "revision": 1,
+      "title": "S01 A — slow triangle pulse",
+      "source_kind": "recording",
+      "file": {
+        "path": "audio/s01-recording-a.wav",
+        "sha256": "69274658d0cf0b13d31cadfdef5267399b4f96c5b8574358309273306bfdafdb",
+        "bytes": 768044,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 384000
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": "A minor",
+      "harmony_pitch_classes": [
+        0,
+        4,
+        9
+      ],
+      "timing": {
+        "bpm": 120,
+        "meter": [
+          4,
+          4
+        ],
+        "bars": 8,
+        "phrase_bars": 4,
+        "first_downbeat_frame": 0
+      },
+      "cues": [
+        {
+          "id": "entry",
+          "kind": "entry",
+          "position_quarters": 0
+        },
+        {
+          "id": "exit",
+          "kind": "exit",
+          "position_quarters": 16
+        },
+        {
+          "id": "end",
+          "kind": "exit",
+          "position_quarters": 32
+        }
+      ]
+    },
+    {
+      "id": "s01-recording-b",
+      "revision": 1,
+      "title": "S01 B — syncopated pulse",
+      "source_kind": "recording",
+      "file": {
+        "path": "audio/s01-recording-b.wav",
+        "sha256": "4d0309c0e0bf2de2a74ea57a0e2915dd0ed951363c7f44a324433dc9990a3ee4",
+        "bytes": 768044,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 384000
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": "A minor",
+      "harmony_pitch_classes": [
+        0,
+        4,
+        9
+      ],
+      "timing": {
+        "bpm": 120,
+        "meter": [
+          4,
+          4
+        ],
+        "bars": 8,
+        "phrase_bars": 4,
+        "first_downbeat_frame": 0
+      },
+      "cues": [
+        {
+          "id": "entry",
+          "kind": "entry",
+          "position_quarters": 0
+        },
+        {
+          "id": "exit",
+          "kind": "exit",
+          "position_quarters": 16
+        },
+        {
+          "id": "end",
+          "kind": "exit",
+          "position_quarters": 32
+        }
+      ]
+    },
+    {
+      "id": "s01-kick",
+      "revision": 1,
+      "title": "S01 original kick",
+      "source_kind": "sample",
+      "file": {
+        "path": "audio/s01-kick.wav",
+        "sha256": "19d69c96a284f64a1079f3bf5febe599ac288556e1d14e77f711831367d7da5d",
+        "bytes": 12044,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 6000
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": null,
+      "harmony_pitch_classes": null,
+      "timing": null,
+      "cues": []
+    },
+    {
+      "id": "s01-percussion",
+      "revision": 1,
+      "title": "S01 original seeded percussion",
+      "source_kind": "sample",
+      "file": {
+        "path": "audio/s01-percussion.wav",
+        "sha256": "78615392ad936771715fa506165f9deb6ed432693ae55cee162268fc1054d75c",
+        "bytes": 3644,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 1800
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": null,
+      "harmony_pitch_classes": null,
+      "timing": null,
+      "cues": []
+    },
+    {
+      "id": "s01-bass-a2",
+      "revision": 1,
+      "title": "S01 original A2 bass",
+      "source_kind": "sample",
+      "file": {
+        "path": "audio/s01-bass-a2.wav",
+        "sha256": "9e770ee7e19e1115fa6d25c73f824b3ede1cf2d13284d5cf7d6d6274f3b857ab",
+        "bytes": 18044,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 9000
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": "A minor",
+      "harmony_pitch_classes": [
+        9
+      ],
+      "timing": null,
+      "cues": []
+    },
+    {
+      "id": "s01-harmony-am",
+      "revision": 1,
+      "title": "S01 original A minor harmony",
+      "source_kind": "sample",
+      "file": {
+        "path": "audio/s01-harmony-am.wav",
+        "sha256": "dac81e41d55f91fa1ab466890bfc98f975d5f9b2d8549f0c49d9f68c755fb09b",
+        "bytes": 48044,
+        "format": "pcm16-wav",
+        "sample_rate": 24000,
+        "channels": 1,
+        "frames": 24000
+      },
+      "rights": {
+        "origin": "Original integer-synthesized fixture; no external recordings, samples or plugins.",
+        "creator": "OpenAI ChatGPT for EUTONOS-Music",
+        "license": "CC0-1.0",
+        "allowed_uses": [
+          "playback",
+          "redistribution",
+          "sample-reuse"
+        ],
+        "evidence": "PROVENANCE.md"
+      },
+      "eligibility": "fixture-only",
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ],
+      "key": "A minor",
+      "harmony_pitch_classes": [
+        0,
+        4,
+        9
+      ],
+      "timing": null,
+      "cues": []
+    }
+  ],
+  "palettes": [
+    {
+      "id": "s01-palette",
+      "revision": 1,
+      "samples": [
+        {
+          "asset": {
+            "id": "s01-kick",
+            "revision": 1
+          },
+          "role": "drum",
+          "root_midi": null
+        },
+        {
+          "asset": {
+            "id": "s01-percussion",
+            "revision": 1
+          },
+          "role": "percussion",
+          "root_midi": null
+        },
+        {
+          "asset": {
+            "id": "s01-bass-a2",
+            "revision": 1
+          },
+          "role": "bass",
+          "root_midi": 45
+        },
+        {
+          "asset": {
+            "id": "s01-harmony-am",
+            "revision": 1
+          },
+          "role": "harmony",
+          "root_midi": 45
+        }
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "id": "s01-recipe",
+      "revision": 1,
+      "palette": {
+        "id": "s01-palette",
+        "revision": 1
+      },
+      "bpm": 120,
+      "meter": [
+        4,
+        4
+      ],
+      "phrase_bars": 4,
+      "key": "A minor",
+      "harmony_pitch_classes": [
+        0,
+        4,
+        9
+      ],
+      "genres": [
+        "synthetic-test"
+      ],
+      "states": [
+        "explore",
+        "drive"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "s01-a-to-b",
+      "revision": 1,
+      "from": {
+        "id": "s01-recording-a",
+        "revision": 1
+      },
+      "to": {
+        "id": "s01-recording-b",
+        "revision": 1
+      },
+      "exit_cue": "exit",
+      "entry_cue": "entry",
+      "overlap_quarters": 8,
+      "review": "fixture-only"
+    }
+  ]
+}

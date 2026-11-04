@@ -34,6 +34,7 @@ IDs and long-term intent from the initial baseline remain intact; delivery order
 | EM-R012 | Three-day listening horizon | Retain the library/variety ambition; qualify endurance and musical breadth separately. |
 | EM-R013 | Learnable production | Keep detailed foundations, genre, FL, recipe and production guides as an authoring reference. |
 | EM-R014 | Public, portable project | Separate public contracts/code from private media, credentials, tools and restricted assets. |
+| EM-R015 | Windows, macOS and Linux support | Owner clarification 2026-11-04: Windows can lead delivery, but shared playback/control and assets must work across all three. Isolate host-specific authoring adapters and qualify actual browser/device behavior on each platform. |
 
 ## Early finish lines
 

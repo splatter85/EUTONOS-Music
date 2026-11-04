@@ -3,6 +3,8 @@
 Document ID: `EM-D006`  
 Status: illustrative API design, 2026-11-03. No endpoint or MCP tool in this document exists yet.
 
+**Executable subset:** [S01 foundation](S01_FOUNDATION.md) and `src/control.ts` define the versioned local request types and a bounded contract test harness. They implement acceptance/replay/queue semantics without a DJ planner, endpoint or audible state producer. The full lifecycle/expiry/lease behavior below remains staged work where the S01 guide says it is deferred.
+
 ## Intent and audible reality
 
 External clients request a musical target. The director decides a valid route and the audio engine reports what is actually playing. Keep three views distinct:

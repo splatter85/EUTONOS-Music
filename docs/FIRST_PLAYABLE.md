@@ -1,7 +1,9 @@
 # First playable — standalone three-layer MVP
 
 Document ID: `EM-D016`  
-Status: **direction selected; no implementation or listening qualification**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements.
+Status: **direction selected; S01 contracts/fixtures implemented, no playable MVP or listening qualification**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements.
+
+**Platforms:** Windows first for real FL/MCP integration, with Windows, macOS and Linux required for the shared music system. Each host-specific authoring adapter and browser/audio-device path needs its own verification; portable fixture/test execution alone does not establish it.
 
 ## 1. MCP-based AI music production (optional visual controller)
 

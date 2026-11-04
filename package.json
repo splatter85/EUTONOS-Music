@@ -1,0 +1,20 @@
+{
+  "name": "eutonos-music",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Portable audio-pack and playback/control contracts for EMF-S01",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "fixtures:generate": "npm run build && node dist/scripts/generate-fixtures.js",
+    "fixtures:check": "npm run build && node dist/scripts/generate-fixtures.js --check",
+    "validate": "npm run build && node dist/scripts/validate-pack.js fixtures/s01",
+    "check": "npm test && npm run fixtures:check && npm run validate"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -3,6 +3,8 @@
 Document ID: `EM-D017`  
 Status: **architecture and operating guide only**, 2026-11-03. Nothing described here has been installed or verified on the owner's FL Studio machine.
 
+**Producer seam after S01:** emit PCM16 WAV and metadata through the [portable v0 pack contract](S01_FOUNDATION.md); do not invent a separate PC pack or DJ interface. S08 may begin on Windows after S01 publication while cloud S02–S07 continue independently. The shared music system targets Windows, macOS and Linux; the Windows UI/export mechanisms below are host-specific candidates, not cross-platform FL capability claims.
+
 ## Decision: MCP first; optional visual controller
 
 Both Codex and Claude Code use **one EUTONOS Music MCP server** to control FL Studio. MCP is the agent-facing interface, not a new sound engine. It routes work to a single installed FL Studio session. An optional user-facing controller (web, desktop, or even VB.NET) uses the same operations; **Visual Basic is not a prerequisite or a second automation stack**.

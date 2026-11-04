@@ -3,6 +3,8 @@
 Document ID: `EM-D005`  
 Status: proposed design, 2026-11-03.
 
+**Executable subset:** [S01 foundation](S01_FOUNDATION.md) owns the small `em.audio-pack.v0` contract and validator. [The original S01 fixture pack](../fixtures/s01/README.md) contains actual reproducible WAV bytes. The broader catalogue, importer, listening reviews and transition graph below remain future work.
+
 ## The library is more than a folder of tracks
 
 The director needs to know what material can do: where it can enter, how long it can develop, which parts can overlap, what transformations remain acceptable, and how it can leave. File names and genre tags are insufficient.
@@ -154,7 +156,7 @@ Retain a small prepared horizon and a known fallback. A generation job can exten
 
 Personal authoring, publishing a finished song, distributing reusable stems, and shipping an instrument/sample pack are different intended uses. Record actual permission for each relevant use. Owning a DAW or instrument does not establish permission for every extracted asset format. Third-party model code, weights, voice banks and generated outputs can have different terms.
 
-The default public repository contains manifests, documentation and original illustrative data only. A future public audio fixture pack must use material with clear redistribution permission. A private local library can reference user-provided material under the user's applicable rights; it must not silently upload that material to the public repo or a remote model.
+The public repository contains code/contracts, documentation, illustrative data and the original synthetic S01 fixture pack with explicit fixture-only permissions/provenance. Future packs must also establish redistribution permission. A private local library can reference user-provided material under the user's applicable rights; it must not silently upload that material to the public repo or a remote model.
 
 ## Sources
 

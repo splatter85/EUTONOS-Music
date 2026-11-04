@@ -16,7 +16,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC007 | Compatibility is directed and version/scenario-specific | Start with a few authored routes; generalize only within tested content classes. |
 | EM-DEC008 | Three-day endurance and musical breadth are separate | Seed counts and graph reachability do not establish enjoyment. |
 | EM-DEC009 | Intended-use provenance is required for distributed packs | Private authoring, compositions, stems, reusable sounds and weights are distinct decisions. |
-| EM-DEC010 | Current work remains documentation scrutiny, not implementation/release | No runtime stage closes without its actual evidence. |
+| EM-DEC010 | Work follows the current bounded assignment; S01 implementation/publication is authorized | Supersedes the original documentation-only restriction for this assigned slice. No runtime or listening stage closes without its actual evidence. |
 | EM-DEC011 | Audible proof precedes broad infrastructure | EMF04 demonstrates a controlled recorded/generated journey; EMF05 reviews it before breadth. |
 | EM-DEC012 | FL MCP and production jobs stay in full EMF but do not block usable MC pilot | EMF15/16 are retained. Advance only a narrow helper when a measured bottleneck justifies it. |
 | EM-DEC013 | Adaptation is optional and tested against fixed-state music | No productivity or attention inference from activity counts alone. |
@@ -45,3 +45,9 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 ## Correction: agent control is MCP-first, 2026-11-03
 
 **EM-DEC014:** The previous provisional VB.NET-first assumption in EM-DEC012 is superseded. One unified **MCP server for Codex and Claude Code** owns the FL Studio authoring interface; a visual/VB.NET controller is optional and uses the same server. Selectively adapt existing FL community bridges rather than concatenate/install all of them. The interface exposes supported FL Python APIs and tested UI/CLI export methods, with session locks, capability discovery, readback and safe recovery. The goal is maximal *verified* authoring control, not a universal automation claim. [Canonical design](FL_AGENT_CONTROL.md). No controller or runtime has been installed by this decision.
+
+## S01 and platform direction — 2026-11-04
+
+**EM-DEC021:** The owner requires **Windows, macOS and Linux** support. Windows may lead the FL Studio/MCP integration; shared pack/playback/control code remains portable and OS-specific authoring behavior stays behind explicit adapters. Automated checks run on all three OSes. Browser lifecycle, audio output and FL compatibility require separate real-host evidence.
+
+**EM-DEC022:** Implement a small versioned `em.audio-pack.v0` with PCM16 WAV, authored constant-tempo 4/4 cues, bounded data and exact media/reference validation. Use original, reproducible synthetic fixtures for contract/timing work, marked `fixture-only`. Descriptive recipe references do not constitute a generator. The common source and request harness do not constitute a DJ or audio renderer. [Executable boundary and omissions](S01_FOUNDATION.md).

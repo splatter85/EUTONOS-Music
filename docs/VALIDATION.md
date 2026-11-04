@@ -3,6 +3,8 @@
 Document ID: `EM-D008`  
 Status: proposed qualification plan, revised 2026-11-03. Documentation checks are not runtime or listening tests.
 
+**S01 engineering checks:** run `npm run check` as documented in [S01 foundation](S01_FOUNDATION.md). GitHub Actions applies the same commands to Windows, macOS and Linux. This tests code/contracts and deterministic media integrity, not browser decoding, real playback, FL/MCP operation or listening. Actual results and unrun checks belong to the [S01 handoff](handoffs/EMF-S01-HANDOFF.md).
+
 ## Evidence categories
 
 Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.
