@@ -6,7 +6,7 @@
 
 S04 is integrated into main. **Physical output and human listening are NOT TESTED.** The next slice is **S05 — CLOUD**, separately assigned from main. S08 separately proves the bounded FL authoring path on Windows. [Current evidence](docs/CURRENT_TASKS.md).
 
-**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
+**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. There is no automatic CI: run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. The last three-platform results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
 ## Run the player
 

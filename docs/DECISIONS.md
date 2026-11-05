@@ -27,6 +27,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC018 | Listener transport/hold and work isolation outrank automation | Music never overrides an explicit stop or disables MC work functions. |
 | EM-DEC019 | Initial DJ uses inspectable deterministic rules | A model-based selector must demonstrate benefit, cost and failure isolation before replacing it. |
 | EM-DEC020 | Broader product scope is earned by a real consumer/problem | Keep neutral interfaces; do not prebuild cloud/accounts/marketplaces or universal plugin systems. |
+| EM-DEC021 | No automatic CI; slices may be built on the PC or in the cloud and merged directly | Owner decision, 2026-11-04. Run `npm run check` and `npm run check:browser` on each OS available and report which ran. Reconsider if macOS/Linux regressions go unnoticed. |
 
 ## Open, evidence-dependent choices
 
