@@ -1,5 +1,5 @@
 /**
- * Isolated S03/S04 browser checks. Audio/queue behavior is observed through the real
+ * Isolated S03/S04/S05 browser checks. Audio/queue behavior is observed through the real
  * UI; native offline comparisons remain distinct from physical output/listening.
  */
 import assert from 'node:assert/strict';
@@ -82,14 +82,14 @@ try {
   currentPage = page;
   observeErrors(page, 'primary');
 
-  stage = 'Nine recorded-source and six procedural native offline audio checks';
+  stage = 'Nine recorded-source, six procedural and four S05 handoff native offline audio checks';
   await page.goto(origin + '/checks.html');
   await page.getByRole('button', {name: 'Run offline checks'}).click();
   await page.waitForFunction(() => /checks passed|failed/.test(document.getElementById('check-status')!.textContent!), null,
-    {timeout: 60000});
+    {timeout: 120000});
   const offline = JSON.parse(await page.locator('#check-results').innerText());
   await writeFile(resolve(directory, 'offline.json'), JSON.stringify(offline, null, 2) + '\n');
-  assert.equal(offline.results.length, 15);
+  assert.equal(offline.results.length, 19);
   assert.ok(offline.results.every((result: {status: string}) => result.status === 'PASS'), JSON.stringify(offline, null, 2));
   checks.push({name: stage, status: 'PASS'});
 
@@ -269,6 +269,29 @@ try {
   await page.locator('#play').click();
   await waitText(page, '#now-title', /^S01 A — slow triangle pulse$/);
   await stop(page);
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'S05 live A → procedural bridge → B handoff with renderer-reported phases';
+  await page.locator('#handoff').selectOption('hybrid');
+  await page.locator('#play').click();
+  await waitText(page, '#now-title', /^S01 A — slow triangle pulse$/);
+  await page.locator('#next-song').click();
+  await waitText(page, '#execution', /^accepted · scheduled · Scheduled the checked A → procedural bridge → B handoff/);
+  await waitText(page, '#next-title', /^Procedural bridge$/);
+  await waitText(page, '#next-detail', /· bridge seed \d+ · explore$/);
+  await waitText(page, '#status', /^Bridge entering — A fades for one bar$/, 12000);
+  await waitText(page, '#now-title', /^S01 A — slow triangle pulse \+ Procedural bridge$/);
+  await page.screenshot({path: resolve(directory, 'player-bridge.png'), fullPage: true});
+  await waitText(page, '#status', /^Procedural bridge playing$/, 4000);
+  assert.equal(await page.locator('#now-title').innerText(), 'Procedural bridge');
+  await waitText(page, '#next-title', /^S01 B — syncopated pulse$/);
+  await waitText(page, '#status', /^B entered — bridge percussion fades$/, 8000);
+  await waitText(page, '#now-title', /^Procedural bridge \+ S01 B — syncopated pulse$/);
+  await waitText(page, '#status', /^Handoff complete$/, 4000);
+  assert.equal(await page.locator('#now-title').innerText(), 'S01 B — syncopated pulse');
+  await waitText(page, '#execution', /^accepted · completed ·/);
+  await stop(page);
+  await page.locator('#handoff').selectOption('direct');
   checks.push({name: stage, status: 'PASS'});
 
   stage = 'Mobile controls, viewport fit and no page script errors';

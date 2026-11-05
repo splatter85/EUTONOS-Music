@@ -54,15 +54,39 @@ export async function decodeProceduralSamples(loaded: LoadedBrowserPack, context
   return result;
 }
 
+/**
+ * A bar-aligned span of the phrase in which only the named roles may sound.
+ * S05 uses one before full entry (lead-in) and one after a role handoff exit (tail).
+ */
+export interface RoleWindow {
+  readonly quarters: number;
+  readonly roles: readonly S01PhraseRole[];
+}
+
+const phraseRoles: readonly S01PhraseRole[] = ['drum', 'percussion', 'bass', 'harmony'];
+
+/** Copy and check a role window so later caller mutation cannot change a schedule. */
+export function checkRoleWindow(window: RoleWindow, plan: ProceduralPlan): RoleWindow {
+  requireAudio(Number.isSafeInteger(window.quarters) && window.quarters >= 0 && window.quarters % 4 === 0 &&
+    window.quarters <= plan.durationQuarters, 'A role window spans whole bars inside the finite phrase.');
+  const roles = [...window.roles];
+  requireAudio(roles.every(role => phraseRoles.includes(role)) && new Set(roles).size === roles.length,
+    'A role window names distinct performer roles.');
+  return Object.freeze({quarters: window.quarters, roles: Object.freeze(roles)});
+}
+
 export interface ProceduralOptions {
   readonly allowFixtures?: boolean;
   readonly fadeInFrames?: number;
   readonly fadeOutFrames?: number;
+  /** Phrase events before `quarters` sound only for these roles; others are never allocated. */
+  readonly leadIn?: RoleWindow;
 }
 
 interface Note {
   readonly node: AudioBufferSourceNode;
   readonly gain: GainNode;
+  readonly role: S01PhraseRole;
   readonly startFrame: number;
   readonly naturalEndFrame: number;
   started: boolean;
@@ -90,6 +114,8 @@ export class ProceduralSource implements PlayableSource {
   private naturalEndFrame = 0;
   private transitionFrame: number | null = null;
   private allocatedNotes = 0;
+  readonly leadIn: RoleWindow | null;
+  private retainedAfterExit: RoleWindow | null = null;
 
   constructor(private readonly context: BaseAudioContext, readonly plan: ProceduralPlan,
     samples: readonly DecodedRecording[], private readonly destination: AudioNode,
@@ -102,6 +128,7 @@ export class ProceduralSource implements PlayableSource {
     this.fadeOut = options.fadeOutFrames ?? 0;
     requireAudio([this.fadeIn, this.fadeOut].every(n => Number.isSafeInteger(n) && n >= 0),
       'Fades must use nonnegative integer output frames.');
+    this.leadIn = options.leadIn ? checkRoleWindow(options.leadIn, plan) : null;
   }
 
   async prepare(clock: AudioClock): Promise<void> {
@@ -149,7 +176,11 @@ export class ProceduralSource implements PlayableSource {
     const rate = this.clock!.sampleRate;
     const endFrame = start.at.frame + quartersToFrames(this.plan.durationQuarters, this.plan.bpm, rate);
     requireAudio(Number.isSafeInteger(endFrame), 'Performance end exceeds the audio-clock frame range.');
-    const prepared = this.plan.events.map(event => {
+    const leadIn = this.leadIn;
+    const audible = this.plan.events.filter(event =>
+      !leadIn || event.atQuarters >= leadIn.quarters || leadIn.roles.includes(event.role));
+    requireAudio(audible.length > 0, 'The role lead-in leaves no phrase events.');
+    const prepared = audible.map(event => {
       const sample = this.samples.find(s => s.asset.id === event.sample.id && s.asset.revision === event.sample.revision)!;
       const frame = start.at.frame + quartersToFrames(event.atQuarters, this.plan.bpm, rate);
       // A decoder may round its natural EOF by one frame. Never overlap the next
@@ -187,7 +218,7 @@ export class ProceduralSource implements PlayableSource {
       for (const item of prepared) {
         const node = this.context.createBufferSource();
         const gain = this.context.createGain();
-        const note: Note = {node, gain, startFrame: item.frame, naturalEndFrame: item.end, started: false};
+        const note: Note = {node, gain, role: item.event.role, startFrame: item.frame, naturalEndFrame: item.end, started: false};
         this.notes.add(note);
         this.allocatedNotes++;
         node.buffer = item.sample.buffer;
@@ -230,20 +261,40 @@ export class ProceduralSource implements PlayableSource {
       {cueId: 'end', offsetFrames: quartersToFrames(this.plan.durationQuarters, this.plan.bpm, this.clock!.sampleRate)}];
   }
 
-  transitionOut(exitCueId: string, at: ClockStamp): void {
+  /**
+   * Without `retain`, the whole performance fades after the exit (S04). With `retain`
+   * (S05 role handoff), roles outside the window never attack at or after the exit,
+   * retained roles may sound only inside the window under the output fade, and any
+   * other note still sounding at the exit is refused before a native effect.
+   */
+  transitionOut(exitCueId: string, at: ClockStamp, retain?: RoleWindow): void {
     requireAudio(this.phase === 'scheduled' && this.start, 'Start before transition; transition once.');
     this.checkStamp(at);
     const exit = this.getValidExits().find(item => item.cueId === exitCueId);
     requireAudio(exit && at.frame === this.start.at.frame + exit.offsetFrames, 'Transition must align to a declared phrase exit.');
     requireAudio(at.frame >= this.start.at.frame + this.fadeIn, 'Transition cannot precede the completed entry fade.');
-    requireAudio(at.frame + this.fadeOut <= this.naturalEndFrame, 'Transition fade exceeds the finite performance.');
     const rate = this.clock!.sampleRate;
+    const window = retain ? checkRoleWindow(retain, this.plan) : null;
+    const fade = window ? quartersToFrames(window.quarters, this.plan.bpm, rate) : this.fadeOut;
+    requireAudio(at.frame + fade <= this.naturalEndFrame, 'Transition fade exceeds the finite performance.');
+    const fadeEnd = at.frame + fade;
+    // Decide every note first: a refusal leaves the committed schedule untouched.
+    const stops = [...this.notes].map(note => {
+      if (!window) return {note, frame: Math.min(note.naturalEndFrame, fadeEnd)};
+      const retained = window.roles.includes(note.role);
+      // Stopping at the start frame keeps a future one-shot from producing any frame.
+      if (note.startFrame >= (retained ? fadeEnd : at.frame)) return {note, frame: note.startFrame};
+      requireAudio(retained || note.naturalEndFrame <= at.frame,
+        `A ${note.role} note would still sound after the role handoff exit.`);
+      return {note, frame: Math.min(note.naturalEndFrame, fadeEnd)};
+    });
     this.output!.gain.setValueAtTime(1, at.frame / rate);
-    if (this.fadeOut) this.output!.gain.linearRampToValueAtTime(0, (at.frame + this.fadeOut) / rate);
+    if (fade) this.output!.gain.linearRampToValueAtTime(0, fadeEnd / rate);
     else this.output!.gain.setValueAtTime(0, at.frame / rate);
-    for (const note of this.notes) note.node.stop(Math.min(note.naturalEndFrame, at.frame + this.fadeOut) / rate);
-    this.finishFrame = at.frame + this.fadeOut;
+    for (const {note, frame} of stops) note.node.stop(frame / rate);
+    this.finishFrame = fadeEnd;
     this.transitionFrame = at.frame;
+    this.retainedAfterExit = window;
     this.phase = 'stopping';
   }
 
@@ -260,6 +311,7 @@ export class ProceduralSource implements PlayableSource {
     for (const note of this.notes) note.node.stop(note.naturalEndFrame / rate);
     this.finishFrame = this.naturalEndFrame;
     this.transitionFrame = null;
+    this.retainedAfterExit = null;
     this.phase = 'scheduled';
     return true;
   }
@@ -297,6 +349,8 @@ export class ProceduralSource implements PlayableSource {
   }
 
   get endFrame(): number { return this.finishFrame; }
+  /** The roles still allowed after a committed role handoff exit, or null. */
+  get retainedRoles(): RoleWindow | null { return this.retainedAfterExit; }
   get resourceUsage(): {allocatedNoteNodes: number; liveNoteNodes: number; liveMixBuses: number; sampleValues: number; maximumVoices: number} {
     return {allocatedNoteNodes: this.allocatedNotes, liveNoteNodes: this.notes.size, liveMixBuses: this.mixBuses.length,
       sampleValues: this.samples.reduce((sum, s) => sum + s.buffer.length * s.buffer.numberOfChannels, 0),

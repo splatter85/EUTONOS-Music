@@ -2,12 +2,24 @@ import {decodeRecordings, type LoadedBrowserPack} from './browser-pack.js';
 import {quartersToFrames} from './pack.js';
 import type {ClockStamp, SourceStart} from './playable-source.js';
 import type {VersionRef} from './pack-types.js';
+import {commitHybridHandoff, planHybridHandoff, type HybridBridge, type HybridBridgeExit,
+  type HybridHandoffPlan} from './hybrid-handoff.js';
 import type {ProceduralPlan} from './phrase-plan.js';
 import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
-  type CheckedRoute, type DecodedRecording, type TransitionPlan} from './web-audio.js';
+  type CheckedRoute, type DecodedRecording} from './web-audio.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
+/** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
+export interface HybridSnapshot {
+  readonly policy: VersionRef;
+  readonly bridge: HybridBridge;
+  readonly phase: 'scheduled' | 'lead-in' | 'bridge' | 'tail' | 'complete';
+  readonly fromExit: ClockStamp;
+  readonly bridgeFull: ClockStamp;
+  readonly toStart: ClockStamp;
+  readonly end: ClockStamp;
+}
 export interface PlayerSnapshot {
   readonly state: PlayerState;
   readonly requested: string | null;
@@ -18,6 +30,7 @@ export interface PlayerSnapshot {
   readonly voices: readonly {readonly source: VersionRef; readonly start: ClockStamp; readonly endFrame: number}[];
   readonly transitionAt: ClockStamp | null;
   readonly transitionEnd: ClockStamp | null;
+  readonly handoff: HybridSnapshot | null;
   readonly elapsedSeconds: number;
   readonly durationSeconds: number;
   readonly currentFrame: number;
@@ -40,7 +53,9 @@ export class SmallPlayer {
   private decodedPalette: Promise<DecodedRecording[]> | null = null;
   private paletteBinding: string | null = null;
   private voices: Voice[] = [];
-  private plan: TransitionPlan | null = null;
+  /** The committed transition window: direct crossfade or hybrid handoff. */
+  private plan: {readonly at: ClockStamp; readonly end: ClockStamp} | null = null;
+  private hybrid: HybridHandoffPlan | null = null;
   private state: PlayerState = 'idle';
   private operation = 0;
   private transitionOperation = 0;
@@ -65,7 +80,7 @@ export class SmallPlayer {
     return this.playSelection(selection, ownership);
   }
 
-  /** S04 source audition through this same transport; DJ routes remain S05 work. */
+  /** S04 source audition through this same transport. S05 bridges use scheduleHybrid. */
   playProcedural(plan: ProceduralPlan, ownership: Promise<void> = Promise.resolve()): Promise<void> {
     return this.playSelection(plan, ownership);
   }
@@ -170,6 +185,57 @@ export class SmallPlayer {
     }
   }
 
+  /**
+   * S05: A → procedural bridge → B on the same clock and output. Everything is checked,
+   * prepared and committed in absolute frames before A's exit; nothing starts later by timer.
+   */
+  async scheduleHybrid(bridge: ProceduralPlan, exit: HybridBridgeExit = 'phrase'): Promise<void> {
+    requireAudio(this.selected === 'a' && this.voices.length === 1 && !this.plan,
+      'Play A first. Only one A → B transition can be scheduled.');
+    const from = this.voices[0]!;
+    requireAudio(from.source instanceof RecordedSource, 'A hybrid handoff starts from recording A.');
+    const outgoing = from.source;
+    const operation = this.operation;
+    const transitionOperation = this.transitionOperation;
+    // Check before preparation, then check again immediately before committing.
+    checkProceduralPlan(this.loaded, bridge);
+    const checked = planHybridHandoff(this.loaded.pack, this.pair.route.id, bridge, exit, from.start, this.clock,
+      this.loaded.allowFixtures, this.leadFrames);
+    const binding = JSON.stringify(bridge.samples);
+    requireAudio(this.paletteBinding === null || this.paletteBinding === binding,
+      'The sampler palette changed. Reload before preparing a different palette.');
+    this.paletteBinding = binding;
+    this.decodedPalette ??= decodeProceduralSamples(this.loaded, this.context, bridge).catch(error => {
+      this.decodedPalette = null;
+      throw error;
+    });
+    const [recordings, samples] = await Promise.all([this.decoded!, this.decodedPalette]);
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) return;
+    const recording = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision)!;
+    const bridgeSource = new ProceduralSource(this.context, bridge, samples, this.output,
+      {allowFixtures: this.loaded.allowFixtures, leadIn: checked.leadIn});
+    const incoming = new RecordedSource(this.context, recording, this.output, {allowFixtures: this.loaded.allowFixtures});
+    const releaseBoth = (): void => { bridgeSource.release(); incoming.release(); };
+    try { await Promise.all([bridgeSource.prepare(this.clock), incoming.prepare(this.clock)]); }
+    catch (error) { releaseBoth(); throw error; }
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) { releaseBoth(); return; }
+    if (this.plan) { releaseBoth(); throw new Error('The A → B transition is already scheduled.'); }
+    try {
+      // A late commit is refused, never shifted to a later boundary.
+      const plan = planHybridHandoff(this.loaded.pack, this.pair.route.id, bridge, exit, from.start, this.clock,
+        this.loaded.allowFixtures, this.leadFrames);
+      commitHybridHandoff(plan, outgoing, bridgeSource, incoming);
+      this.voices.push({source: bridgeSource, start: {at: plan.fromExit, entryCueId: 'entry'}},
+        {source: incoming, start: {at: plan.toStart, entryCueId: plan.route.entry_cue}});
+      this.plan = {at: plan.fromExit, end: plan.end};
+      this.hybrid = plan;
+    } catch (error) {
+      // The commit changes A last, so a refusal leaves the unchanged A playing.
+      releaseBoth();
+      throw error;
+    }
+  }
+
   /** Invalidate only an in-flight transition preparation; retain committed audio. */
   cancelTransitionPreparation(): void { ++this.transitionOperation; }
 
@@ -182,6 +248,7 @@ export class SmallPlayer {
       for (const voice of this.voices.slice(1)) voice.source.release();
       this.voices = this.voices.slice(0, 1);
       this.plan = null;
+      this.hybrid = null;
     }
     return true;
   }
@@ -259,12 +326,19 @@ export class SmallPlayer {
     const transition = !this.plan ? 'none' : frame < this.plan.at.frame ? 'scheduled' :
       frame < this.plan.end.frame ? 'mixing' : 'complete';
     const duration = first && last ? (last.source.endFrame - first.start.at.frame) / this.clock.sampleRate : 0;
+    const hybrid = this.hybrid;
+    const handoff: HybridSnapshot | null = hybrid ? {policy: {...hybrid.policy}, bridge: structuredClone(hybrid.bridge),
+      phase: frame < hybrid.fromExit.frame ? 'scheduled' : frame < hybrid.bridgeFull.frame ? 'lead-in'
+        : frame < hybrid.toStart.frame ? 'bridge' : frame < hybrid.end.frame ? 'tail' : 'complete',
+      fromExit: {...hybrid.fromExit}, bridgeFull: {...hybrid.bridgeFull}, toStart: {...hybrid.toStart},
+      end: {...hybrid.end}} : null;
     return {state: this.state, requested: this.selected === 'a' ? this.pair.from.id : this.selected === 'b' ? this.pair.to.id : this.selected?.recipe.id ?? null,
       now, next: pending?.source.reference.id ?? null, transition,
       transitionInSeconds: this.plan ? Math.max(0, (this.plan.at.frame - frame) / this.clock.sampleRate) : null,
       voices: this.voices.map(voice => ({source: {...voice.source.reference}, start: {...voice.start.at}, endFrame: voice.source.endFrame})),
       transitionAt: this.plan ? {...this.plan.at} : null,
       transitionEnd: this.plan ? {...this.plan.end} : null,
+      handoff,
       elapsedSeconds: first ? Math.max(0, Math.min(duration, (frame - first.start.at.frame) / this.clock.sampleRate)) : 0,
       durationSeconds: duration, currentFrame: frame, sampleRate: this.clock.sampleRate,
       engineGeneration: this.clock.engineGeneration, contextState: this.context.state,
@@ -288,6 +362,7 @@ export class SmallPlayer {
     for (const voice of this.voices) voice.source.release();
     this.voices = [];
     this.plan = null;
+    this.hybrid = null;
     this.clock.invalidate();
   }
   private setOutput(enabled: boolean): void {

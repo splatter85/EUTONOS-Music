@@ -1,7 +1,9 @@
 import type {LoadedBrowserPack} from './browser-pack.js';
 import {ControlContract, type CommandReceipt, type ControlRequest, type ControlSnapshot} from './control.js';
+import {bridgeSeed, type HybridBridgeExit} from './hybrid-handoff.js';
 import {eligibleForPlayback} from './pack.js';
 import type {AudioAsset, MusicState, VersionRef} from './pack-types.js';
+import {compileS01Phrase, type S01PhraseState} from './phrase-plan.js';
 import type {ClockStamp} from './playable-source.js';
 import {SmallPlayer, type PlayerSnapshot} from './player.js';
 
@@ -32,18 +34,30 @@ export interface DjSnapshot {
   readonly pending: DjPending | null;
   readonly last: DjCommandResult | null;
 }
-interface Plan extends DjPending { readonly commands: string[]; }
+/** direct: the S03 crossfade. hybrid: the S05 A → procedural bridge → B handoff. */
+export type DjHandoff = 'direct' | 'hybrid';
+export interface DjOptions {
+  readonly handoff?: DjHandoff;
+  readonly bridgeExit?: HybridBridgeExit;
+}
+interface Plan extends DjPending { readonly commands: string[]; readonly bridgeNoted?: boolean; }
 interface Attempt {
   readonly source: VersionRef; readonly commandId: string; readonly commands: string[];
   readonly queueCommandId: string | null; readonly state: MusicState | null; readonly generation: number;
+  /** The requested state the bridge serves, or null when its performer does not support it. */
+  readonly bridgeState: MusicState | null;
 }
 interface Selection { readonly asset: AudioAsset | null; readonly queueCommandId: string | null; readonly reason: string; }
 const explanation = (error: unknown): string => error instanceof Error ? error.message : String(error);
+/** The S04 performer supports explore and drive. For any other target the bridge plays
+ * explore and reports no state rather than claiming the request. */
+const bridgeStateFor = (requested: MusicState): S01PhraseState => requested === 'drive' ? 'drive' : 'explore';
 
 /**
  * Session-local S03 DJ over the existing two-recording renderer. Commands decide
  * and schedule; snapshot only reconciles already scheduled clock events. No timer,
  * network service, persistence, automatic looping or speculative B→A route.
+ * S05 adds an optional hybrid handoff: the same A → B route through a procedural bridge.
  */
 export class DeterministicDj {
   private readonly control: ControlContract;
@@ -65,8 +79,16 @@ export class DeterministicDj {
   private selectionEpoch = 0;
   private transportEpoch = 0;
   private closed = false;
+  private handoff: DjHandoff;
+  private readonly bridgeExit: HybridBridgeExit;
 
-  constructor(private readonly renderer: SmallPlayer, loaded: LoadedBrowserPack, initialState: MusicState = 'explore') {
+  constructor(private readonly renderer: SmallPlayer, private readonly loaded: LoadedBrowserPack,
+    initialState: MusicState = 'explore', options: DjOptions = {}) {
+    this.handoff = options.handoff ?? 'direct';
+    this.bridgeExit = options.bridgeExit ?? 'phrase';
+    if (!['direct', 'hybrid'].includes(this.handoff) || !['phrase', 'end'].includes(this.bridgeExit)) {
+      throw new Error('Unsupported handoff option.');
+    }
     this.recordings = loaded.pack.assets.filter(a => a.source_kind === 'recording')
       .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     const supported = new Set([renderer.pair.from.id, renderer.pair.to.id]);
@@ -131,6 +153,13 @@ export class DeterministicDj {
 
   setVolume(value: number): void { this.renderer.setVolume(value); }
 
+  /** Applies to later selections only. A committed transition keeps its original kind. */
+  setHandoff(mode: DjHandoff): void {
+    if (mode !== 'direct' && mode !== 'hybrid') throw new Error('Unsupported handoff option.');
+    this.handoff = mode;
+  }
+  get handoffMode(): DjHandoff { return this.handoff; }
+
   async dispose(): Promise<void> {
     this.sync();
     this.cancelWork('Session closed.');
@@ -179,6 +208,10 @@ export class DeterministicDj {
           this.outcome(request.commandId, 'blocked', 'The queued entry has already started; it cannot be removed as a future entry.');
           break;
         }
+        if (this.transitionPlan?.queueCommandId === request.queueCommandId && this.bridgeEntered(this.renderer.snapshot())) {
+          this.outcome(request.commandId, 'blocked', 'The procedural bridge has entered, so B will still follow; the entry is no longer listed. Stop remains immediate.');
+          break;
+        }
         this.outcome(request.queueCommandId, 'cancelled', 'Removed from the manual queue.');
         const reserved = [this.startPlan, this.transitionPlan].find(p => p?.queueCommandId === request.queueCommandId);
         if (reserved?.kind === 'start' || this.startTask && this.startingQueueCommandId === request.queueCommandId) {
@@ -225,7 +258,8 @@ export class DeterministicDj {
     this.startingId = commandId;
     this.startingQueueCommandId = selection.queueCommandId;
     this.startAttempt = {source: {id: asset.id, revision: asset.revision}, commandId, commands: [commandId],
-      queueCommandId: selection.queueCommandId, state: target, generation: this.renderer.clock.engineGeneration};
+      queueCommandId: selection.queueCommandId, state: target, generation: this.renderer.clock.engineGeneration,
+      bridgeState: null};
     try {
       await task;
       const actual = this.sync();
@@ -249,7 +283,7 @@ export class DeterministicDj {
     if (this.startTask) await this.startTask.catch(() => undefined);
     if (epoch !== this.selectionEpoch) return;
     const state = this.sync();
-    if (this.transitionPlan?.phase === 'started') {
+    if (this.transitionPlan?.phase === 'started' || this.bridgeEntered(state)) {
       this.outcome(commandId, 'blocked', 'The transition has started. The new target is retained; request Next after it finishes.');
       this.preparing = null;
       return;
@@ -258,8 +292,10 @@ export class DeterministicDj {
       : state.now.at(-1) ?? state.voices[0]?.source.id ?? null;
     const choice = this.choose(current);
     const waiting = this.waitsBehindHead(commandId, choice);
+    const requestedState = this.control.snapshot().requested.state;
     if (this.transitionPlan && choice.asset?.id === this.transitionPlan.source.id
-      && choice.queueCommandId === this.transitionPlan.queueCommandId) {
+      && choice.queueCommandId === this.transitionPlan.queueCommandId
+      && (!state.handoff || state.handoff.bridge.state === bridgeStateFor(requestedState))) {
       // Hold/mute or another compatible request never restart an existing mix.
       if (!waiting) {
         const target = this.control.snapshot().requested;
@@ -272,6 +308,10 @@ export class DeterministicDj {
         });
         this.transitionPlan = {...this.transitionPlan, commands: retained, state: this.boundState(choice.asset)};
         this.sourceStates.set(choice.asset.id, this.transitionPlan.state);
+        if (state.handoff) {
+          const played = state.handoff.bridge.state;
+          this.sourceStates.set(state.handoff.bridge.recipe.id, requestedState === played ? played : null);
+        }
         this.transitionPlan.commands.push(commandId);
         this.outcome(commandId, 'scheduled', 'The existing checked transition already serves this request.', choice.asset.id);
       }
@@ -294,10 +334,18 @@ export class DeterministicDj {
       return;
     }
     try {
+      const requested = this.control.snapshot().requested.state;
+      const bridgeState = bridgeStateFor(requested);
       this.transitionAttempt = {source: {id: choice.asset.id, revision: choice.asset.revision},
         commandId, commands: waiting ? [] : [commandId], queueCommandId: choice.queueCommandId,
-        state: this.boundState(choice.asset), generation: this.renderer.clock.engineGeneration};
-      await this.renderer.scheduleAB();
+        state: this.boundState(choice.asset), generation: this.renderer.clock.engineGeneration,
+        bridgeState: requested === bridgeState ? requested : null};
+      if (this.handoff === 'hybrid') {
+        // The seed derives from the command ID, so a recorded command replays the same bridge.
+        const bridge = compileS01Phrase(this.loaded.pack,
+          {seed: bridgeSeed(commandId), state: bridgeState, allowFixtures: this.loaded.allowFixtures});
+        await this.renderer.scheduleHybrid(bridge, this.bridgeExit);
+      } else await this.renderer.scheduleAB();
       this.sync(); // native start may have crossed before this continuation ran
       if (epoch !== this.selectionEpoch) return;
       if (this.transitionAttempt?.commandId === commandId) {
@@ -416,9 +464,15 @@ export class DeterministicDj {
     }
     if (this.transitionAttempt?.generation === player.engineGeneration && player.transitionAt && player.transitionEnd) {
       const attempt = this.transitionAttempt;
-      this.transitionPlan = {...attempt, kind: 'transition', at: player.transitionAt, end: player.transitionEnd, phase: 'scheduled'};
+      // A hybrid's B enters at the bridge exit, not at A's exit cue. The queue head and
+      // B's start are reconciled at B's own entry, as in S03.
+      const at = player.handoff ? player.handoff.toStart : player.transitionAt;
+      this.transitionPlan = {...attempt, kind: 'transition', at, end: player.transitionEnd, phase: 'scheduled'};
       this.sourceStates.set(attempt.source.id, attempt.state);
-      this.updatePlan(this.transitionPlan, 'scheduled', 'Scheduled at the checked A → B cue; not started yet.');
+      if (player.handoff) this.sourceStates.set(player.handoff.bridge.recipe.id, attempt.bridgeState);
+      this.updatePlan(this.transitionPlan, 'scheduled', player.handoff
+        ? 'Scheduled the checked A → procedural bridge → B handoff; not started yet.'
+        : 'Scheduled at the checked A → B cue; not started yet.');
       this.transitionAttempt = null;
       if (this.preparing === attempt.commandId) this.preparing = null;
     }
@@ -429,6 +483,11 @@ export class DeterministicDj {
         this.updatePlan(plan, 'cancelled', 'The renderer generation changed.');
         this[key] = null;
         continue;
+      }
+      if (key === 'transitionPlan' && plan.phase === 'scheduled' && !plan.bridgeNoted && this.bridgeEntered(player)) {
+        plan = {...plan, bridgeNoted: true};
+        this[key] = plan;
+        this.updatePlan(plan, 'scheduled', 'The procedural bridge has entered; B enters at the bridge exit. It can no longer be cancelled; Stop remains immediate.');
       }
       if (plan.phase === 'scheduled' && player.currentFrame >= plan.at.frame) {
         if (plan.queueCommandId) {
@@ -453,6 +512,11 @@ export class DeterministicDj {
       transport: player.state === 'paused' ? 'paused' : player.state === 'playing' && player.contextState === 'running' ? 'playing' : 'stopped',
       muted: player.muted, at: {engineGeneration: player.engineGeneration, frame: player.currentFrame}});
     return player;
+  }
+
+  /** True once a scheduled hybrid's bridge has entered: the handoff can no longer be cancelled. */
+  private bridgeEntered(player: PlayerSnapshot): boolean {
+    return this.transitionPlan !== null && player.handoff !== null && player.handoff.phase !== 'scheduled';
   }
 
   private updatePlan(plan: Plan, status: DjExecutionStatus, reason: string): void {

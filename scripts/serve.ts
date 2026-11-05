@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const browserModules = new Set([
   'index', 'pack-types', 'pack', 'audio', 'playable-source', 'control',
-  'browser-pack', 'web-audio', 'player', 'dj', 'phrase-plan', 'procedural-source',
+  'browser-pack', 'web-audio', 'player', 'dj', 'phrase-plan', 'procedural-source', 'hybrid-handoff',
 ]);
 const mimeTypes: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',

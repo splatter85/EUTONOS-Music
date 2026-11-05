@@ -157,18 +157,20 @@ export class RecordedSource implements PlayableSource {
       offsetFrames: cueFrame(this.recording.asset, c.id, 'exit', this.clock!.sampleRate)}));
   }
 
-  transitionOut(exitCueId: string, at: ClockStamp): void {
+  /** The fade starts at the exit cue. A caller may choose its length for this one exit (S05 tail bar). */
+  transitionOut(exitCueId: string, at: ClockStamp, fadeOutFrames = this.fadeOut): void {
     requireAudio(this.phase === 'scheduled' && this.start, 'Start before transition; transition once.');
     this.checkStamp(at);
+    requireAudio(Number.isSafeInteger(fadeOutFrames) && fadeOutFrames >= 0, 'Fades must use nonnegative integer output frames.');
     const expected = this.start.at.frame + cueFrame(this.recording.asset, exitCueId, 'exit', this.clock!.sampleRate) - this.entryFrame;
     requireAudio(at.frame === expected && at.frame >= this.start.at.frame, 'Transition must align to the selected exit cue.');
-    requireAudio(at.frame + this.fadeOut <= this.finishFrame, 'Transition fade exceeds decoded audio.');
-    const when = at.frame / this.clock!.sampleRate, end = (at.frame + this.fadeOut) / this.clock!.sampleRate;
+    requireAudio(at.frame + fadeOutFrames <= this.finishFrame, 'Transition fade exceeds decoded audio.');
+    const when = at.frame / this.clock!.sampleRate, end = (at.frame + fadeOutFrames) / this.clock!.sampleRate;
     this.gain!.gain.setValueAtTime(1, when);
-    if (this.fadeOut) this.gain!.gain.linearRampToValueAtTime(0, end);
+    if (fadeOutFrames) this.gain!.gain.linearRampToValueAtTime(0, end);
     else this.gain!.gain.setValueAtTime(0, when);
     this.node!.stop(end);
-    this.finishFrame = at.frame + this.fadeOut;
+    this.finishFrame = at.frame + fadeOutFrames;
     this.transitionFrame = at.frame;
     this.phase = 'stopping';
   }

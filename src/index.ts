@@ -10,3 +10,4 @@ export * from './player.js';
 export * from './dj.js';
 export * from './phrase-plan.js';
 export * from './procedural-source.js';
+export * from './hybrid-handoff.js';

@@ -1,6 +1,6 @@
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {SmallPlayer} from '../src/player.js';
-import {DeterministicDj, type DjCommandResult} from '../src/dj.js';
+import {DeterministicDj, type DjCommandResult, type DjHandoff} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import type {MusicState} from '../src/pack-types.js';
 
@@ -14,6 +14,7 @@ const buttons = Object.fromEntries(buttonIds.map(id => [id, element<HTMLButtonEl
 const volume = element<HTMLInputElement>('volume');
 const stateInput = element<HTMLSelectElement>('state');
 const genreInput = element<HTMLInputElement>('genre');
+const handoffInput = element<HTMLSelectElement>('handoff');
 const progress = element<HTMLProgressElement>('progress');
 const queueList = element<HTMLUListElement>('queue');
 const errorBox = element('error');
@@ -32,7 +33,8 @@ function setText(id: string, value: string): void {
   if (target.textContent !== value) target.textContent = value;
 }
 function title(id: string | null): string {
-  return id === 's01-recording-a' ? 'S01 A — slow triangle pulse' : id === 's01-recording-b' ? 'S01 B — syncopated pulse' : id ?? 'None';
+  return id === 's01-recording-a' ? 'S01 A — slow triangle pulse' : id === 's01-recording-b' ? 'S01 B — syncopated pulse'
+    : id === 's01-recipe' ? 'Procedural bridge' : id ?? 'None';
 }
 function seconds(value: number): string { return `${Math.max(0, value).toFixed(1)}s`; }
 function releaseOwnership(): void {
@@ -61,7 +63,8 @@ function getDj(): DeterministicDj {
   if (!loaded) throw new Error('The fixture pack is still loading.');
   const route = loaded.pack.routes[0];
   if (!route) throw new Error('The fixture pack has no A → B route.');
-  dj = new DeterministicDj(new SmallPlayer(new AudioContext(), loaded, route.id), loaded, 'explore');
+  dj = new DeterministicDj(new SmallPlayer(new AudioContext(), loaded, route.id), loaded, 'explore',
+    {handoff: handoffInput.value as DjHandoff});
   dj.setVolume(Number(volume.value));
   return dj;
 }
@@ -98,6 +101,9 @@ buttons['apply-state'].addEventListener('click', () => { void request({type: 'se
 buttons['apply-genre'].addEventListener('click', () => { void request({type: 'requestGenre', genreId: genreInput.value.trim() || null}); });
 buttons.mute.addEventListener('click', () => { void request({type: 'transport', action: dj?.snapshot().control.requested.muted ? 'unmute' : 'mute'}); });
 volume.addEventListener('input', () => { if (dj) dj.setVolume(Number(volume.value)); });
+handoffInput.addEventListener('change', () => { dj?.setHandoff(handoffInput.value as DjHandoff); render(); });
+const bridgeStatus = {'lead-in': 'Bridge entering — A fades for one bar', bridge: 'Procedural bridge playing',
+  tail: 'B entered — bridge percussion fades', complete: 'Handoff complete'} as const;
 
 function render(): void {
   const snapshot = dj?.snapshot();
@@ -107,9 +113,11 @@ function render(): void {
   const running = ['loading', 'scheduled', 'playing', 'paused'].includes(state);
   const ready = loaded !== null;
   for (const button of Object.values(buttons)) button.disabled = !ready;
+  handoffInput.disabled = !ready;
   buttons.pause.disabled = !ready || !running;
   buttons.pause.textContent = state === 'paused' ? 'Resume' : 'Pause';
-  buttons['cancel-next'].disabled = !ready || !snapshot?.pending || snapshot.pending.phase !== 'scheduled';
+  buttons['cancel-next'].disabled = !ready || !snapshot?.pending || snapshot.pending.phase !== 'scheduled'
+    || (player?.handoff != null && player.handoff.phase !== 'scheduled');
   buttons.play.disabled = !ready || (running && state !== 'paused');
   buttons.hold.setAttribute('aria-pressed', String(control?.requested.hold ?? false));
   buttons.hold.textContent = control?.requested.hold ? 'Hold: on' : 'Hold state & genre';
@@ -119,8 +127,9 @@ function render(): void {
   setText('now-title', player?.now.length ? player.now.map(title).join(' + ') : 'Nothing playing');
   setText('now-detail', `${state}${player?.muted ? ' · muted' : ''} · ${seconds(player?.elapsedSeconds ?? 0)} / ${seconds(player?.durationSeconds ?? 0)}`);
   setText('next-title', player?.next ? title(player.next) : 'Nothing scheduled');
-  setText('next-detail', snapshot?.pending ? `${snapshot.pending.kind} · ${snapshot.pending.phase}${player?.transitionInSeconds !== null && player?.transitionInSeconds !== undefined ? ` · in ${seconds(player.transitionInSeconds)}` : ''}` : 'Choose Next Song or add a track to the queue.');
-  setText('status', state === 'loading' ? 'Preparing audio…' : state === 'closed' ? 'Player closed — reload to start a new session.' : state === 'ended' ? 'Playback ended' : state === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Handoff complete' : state === 'playing' ? 'Playing' : state === 'scheduled' ? 'Scheduled — waiting for the audio clock' : ready ? 'Ready — press Play to start' : 'Loading fixture…');
+  const bridge = player?.handoff?.bridge;
+  setText('next-detail', snapshot?.pending ? `${snapshot.pending.kind} · ${snapshot.pending.phase}${player?.transitionInSeconds !== null && player?.transitionInSeconds !== undefined ? ` · in ${seconds(player.transitionInSeconds)}` : ''}${bridge ? ` · bridge seed ${bridge.seed} · ${bridge.state}` : ''}` : 'Choose Next Song or add a track to the queue.');
+  setText('status', state === 'loading' ? 'Preparing audio…' : state === 'closed' ? 'Player closed — reload to start a new session.' : state === 'ended' ? 'Playback ended' : state === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeStatus[player.handoff.phase] : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Handoff complete' : state === 'playing' ? 'Playing' : state === 'scheduled' ? 'Scheduled — waiting for the audio clock' : ready ? 'Ready — press Play to start' : 'Loading fixture…');
   progress.value = player && player.durationSeconds > 0 ? Math.min(1, player.elapsedSeconds / player.durationSeconds) : 0;
   setText('clock-detail', player ? `${player.contextState} · ${player.sampleRate} Hz · frame ${player.currentFrame} · generation ${player.engineGeneration}` : 'Audio context starts on your first control request.');
   const result = snapshot?.last ?? lastResult;
