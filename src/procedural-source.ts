@@ -2,10 +2,11 @@ import type {LoadedBrowserPack} from './browser-pack.js';
 import {sha256} from './audio.js';
 import {eligibleForPlayback, quartersToFrames} from './pack.js';
 import type {AudioClock, ClockStamp, PlayableSource, SourceExit, SourceStart} from './playable-source.js';
-import {assertCompiledS01Phrase, compileS01Phrase, type ProceduralPlan, type S01PhraseRole} from './phrase-plan.js';
+import {assertCompiledS01Phrase, compilePhrase, type ProceduralPlan, type S01PhraseRole} from './phrase-plan.js';
 import {requireAudio, WebAudioClock, type DecodedRecording} from './web-audio.js';
 
-/** Four resident samples, not a rendered-song cache. The limit counts Float32 samples. */
+/** Four resident samples, not a rendered-song cache. The limit counts Float32 samples;
+ * the S06 role length bounds keep any contract palette under it at 192 kHz stereo. */
 export const MAX_PROCEDURAL_SAMPLE_VALUES = 1024 * 1024;
 export const MAX_PROCEDURAL_EVENTS = 256;
 export const MAX_PROCEDURAL_VOICES = 4;
@@ -18,8 +19,8 @@ function checkRate(rate: number): void {
 /** Recheck every intent even when the owner can reuse its verified decoded palette. */
 export function checkProceduralPlan(loaded: LoadedBrowserPack, plan: ProceduralPlan): void {
   assertCompiledS01Phrase(plan);
-  const rebound = compileS01Phrase(loaded.pack,
-    {seed: plan.seed, state: plan.state, allowFixtures: loaded.allowFixtures});
+  const rebound = compilePhrase(loaded.pack,
+    {recipe: plan.recipe, seed: plan.seed, state: plan.state, allowFixtures: loaded.allowFixtures});
   requireAudio(JSON.stringify(rebound) === JSON.stringify(plan), 'Procedural plan does not match this pack revision.');
 }
 

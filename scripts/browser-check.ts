@@ -1,12 +1,14 @@
 /**
- * Isolated S03/S04/S05 browser checks. Audio/queue behavior is observed through the real
- * UI; native offline comparisons remain distinct from physical output/listening.
+ * Isolated S03/S04/S05/S06 browser checks. Audio/queue behavior is observed through the real
+ * UI; native offline comparisons remain distinct from physical output/listening. S06 first
+ * regenerates the MOCK FL pack under dist/ (no FL Studio runs).
  */
 import assert from 'node:assert/strict';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import type {Browser, Page} from 'playwright';
+import {DEFAULT_MOCK_OUT, generateMockPack} from './mock-fl-producer.js';
 import {createDemoServer} from './serve.js';
 
 const args = process.argv.slice(2);
@@ -23,6 +25,7 @@ const {chromium} = await import(moduleName);
 const playwrightVersion = JSON.parse(await readFile(new URL('./package.json', import.meta.resolve(moduleName)), 'utf8')).version as string;
 const directory = resolve(options.get('--output') ?? 'artifacts/s04-browser');
 await mkdir(directory, {recursive: true});
+await generateMockPack(DEFAULT_MOCK_OUT);
 const server = createDemoServer();
 let browser: Browser | undefined;
 let currentPage: Page | undefined;
@@ -82,14 +85,14 @@ try {
   currentPage = page;
   observeErrors(page, 'primary');
 
-  stage = 'Nine recorded-source, six procedural and four S05 handoff native offline audio checks';
+  stage = 'Nine recorded-source, six procedural, four S05 handoff and four S06 imported-producer native offline audio checks';
   await page.goto(origin + '/checks.html');
   await page.getByRole('button', {name: 'Run offline checks'}).click();
   await page.waitForFunction(() => /checks passed|failed/.test(document.getElementById('check-status')!.textContent!), null,
     {timeout: 120000});
   const offline = JSON.parse(await page.locator('#check-results').innerText());
   await writeFile(resolve(directory, 'offline.json'), JSON.stringify(offline, null, 2) + '\n');
-  assert.equal(offline.results.length, 19);
+  assert.equal(offline.results.length, 23);
   assert.ok(offline.results.every((result: {status: string}) => result.status === 'PASS'), JSON.stringify(offline, null, 2));
   checks.push({name: stage, status: 'PASS'});
 

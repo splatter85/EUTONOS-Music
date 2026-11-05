@@ -3,6 +3,7 @@ import type {AudioAsset} from '../src/pack-types.js';
 import {planTransition, RecordedSource, requireAudio, WebAudioClock} from '../src/web-audio.js';
 import {runHybridChecks} from './hybrid-checks.js';
 import {runProceduralChecks} from './procedural-checks.js';
+import {runProducerChecks} from './producer-checks.js';
 
 const runButton = document.getElementById('run-checks') as HTMLButtonElement;
 const status = document.getElementById('check-status')!;
@@ -183,6 +184,7 @@ async function run(): Promise<void> {
     await record('Cancelling A → B restores full A at 44.1 kHz', () => restoreCancelledTransition(loaded, 44100));
     await runProceduralChecks(loaded, record);
     await runHybridChecks(loaded, record);
+    await runProducerChecks(loaded, record);
   } catch (error) {
     results.push({check: 'Load/check harness', status: 'FAIL', evidence: String(error)});
   }

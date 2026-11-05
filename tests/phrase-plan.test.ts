@@ -146,20 +146,41 @@ test('seed must be an explicit uint32 and state must be implemented', () => {
 
 test('valid but unsupported recipe, palette and sample metadata fail closed', () => {
   const mutations: ((pack: ReturnType<typeof fresh>) => void)[] = [
-    p => { p.revision = 2; },
     p => { p.recipes[0].bpm = 121; },
     p => { p.recipes[0].phrase_bars = 8; },
-    p => { p.recipes[0].key = 'D minor'; },
-    p => { p.recipes[0].states = ['explore']; },
+    p => { p.recipes[0].states = ['drive']; },
+    p => { p.recipes[0].harmony_pitch_classes = null; },
     p => { p.palettes[0].samples.find((s: { role: string }) => s.role === 'bass').root_midi = 48; },
-    p => { p.assets.find((a: { id: string }) => a.id === 's01-kick').file.sha256 = '0'.repeat(64); },
-    p => { p.assets.find((a: { id: string }) => a.id === 's01-percussion').file.sample_rate = 48000; },
+    p => { p.palettes[0].samples.find((s: { role: string }) => s.role === 'percussion').role = 'drum'; },
+    p => { p.assets.find((a: { id: string }) => a.id === 's01-kick').file.frames = 6001; },
     p => { p.assets.find((a: { id: string }) => a.id === 's01-harmony-am').harmony_pitch_classes = [0, 4, 7]; },
-    p => { p.assets.find((a: { id: string }) => a.id === 's01-bass-a2').states = ['explore']; },
+    p => { p.assets.find((a: { id: string }) => a.id === 's01-percussion').harmony_pitch_classes = [9]; },
   ];
   for (const mutate of mutations) {
     const input = fresh(); mutate(input);
     assert.throws(() => compileS01Phrase(input, { seed: 0, state: 'explore', allowFixtures: true }), errorCode('compatibility'));
+  }
+});
+
+test('S06: identity, label and hash changes alone no longer refuse; the plan snapshots what it bound', () => {
+  // Since EM-DEC032 the performer binds by the palette contract, not by pinned S01 media.
+  // The loader and decoder still check hashes against the bytes before any sound is made.
+  const accepted: ((pack: ReturnType<typeof fresh>) => void)[] = [
+    p => { p.revision = 2; },
+    p => { p.recipes[0].key = 'D minor'; },
+    p => { p.recipes[0].states = ['explore']; },
+    p => { p.assets.find((a: { id: string }) => a.id === 's01-kick').file.sha256 = '0'.repeat(64); },
+    p => { p.assets.find((a: { id: string }) => a.id === 's01-percussion').file.sample_rate = 48000; },
+    p => { p.assets.find((a: { id: string }) => a.id === 's01-bass-a2').states = ['explore']; },
+  ];
+  const baseline = compile(0, 'explore');
+  for (const mutate of accepted) {
+    const input = fresh(); mutate(input);
+    const plan = compileS01Phrase(input, { seed: 0, state: 'explore', allowFixtures: true });
+    assert.equal(JSON.stringify(plan.events), JSON.stringify(baseline.events), 'the performer rules are unchanged');
+    for (const sample of plan.samples) {
+      assert.deepEqual(sample.asset, input.assets.find((asset: { id: string }) => asset.id === sample.asset.id));
+    }
   }
 });
 

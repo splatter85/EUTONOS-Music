@@ -1,8 +1,16 @@
 import { eligibleForPlayback, validatePackManifest } from './pack.js';
 import type { AudioAsset, AudioPack, VersionRef } from './pack-types.js';
 
-/** The performer is executable code; s01-recipe@1 remains its unchanged data descriptor. */
+/**
+ * The performer is executable code; a recipe reference stays a data descriptor. Its event
+ * rules are unchanged since S04. Since S06 it binds any palette that meets
+ * PERFORMER_PALETTE_CONTRACT instead of the pinned S01 media (EM-DEC032).
+ */
 export const S01_PERFORMER = Object.freeze({ id: 's04-s01-performer', revision: 1 });
+/** The S01 recipe identity that the S04 tools, the DJ bridge and the S05 policy compile. */
+export const S01_RECIPE = Object.freeze({ id: 's01-recipe', revision: 1 });
+/** What a producer's palette must satisfy before this performer may play it. */
+export const PERFORMER_PALETTE_CONTRACT = Object.freeze({ id: 's06-performer-palette', revision: 1 });
 export type S01PhraseState = 'explore' | 'drive';
 export type S01PhraseRole = 'drum' | 'percussion' | 'bass' | 'harmony';
 export interface PhraseEvent {
@@ -54,12 +62,29 @@ export class PhrasePlanError extends Error {
   }
 }
 
-const bindings = [
-  { id: 's01-kick', role: 'drum', root: null, frames: 6000, hash: '19d69c96a284f64a1079f3bf5febe599ac288556e1d14e77f711831367d7da5d', pitches: null },
-  { id: 's01-percussion', role: 'percussion', root: null, frames: 1800, hash: '78615392ad936771715fa506165f9deb6ed432693ae55cee162268fc1054d75c', pitches: null },
-  { id: 's01-bass-a2', role: 'bass', root: 45, frames: 9000, hash: '9e770ee7e19e1115fa6d25c73f824b3ede1cf2d13284d5cf7d6d6274f3b857ab', pitches: [9] },
-  { id: 's01-harmony-am', role: 'harmony', root: 45, frames: 24000, hash: 'dac81e41d55f91fa1ab466890bfc98f975d5f9b2d8549f0c49d9f68c755fb09b', pitches: [0, 4, 9] },
-] as const;
+export interface CompilePhraseOptions extends CompileS01PhraseOptions {
+  /** The recipe reference to perform, by exact id and revision inside the pack. */
+  readonly recipe: VersionRef;
+}
+
+/**
+ * The longest one-shot each role may hold, in quarter notes at 120 BPM. Each value is the
+ * shortest distance from any onset of that role to its next onset, to the phrase end
+ * (32) or, for roles that do not continue through an S05 handoff, to the exit at 16.
+ * A sample within it never overlaps its own next note or crosses those boundaries.
+ */
+export const ROLE_MAX_QUARTERS: Readonly<Record<S01PhraseRole, number>> =
+  Object.freeze({ drum: 0.5, percussion: 0.25, bass: 1, harmony: 2 });
+
+/**
+ * The longest native sample, in frames, a role may use at this sample rate. Onsets sit on
+ * a sixteenth-note grid. When the rate is not divisible by 8 a native onset can round up
+ * by half a frame, so the bound keeps that half frame free.
+ */
+export function maxRoleFrames(role: S01PhraseRole, sampleRate: number): number {
+  const exact = ROLE_MAX_QUARTERS[role] * 60 * sampleRate / 120;
+  return Math.floor(sampleRate % 8 === 0 ? exact : exact - 0.5);
+}
 const equal = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
 const ref = (value: VersionRef): VersionRef => ({ id: value.id, revision: value.revision });
 function compatibility(ok: boolean, detail: string): asserts ok {
@@ -98,12 +123,18 @@ const percussionRhythms = [[1, 3], [0.5, 1.5, 2.5, 3.5], [1, 2.5, 3.5], [0.75, 1
 const fills = [[2.5, 3, 3.5, 3.75], [2, 2.75, 3.25, 3.75], [2.5, 2.75, 3.5, 3.75], [2, 2.5, 3, 3.5, 3.75]] as const;
 const roleOrder: readonly S01PhraseRole[] = ['drum', 'percussion', 'bass', 'harmony'];
 
-/**
- * Compile the one supported original S01 palette into eight bars of bounded events.
- * Input metadata is revalidated and copied; no input reference survives in the plan.
- * New recipe/palette/media revisions require a new explicitly reviewed performer.
- */
+/** Compile the S01 recipe identity (`s01-recipe@1`) under the palette contract. */
 export function compileS01Phrase(input: AudioPack, options: CompileS01PhraseOptions): ProceduralPlan {
+  return compilePhrase(input, { seed: options.seed, state: options.state, recipe: S01_RECIPE,
+    ...(options.allowFixtures === undefined ? {} : { allowFixtures: options.allowFixtures }) });
+}
+
+/**
+ * Compile eight bars of bounded events for a recipe whose palette meets the contract,
+ * whoever produced its samples. Input metadata is revalidated and copied; no input
+ * reference survives in the plan, which snapshots the exact bound media.
+ */
+export function compilePhrase(input: AudioPack, options: CompilePhraseOptions): ProceduralPlan {
   if (!Number.isInteger(options.seed) || options.seed < 0 || options.seed > 0xffffffff) {
     throw new PhrasePlanError('seed', 'seed must be an explicit uint32');
   }
@@ -111,33 +142,39 @@ export function compileS01Phrase(input: AudioPack, options: CompileS01PhraseOpti
     throw new PhrasePlanError('state', 'only explore and drive are supported');
   }
   const pack = validatePackManifest(input);
-  compatibility(pack.id === 's01-foundation' && pack.revision === 1, 'requires s01-foundation@1');
-  const recipe = pack.recipes.find(item => item.id === 's01-recipe');
-  compatibility(recipe !== undefined && recipe.revision === 1, 'requires s01-recipe@1');
-  compatibility(equal(recipe.palette, { id: 's01-palette', revision: 1 }) && recipe.bpm === 120 &&
-    equal(recipe.meter, [4, 4]) && recipe.phrase_bars === 4 && recipe.key === 'A minor' &&
-    equal(recipe.harmony_pitch_classes, [0, 4, 9]) && equal(recipe.genres, ['synthetic-test']) &&
-    equal(recipe.states, ['explore', 'drive']), 'unsupported recipe descriptor');
-  const palette = pack.palettes.find(item => item.id === 's01-palette');
-  compatibility(palette !== undefined && palette.revision === 1 && palette.samples.length === 4,
-    'requires the exact four-role s01-palette@1');
-  const samples: PhraseSample[] = bindings.map(binding => {
-    const membership = palette.samples.find(item => item.asset.id === binding.id);
-    const asset = pack.assets.find(item => item.id === binding.id);
-    compatibility(membership !== undefined && membership.asset.revision === 1 &&
-      membership.role === binding.role && membership.root_midi === binding.root,
-    `unsupported palette binding for ${binding.id}`);
-    compatibility(asset !== undefined && asset.revision === 1 && asset.source_kind === 'sample' &&
-      asset.file.format === 'pcm16-wav' && asset.file.sample_rate === 24000 && asset.file.channels === 1 &&
-      asset.file.frames === binding.frames && asset.file.bytes === 44 + binding.frames * 2 &&
-      asset.file.sha256 === binding.hash && asset.key === (binding.root === null ? null : 'A minor') &&
-      equal(asset.harmony_pitch_classes, binding.pitches) && asset.timing === null && asset.cues.length === 0 &&
-      equal(asset.genres, ['synthetic-test']) && equal(asset.states, ['explore', 'drive']),
-    `unsupported sample metadata for ${binding.id}`);
+  const wanted = options.recipe;
+  compatibility(typeof wanted === 'object' && wanted !== null, 'name the recipe to perform');
+  const recipe = pack.recipes.find(item => item.id === wanted.id && item.revision === wanted.revision);
+  compatibility(recipe !== undefined, `the pack has no recipe ${String(wanted.id)}@${String(wanted.revision)}`);
+  compatibility(recipe.bpm === 120 && equal(recipe.meter, [4, 4]) && recipe.phrase_bars === 4,
+    'the performer plays 4/4 at 120 BPM in four-bar phrases');
+  const harmony = recipe.harmony_pitch_classes;
+  compatibility(harmony !== null, 'the recipe must assert its constant harmony');
+  compatibility(recipe.states.includes(options.state), `the recipe does not declare ${options.state}`);
+  const palette = pack.palettes.find(item => item.id === recipe.palette.id && item.revision === recipe.palette.revision);
+  compatibility(palette !== undefined && palette.samples.length === 4 &&
+    roleOrder.every(role => palette.samples.filter(item => item.role === role).length === 1),
+  'the palette needs exactly one drum, percussion, bass and harmony sample');
+  const samples: PhraseSample[] = roleOrder.map(role => {
+    const membership = palette.samples.find(item => item.role === role)!;
+    const asset = pack.assets.find(item => item.id === membership.asset.id && item.revision === membership.asset.revision);
+    compatibility(asset !== undefined && asset.source_kind === 'sample', `the ${role} member must be a sample`);
+    if (role === 'bass' || role === 'harmony') {
+      const pitches = asset.harmony_pitch_classes;
+      compatibility(membership.root_midi !== null && pitches !== null && pitches.every(pitch => harmony.includes(pitch)) &&
+        pitches.includes(membership.root_midi % 12),
+      `${asset.id}: a ${role} sample asserts pitch classes inside the recipe harmony, including its root`);
+    } else {
+      compatibility(membership.root_midi === null && asset.harmony_pitch_classes === null,
+        `${asset.id}: a ${role} sample is unpitched, with no root or harmony`);
+    }
+    compatibility(asset.file.frames <= maxRoleFrames(role, asset.file.sample_rate),
+      `${asset.id}: a ${role} sample lasts at most ${ROLE_MAX_QUARTERS[role]} quarter note(s) at 120 BPM ` +
+      `(${maxRoleFrames(role, asset.file.sample_rate)} frames at ${asset.file.sample_rate} Hz)`);
     if (!eligibleForPlayback(asset, options.allowFixtures === true) || !asset.rights.allowed_uses.includes('sample-reuse')) {
       throw new PhrasePlanError('eligibility', `${asset.id} requires playback and sample-reuse rights plus reviewed or explicitly opted-in fixture eligibility`);
     }
-    return { asset, role: binding.role, rootMidi: binding.root };
+    return { asset, role, rootMidi: membership.root_midi };
   });
   // Independent role streams keep a percussion choice from perturbing another part.
   const drumRandom = randomFor((options.seed ^ 0x243f6a88) >>> 0);
@@ -155,8 +192,8 @@ export function compileS01Phrase(input: AudioPack, options: CompileS01PhraseOpti
   const answerHarmonyOffset = 2 - harmonyOffset;
   const events: PhraseEvent[] = [];
   const add = (role: S01PhraseRole, position: number, gain: number): void => {
-    const binding = bindings.find(item => item.role === role)!;
-    events.push({ sample: { id: binding.id, revision: 1 }, role, atQuarters: position, gain });
+    const bound = samples.find(item => item.role === role)!.asset;
+    events.push({ sample: { id: bound.id, revision: bound.revision }, role, atQuarters: position, gain });
   };
   for (let bar = 0; bar < 8; bar++) {
     const base = bar * 4;

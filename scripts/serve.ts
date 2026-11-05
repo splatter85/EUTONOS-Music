@@ -37,6 +37,10 @@ function assetPath(requestTarget: string): string | undefined {
   if (/^\/fixtures\/s01\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
     return path.slice(1);
   }
+  // S06: the pack the mock FL producer generates under dist/ (never committed).
+  if (/^\/generated\/s06-mock-fl\/pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
+    return `dist${path}`;
+  }
   return undefined;
 }
 
