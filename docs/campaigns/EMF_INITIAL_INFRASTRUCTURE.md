@@ -3,7 +3,7 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS — EMF-S01/S02/S03 CLOUD COMPLETE; EMF-S04 CLOUD COMPLETE (separate published branch); EMF-S08 PC COMPLETE**
+Status: **IN_PROGRESS — EMF-S01/S02/S03 CLOUD COMPLETE; EMF-S04 CLOUD COMPLETE (integrated into main); EMF-S08 PC COMPLETE**
 Recorded 2026-11-03; revised 2026-11-04, America/Chicago
 
 Progress estimate: **unknown**; S01 foundation, S02 player and S03 DJ/request checks pass on Windows, macOS and Linux. The corrected S04 branch passes 130 Node tests, 15 native groups and 11 browser report groups on all three OSes, including zero-error exact same-seed replay at 44.1/48 kHz. S08 separately proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.

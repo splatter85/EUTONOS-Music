@@ -105,7 +105,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF01",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Bounded S01 and S02 reviews cover their implemented cloud boundaries; later slices extend them.",
+      "summary": "Bounded S01 to S04 reviews cover their implemented cloud boundaries; later slices extend them.",
       "title": "Contract and adequacy review",
       "type": "stage"
     },
@@ -195,7 +195,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF04",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Small S02 player only; S03 to S05 supply the DJ, procedural source, requests and hybrid transitions.",
+      "summary": "S02 player, S03 DJ and the S04 procedural source are cloud-verified; S05 hybrid handoffs remain.",
       "title": "Working standalone cloud scaffold",
       "type": "stage"
     },
@@ -284,8 +284,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF07",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "Requested, planned and audible state, dwell, waits, hold, duplicates, expiry and restart behaviour.",
+      "status": "active",
+      "summary": "S03 separates requested, prepared and renderer-active evidence with Hold, retry effects and cancellation; wider lifecycle remains.",
       "title": "Transport and state lifecycle",
       "type": "stage"
     },
@@ -374,8 +374,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF10",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "At least three distinct families and palettes with bounded development across supported states.",
+      "status": "active",
+      "summary": "First finite seeded S04 phrase performer cloud-verified; more families, palettes and adaptive development remain.",
       "title": "Procedural recipe performer",
       "type": "stage"
     },
@@ -434,8 +434,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF12",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "Deterministic eligibility, recency and preference rules with replayable versions and bounded logs.",
+      "status": "active",
+      "summary": "S03 provides deterministic eligible state/genre selection and manual FIFO priority; persistent history remains.",
       "title": "DJ selection and persistent history",
       "type": "stage"
     },
@@ -738,7 +738,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S03-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -754,13 +754,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "cd50784dac8a9f47c5534dc212ab2114ed18f3e2954d6a7c53e952d8040c2464",
+              "context": {
+                "app": null,
+                "model": null,
+                "session": null
+              },
+              "event_id": "e8b02960-a1d8-5255-8db8-d0056fb0b3d8",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-05T03:57:02.997886+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF04"
       },
       "id": "EMF-S03",
-      "status": "planned",
+      "status": "completed",
       "summary": "DJ state/genre/next/queue/Hold requests with queue priority, cancellation, idempotent retries, no-match fallback and deterministic tests. Next cloud slice.",
       "title": "S03 thin DJ and requests (cloud)",
       "type": "slice"
@@ -768,7 +781,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S04-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -784,13 +797,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "103291827eac00e1ab28853de416acd22ddd42284891e3a4387a8f78e1584f12",
+              "context": {
+                "app": null,
+                "model": null,
+                "session": null
+              },
+              "event_id": "29b38975-97dd-5970-93af-fa049ec13d13",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-05T03:57:02.997886+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF10"
       },
       "id": "EMF-S04",
-      "status": "planned",
+      "status": "completed",
       "summary": "Procedural sampler/phrase source on the shared clock with an original palette, seeded variations and replay tests.",
       "title": "S04 first procedural recipe (cloud)",
       "type": "slice"
