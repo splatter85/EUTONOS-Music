@@ -129,6 +129,7 @@ footer { display: flex; align-items: baseline; justify-content: space-between; g
 footer p { margin: 0; }
 footer a { white-space: nowrap; color: #c4d4cb; }
 footer a span { margin-left: 4px; }
+.sampler-page .masthead { flex-wrap: wrap; padding-block: 18px; }
 .back-link { font-size: 0.8rem; color: #c4d4cb; white-space: nowrap; }
 .checks-panel { padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
 .check-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }

@@ -1,5 +1,5 @@
 /**
- * Isolated S03 browser checks. Audio/queue behavior is observed through the real
+ * Isolated S03/S04 browser checks. Audio/queue behavior is observed through the real
  * UI; native offline comparisons remain distinct from physical output/listening.
  */
 import assert from 'node:assert/strict';
@@ -21,7 +21,7 @@ const modulePath = options.get('--playwright-module');
 const moduleName = modulePath ? pathToFileURL(resolve(modulePath)).href : 'playwright';
 const {chromium} = await import(moduleName);
 const playwrightVersion = JSON.parse(await readFile(new URL('./package.json', import.meta.resolve(moduleName)), 'utf8')).version as string;
-const directory = resolve(options.get('--output') ?? 'artifacts/s03-browser');
+const directory = resolve(options.get('--output') ?? 'artifacts/s04-browser');
 await mkdir(directory, {recursive: true});
 const server = createDemoServer();
 let browser: Browser | undefined;
@@ -82,14 +82,14 @@ try {
   currentPage = page;
   observeErrors(page, 'primary');
 
-  stage = 'Nine native offline audio checks';
+  stage = 'Nine recorded-source and six procedural native offline audio checks';
   await page.goto(origin + '/checks.html');
   await page.getByRole('button', {name: 'Run offline checks'}).click();
   await page.waitForFunction(() => /checks passed|failed/.test(document.getElementById('check-status')!.textContent!), null,
-    {timeout: 30000});
+    {timeout: 60000});
   const offline = JSON.parse(await page.locator('#check-results').innerText());
   await writeFile(resolve(directory, 'offline.json'), JSON.stringify(offline, null, 2) + '\n');
-  assert.equal(offline.results.length, 9);
+  assert.equal(offline.results.length, 15);
   assert.ok(offline.results.every((result: {status: string}) => result.status === 'PASS'), JSON.stringify(offline, null, 2));
   checks.push({name: stage, status: 'PASS'});
 
@@ -280,6 +280,89 @@ try {
   await page.screenshot({path: resolve(directory, 'player-mobile.png'), fullPage: true});
   await page.locator('#queue li').first().getByRole('button', {name: /^Cancel queued 1:/}).click();
   await queueCount(page, 0);
+  assert.deepEqual(errors, []);
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'S04 sampler selection, replay metadata, transport, shared ownership and mobile layout';
+  const sampler = await context.newPage();
+  currentPage = sampler;
+  observeErrors(sampler, 'sampler');
+  await sampler.goto(origin + '/procedural.html');
+  await ready(sampler);
+  await waitText(sampler, '#selection-title', /^Seed 1 · explore$/);
+  assert.equal(await sampler.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  assert.equal(await sampler.locator('#pause').isDisabled(), true);
+  const originalSelection = await sampler.locator('#selection-title').innerText();
+  await sampler.locator('#seed').fill('2');
+  await sampler.locator('#state').selectOption('drive');
+  await waitText(sampler, '#selection-title', /^Seed 2 · drive$/);
+  assert.notEqual(await sampler.locator('#selection-title').innerText(), originalSelection);
+  assert.equal(await sampler.locator('#now-title').innerText(), 'Nothing playing');
+  assert.equal(await sampler.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  await sampler.locator('#seed').fill('4294967296');
+  await waitText(sampler, '#error', /seed:/);
+  assert.equal(await sampler.locator('#play').isDisabled(), true);
+  await sampler.locator('#seed').fill('2');
+  await ready(sampler);
+  const replayMetadata = await sampler.locator('#selection-detail').innerText();
+  const planMetadata = await sampler.locator('#plan-detail').textContent();
+  await sampler.screenshot({path: resolve(directory, 'sampler-ready.png'), fullPage: true});
+  await sampler.locator('#play').click();
+  await waitText(sampler, '#now-title', /^Seed 2 · drive$/);
+  await waitText(sampler, '#status', /^Playing the prepared phrase plan$/);
+  assert.equal(await sampler.locator('#seed').isDisabled(), true);
+  assert.equal(await sampler.locator('#state').isDisabled(), true);
+  assert.match(await sampler.locator('#now-detail').innerText(), /\/ 16\.0s$/);
+  await sampler.locator('#pause').click();
+  await waitText(sampler, '#clock-detail', /^suspended ·/);
+  const pausedClock = await sampler.locator('#clock-detail').textContent();
+  await sampler.evaluate(() => new Promise<void>(resolve => {
+    const until = performance.now() + 180;
+    const check = (): void => { if (performance.now() >= until) resolve(); else requestAnimationFrame(check); };
+    requestAnimationFrame(check);
+  }));
+  assert.equal(await sampler.locator('#clock-detail').textContent(), pausedClock, 'Sampler pause advanced the audio clock');
+  await sampler.locator('#mute').click();
+  await pressed(sampler, 'mute', true);
+  await sampler.locator('#pause').click();
+  await waitText(sampler, '#clock-detail', /^running ·/);
+  await waitText(sampler, '#status', /^Playing the prepared phrase plan$/);
+  await sampler.locator('#mute').click();
+  await pressed(sampler, 'mute', false);
+  await sampler.locator('#stop').click();
+  await ready(sampler);
+  assert.equal(await sampler.locator('#seed').isDisabled(), false);
+  assert.equal(await sampler.locator('#state').isDisabled(), false);
+  await sampler.locator('#play').click();
+  await waitText(sampler, '#now-title', /^Seed 2 · drive$/);
+  assert.equal(await sampler.locator('#selection-detail').innerText(), replayMetadata);
+  assert.equal(await sampler.locator('#plan-detail').textContent(), planMetadata);
+
+  // Both pages use the existing same-origin lock, including a paused owner.
+  await page.bringToFront();
+  await page.locator('#play').click();
+  await waitText(page, '#error', /Another tab owns playback/);
+  assert.equal(await page.locator('#now-title').innerText(), 'Nothing playing');
+  await sampler.bringToFront();
+  await sampler.locator('#stop').click();
+  await ready(sampler);
+  await page.bringToFront();
+  await page.locator('#play').click();
+  await waitText(page, '#now-title', /^S01 A — slow triangle pulse$/);
+  await sampler.bringToFront();
+  await sampler.locator('#play').click();
+  await waitText(sampler, '#error', /Another tab owns playback/);
+  assert.equal(await sampler.locator('#now-title').innerText(), 'Nothing playing');
+  await page.bringToFront();
+  await stop(page);
+  await sampler.bringToFront();
+  await sampler.locator('#play').click();
+  await waitText(sampler, '#now-title', /^Seed 2 · drive$/);
+  await sampler.locator('#stop').click();
+  await ready(sampler);
+  await sampler.setViewportSize({width: 390, height: 844});
+  assert.ok(await sampler.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Sampler mobile layout overflows');
+  await sampler.screenshot({path: resolve(directory, 'sampler-mobile.png'), fullPage: true});
   assert.deepEqual(errors, []);
   checks.push({name: stage, status: 'PASS'});
   const report = {browser: await runningBrowser.version(), platform: process.platform, node: process.version,

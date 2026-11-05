@@ -1,6 +1,7 @@
 import {decodeRecordings, loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import type {AudioAsset} from '../src/pack-types.js';
 import {planTransition, RecordedSource, requireAudio, WebAudioClock} from '../src/web-audio.js';
+import {runProceduralChecks} from './procedural-checks.js';
 
 const runButton = document.getElementById('run-checks') as HTMLButtonElement;
 const status = document.getElementById('check-status')!;
@@ -179,6 +180,7 @@ async function run(): Promise<void> {
     await record('Native render preserves pickup and nonzero entry offset', () => entryOffset(loaded));
     await record('Cancelling A → B restores full A at 48 kHz', () => restoreCancelledTransition(loaded, 48000));
     await record('Cancelling A → B restores full A at 44.1 kHz', () => restoreCancelledTransition(loaded, 44100));
+    await runProceduralChecks(loaded, record);
   } catch (error) {
     results.push({check: 'Load/check harness', status: 'FAIL', evidence: String(error)});
   }

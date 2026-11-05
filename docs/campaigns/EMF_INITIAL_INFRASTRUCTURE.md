@@ -3,7 +3,7 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS — EMF-S01/S02/S03 CLOUD COMPLETE; EMF-S08 PC COMPLETE; next EMF-S04 CLOUD**
+Status: **IN_PROGRESS — EMF-S01/S02/S03 CLOUD COMPLETE; EMF-S04 CLOUD IN_PROGRESS; EMF-S08 PC COMPLETE**
 Recorded 2026-11-03; revised 2026-11-04, America/Chicago
 
 Progress estimate: **unknown**; S01 foundation, S02 player and S03 DJ/request checks pass on Windows, macOS and Linux. S08 separately proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.
@@ -16,7 +16,7 @@ The basic **AI authoring controller is part of MVP**; broader FL automation is l
 
 ## Scope and authorization
 
-EMF00 preserves the completed initial documentation baseline. On 2026-11-04 the owner assigned **S01 implementation, original eligible fixtures, automated validation and GitHub publication**, then **S02: a small Web Audio player, Play/Pause A/B, Now/Next and a cue-checked A→B transition on one clock**, with a detailed published repository handoff and mini chat handoff. The S08 completion handoff on 2026-11-04 assigns **S03 — CLOUD** next: deterministic DJ/request integration, verification and published closeout. Current implementation authorization is bounded to S03; subsequent cloud slices, actual DAW operations and changes to the separate Mission Control repository remain separate assignments. PC S08 may proceed independently under the owner's separate assignment.
+EMF00 preserves the completed initial documentation baseline. On 2026-11-04 the owner assigned S01 foundation, S02 player and S03 DJ implementation/verification/publication in sequence, with detailed repository handoffs and mini chat handoffs. The owner supplied the completed S03 handoff at `66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb` and selected **S04 — CLOUD**: the original-palette procedural sampler/phrase source, bounded seeded replay, verification and published closeout. Current implementation authorization is bounded to S04; subsequent cloud slices, actual DAW operations and changes to the separate Mission Control repository remain separate assignments. PC S08 is independently complete for its bounded authoring scope.
 
 **Platform requirement (owner, 2026-11-04): Windows, macOS and Linux.** Windows may lead the real FL Studio/MCP work, but the shared pack, playback and request contracts must stay portable. Use platform-neutral paths, scripts and browser-facing code; isolate host-specific authoring adapters. Cross-platform CI is engineering evidence, separate from browser/device/listening qualification on each OS. No claim of FL/MCP compatibility on an uninspected host.
 
@@ -136,6 +136,12 @@ These IDs and meanings are retained. M1 and M2 are smaller milestone evidence, n
 All required checks and EMF19 must be satisfied for full completion. A provider may remain unsupported with an explicit limit; that does not remove the production-boundary test or claim singing has shipped. Three-day breadth, arbitrary-song accompaniment, all genres, all FL actions, remote streaming and a broad public pack catalogue are later outcomes, not hidden criteria for the first pilot.
 
 ## Current checkpoint
+
+### EMF-S04 intake and implementation
+
+The S04 worker inspected a clean checkout and remote `main` at `66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`, read the repository owners and S03 handoff, then passed the Node 24.22.1 baseline: 101 tests, seven deterministic fixture files and six validated WAVs. Work branch: `work/emf-s04-procedural-20261104`. The assigned next result is a finite eight-bar source over the unchanged S01 palette, sharing the existing player clock and transport, with deterministic plans, bounded notes/sample residency and native rendering checks. S05 joins and PC actions remain outside this assignment. This intake record is not completion evidence.
+
+### Previous S03 checkpoint
 
 **S03 COMPLETE**, 2026-11-04, for the assigned deterministic DJ/request engineering boundary. Intake main was `cd5e5255fc0d3fb4d48500f4541cce1e55e984aa`, the verified S08-containing commit. Tested final source: [`71d954534087ff1637b8ff0e8fc51c393a89abfa`](https://github.com/splatter85/EUTONOS-Music/commit/71d954534087ff1637b8ff0e8fc51c393a89abfa), tree `2eba5fc6ccfb4b3f475ef92512a37436656f1623`, published/fetched back on `work/emf-s03-dj-20261104`. The closeout adds documentation/evidence only; its verified containing main commit is supplied in the completing chat.
 

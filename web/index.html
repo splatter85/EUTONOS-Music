@@ -34,7 +34,7 @@
     </section>
     <section class="handoff-guide"><div class="guide-heading"><h2>The fixture’s one authored route</h2><span class="guide-note">Fixed 4s overlap</span></div><p>A → B uses a fixed four-second overlap. An accepted request can remain queued, blocked, or without a matching recording.</p><ol class="timeline"><li><span class="timeline-time">0s</span>A begins</li><li><span class="timeline-time">8s</span>B enters</li><li><span class="timeline-time">12s</span>A ends</li><li><span class="timeline-time">24s</span>B ends</li></ol></section>
     <details class="diagnostics"><summary>Clock, ownership, and validation limits</summary><p id="clock-detail">Audio context starts on your first control request.</p><p>One AudioContext schedules both recordings. This tab holds a same-origin Web Lock while it owns playback. Hiding the tab pauses the clock; reloading starts silent. Browser timing does not measure physical device output, acoustic gaps, or listening quality. Device timing and human listening remain unreviewed.</p></details>
-    <footer><span>Original synthetic fixture · no private PC renders</span><a href="/checks.html">Native offline checks ↗</a></footer>
+    <footer><a href="/procedural.html">Procedural sampler ↗</a><span>Original synthetic fixture · no private PC renders</span><a href="/checks.html">Native offline checks ↗</a></footer>
   </main>
   <script type="module" src="/dist/web/app.js"></script>
 </body>
