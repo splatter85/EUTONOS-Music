@@ -3,7 +3,7 @@
 Document ID: `EM-D008`  
 Status: proposed qualification plan, revised 2026-11-03. Documentation checks are not runtime or listening tests.
 
-**S01 engineering checks:** run `npm run check` as documented in [S01 foundation](S01_FOUNDATION.md). There is no automatic CI (removed 2026-11-04, see EM-DEC021): run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. This tests code/contracts and deterministic media integrity, not browser decoding, real playback, FL/MCP operation or listening. Actual results and unrun checks belong to the [S01 handoff](handoffs/EMF-S01-HANDOFF.md).
+**S01 engineering checks:** run `npm run check` as documented in [S01 foundation](S01_FOUNDATION.md). There is no automatic CI (removed 2026-11-04, see EM-DEC030): run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. This tests code/contracts and deterministic media integrity, not browser decoding, real playback, FL/MCP operation or listening. Actual results and unrun checks belong to the [S01 handoff](handoffs/EMF-S01-HANDOFF.md).
 
 **S02 verification adds** a native offline Web Audio page and `npm run check:browser` for the small player, served and tested together in a fresh Chromium process. [Setup and exact checks](S02_PLAYER.md#verification-surfaces). The [S02 handoff](handoffs/EMF-S02-HANDOFF.md) records actual platform/browser outcomes, sample-error tolerances, review corrections and blocked/unrun checks. Headless rendering and UI behavior do not establish physical audio output, human listening, arbitrary browser compatibility or full MVP acceptance.
 
@@ -15,7 +15,9 @@ Status: proposed qualification plan, revised 2026-11-03. Documentation checks ar
 
 The original 127-test result remains historical evidence for the earlier candidate. The original [three-platform run](https://github.com/splatter85/EUTONOS-Music/actions/runs/41959790896) failed strict replay. The corrected source uses two fixed mix buses and checks one active note per role after output-frame rounding. Its strict zero-error replay gate passed at 44.1 and 48 kHz; the `0.000003` independent sample-comparison tolerance remains unchanged. [Source provenance, original failure and corrected CI evidence](handoffs/EMF-S04-HANDOFF.md) preserve the separate checkpoints. Prior S03 native evidence remains historical.
 
-S04 was published on `work/emf-s04-procedural-20261104`, verified there, and then integrated into main on the PC. **Physical output and human listening are NOT TESTED.** S05 is next as a separately assigned CLOUD slice from main.
+S04 was published on `work/emf-s04-procedural-20261104`, verified there, and then integrated into main on the PC. **Physical output and human listening are NOT TESTED.**
+
+**S05 verification adds** 13 Node tests for the hybrid policy, role windows, player and DJ, four native groups and one live browser stage ([S05 guide](S05_HYBRID.md), [handoff](handoffs/EMF-S05-HANDOFF.md)). The native groups render A, the bridge and B on separate channels against an independent oracle and check bass ownership, overlapping roles, headroom, bitwise same-seed replay, the end exit and pre-bridge cancellation at 44.1 and 48 kHz. They ran on Windows only. **Physical output and human listening are NOT TESTED.**
 
 Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.
 

@@ -56,11 +56,11 @@ state, persistence, failure paths, and terminal conditions.
 ### `JRN-dj-request-to-transition` DJ request to scheduled A/B handoff
 - Kind: journey
 - Aliases: Next song; queue track; DJ flow
-- Summary: A caller builds DeterministicDj from a loaded pack and sends requests. accept() canonicalizes and deduplicates; execute() either changes intent (state, genre, Hold) or selects a target: the FIFO head, else a different eligible recording matching intent. While stopped, selection is recorded but no audio starts; Play starts the first track. While A plays, selection calls scheduleAB, which plans the exit cue on the shared clock. snapshot() later marks the plan started once the renderer frame reaches it, acknowledges the queue head only then, and reports audible state. Cancel next or removing a scheduled queue entry cancels the future voice only before the cue; a late cue gives a visible no-match and keeps the reservation. Hold refuses automatic targets but allows manual queue and Next. Physical output is not tested.
+- Summary: A caller builds DeterministicDj from a loaded pack and sends requests. accept() canonicalizes and deduplicates; execute() either changes intent (state, genre, Hold) or selects a target: the FIFO head, else a different eligible recording matching intent. While stopped, selection is recorded but no audio starts; Play starts the first track. While A plays, selection calls scheduleAB (default crossfade), which plans the exit cue on the shared clock; the hybrid option takes the bridge path instead (JRN-hybrid-handoff). snapshot() later marks the plan started once the renderer frame reaches it, acknowledges the queue head only then, and reports audible state. Cancel next or removing a scheduled queue entry cancels the future voice only before the cue; a late cue gives a visible no-match and keeps the reservation. Hold refuses automatic targets but allows manual queue and Next. Physical output is not tested.
 - Evidence: `src/dj.ts`; `src/control.ts`; `src/player.ts`; `src/web-audio.ts`
-- Related: `SYS-deterministic-dj`; `SYS-web-audio-transition-player`; `JRN-control-request-lifecycle`; `INT-dj-request`
+- Related: `SYS-deterministic-dj`; `SYS-web-audio-transition-player`; `JRN-control-request-lifecycle`; `INT-dj-request`; `JRN-hybrid-handoff`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
 
 ### `JRN-procedural-audition` Compile and audition a seeded procedural phrase
 - Kind: journey
@@ -70,3 +70,11 @@ state, persistence, failure paths, and terminal conditions.
 - Related: `SYS-procedural-sampler`; `INT-play-procedural`; `SYS-web-audio-transition-player`
 - Review: candidate
 - Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+### `JRN-hybrid-handoff` DJ Next song through a procedural bridge
+- Kind: journey
+- Aliases: hybrid Next; A to bridge to B
+- Summary: A caller builds DeterministicDj with options {handoff: 'hybrid'} or calls setHandoff('hybrid'). Selection, the FIFO queue, Hold and retries are unchanged, but the DJ compiles a bridge with seed bridgeSeed(commandId) and state drive when Drive is requested, else explore, and calls SmallPlayer.scheduleHybrid instead of scheduleAB. At A's exit cue the bridge enters with percussion while A fades for a bar; bass and harmony start once A is silent; B enters at the bridge's phrase exit while bridge percussion fades. snapshot() reports B planned and started at its own entry (the bridge exit) and consumes a queued B's head only then; once the bridge enters, Cancel next, Next and queue removal are refused while Stop stays immediate and keeps a queued B. It reports bridge seed and state (null when the requested state has no bridge); a bridge that no longer matches a changed request is rescheduled. Physical output is not tested.
+- Evidence: `src/dj.ts`; `src/player.ts`; `src/hybrid-handoff.ts`
+- Related: `SYS-deterministic-dj`; `SYS-hybrid-handoff`; `INT-schedule-hybrid`; `JRN-dj-request-to-transition`
+- Review: candidate
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188

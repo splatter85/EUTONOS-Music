@@ -2,15 +2,15 @@
 
 Document ID: `EM-D010`
 
-Updated 2026-11-04. **S04 CLOUD is complete and integrated into main** on the PC, together with the EUTONOS registration branch.
+Updated 2026-11-05. **S05 is complete and in main.** It was built on the owner's PC: the DJ can now drive recording A → a procedural bridge → recording B ([S05 guide](S05_HYBRID.md), [handoff](handoffs/EMF-S05-HANDOFF.md)).
 
-**Next pickup: EMF-S05 (CLOUD), when separately assigned.** Read the [S04 handoff](handoffs/EMF-S04-HANDOFF.md) and the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint), then start from current main, which contains the checked S04 source (`73c456a`) and its docs-only closeout.
+**Next pickup: EMF-S06 (CLOUD, or PC if the owner chooses), when separately assigned.** Read the [S05 handoff](handoffs/EMF-S05-HANDOFF.md) and the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint), then start from current main.
 
 **One campaign:** [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Update the board on the PC through the EUTONOS boards CLI, never by hand. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
-| 1 | **EMF-S05**: recorded/procedural handoffs, when assigned | **ChatGPT/GitHub coding environment** | The DJ drives recording A → procedural → a different recording B with checked cues, bass/tail ownership and a safe fade/bridge. Audio and command tests are reproducible, and the handoff is published. |
+| 1 | **EMF-S06**: portable importer and mock FL-producer contract, when assigned | Cloud or PC | Import/manifest validation and mock FL-producer/MCP contract tests show sound enters the generator regardless of producer, with **no claim of actual FL control**. Checks run on each reachable OS, and the change is merged into main with its handoff. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.
 
@@ -29,23 +29,23 @@ EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this d
 }
 ```
 
-The tested S04 source is `73c456a147dcf24161ce22187e5e62320c5141b5` (tree `92362e7d5dd6552c0255ae0e9220115d104fe052`). It passed on Windows, macOS and Linux in [run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555):
-- **130 Node tests**;
+The tested S05 source is `a9fa01d3e43a304e8648f455cb3e56ef5b69bfda`. On **Windows only** (Node 26.12.1 against the declared Node 24; headless Chromium 151) it passed:
+- **143 Node tests** (13 new);
 - unchanged fixture and media checks;
-- **15 native audio groups**;
-- **11 browser report groups**.
+- **19 native audio groups** (4 new);
+- **12 browser report groups** (1 new live bridge stage).
 
-Exact same-seed native replay has zero differing samples or bit patterns and zero maximum error at both 48 kHz and 44.1 kHz. The [evidence](evidence/emf-s04/README.md) keeps the initial replay failures, the diagnosis and the corrected result separately. The S04 closeout commit changes documentation and evidence only.
+macOS and Linux were not run for S05; S04's three-platform evidence keeps its own scope. There is no automatic CI (EM-DEC030): run `npm run check` and `npm run check:browser` on each OS you can reach and say which ran.
 
-**First action for S05:** inspect current main and the S04 handoff before changing code. Setup is Node 24.x with `npm ci --ignore-scripts` and `npm run check`. Optional audition: run `npm run demo`, then open http://127.0.0.1:4173/procedural.html. The [S04 guide](S04_PROCEDURAL.md) explains seeded replay, finite resources and shared transport.
+**First action for S06:** inspect current main and the S05 handoff before changing code. Setup is Node 24.x with `npm ci --ignore-scripts` and `npm run check`. Optional audition: `npm run demo`, then open http://127.0.0.1:4173/ and set **Handoff** to **Procedural bridge**.
 
 **EUTONOS files:** cloud sessions leave `docs/WORK_ITEMS.md`, `NAV/`, `RAM/` and `eutonos.*.json` alone. Keep the single `tokenslang-ram-links` block at the end of this page; never copy or delete it. `tools/eutonos_project.py` stops with "EUTONOS runtime missing" where EUTONOS is not installed, which is expected; continue without it.
 
-**Cloud sequence:** S05 handoffs → S06 importer/mock FL producer → S07 integrated app, tests and scaffold review. No slice starts automatically because CI passed. The S04 audition replacement and whole-performance exit fades do not supply S05's hybrid overlap or role transfer.
+**Remaining sequence:** S06 importer/mock FL producer → S07 integrated app, tests and scaffold review. No slice starts automatically.
 
-**PC lane:** **S08 is complete** ([handoff](handoffs/EMF-S08-HANDOFF.md), [guide](S08_FL_AUTHORING.md)), and its previously queued Windows CI is green. The owner still has to approve the project MCP server once in an interactive Claude Code session. Next, S09 joins the checked cloud build and real FL audio on PC, and S10 is owner listening acceptance. **Only after that does S12 connect Mission Control.** Windows leads real FL/MCP integration; the shared system targets Windows, macOS and Linux. See the [authoritative slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
+**PC lane:** **S08 is complete** ([handoff](handoffs/EMF-S08-HANDOFF.md), [guide](S08_FL_AUTHORING.md)). The owner still has to approve the project MCP server once in an interactive Claude Code session. Next, S09 joins the checked build and real FL audio on PC, and S10 is owner listening acceptance. **Only after that does S12 connect Mission Control.** Windows leads real FL/MCP integration; the shared system targets Windows, macOS and Linux. See the [authoritative slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
 
-Still unverified: physical output, human listening, the joined FL/cloud path and full MVP acceptance. Historical S03 and S08 evidence keeps its original scope. Overall effort percentage is unknown.
+Still unverified: physical output, human listening, S05 on macOS/Linux, the joined FL/cloud path and full MVP acceptance. Historical S03, S04 and S08 evidence keeps its original scope. Overall effort percentage is unknown.
 
 
 ```tokenslang-ram-links

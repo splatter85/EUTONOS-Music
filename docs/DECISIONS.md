@@ -1,7 +1,7 @@
 # Design decisions and open questions
 
 Document ID: `EM-D011`  
-Status: current design decisions, including S01/S02/S03/S04/S08 implementation. S04 cloud engineering is complete and was integrated into main on the PC. Revised 2026-11-04.
+Status: current design decisions, including S01/S02/S03/S04/S05/S08 implementation. S03–S05 are in main; S05 was built on the PC. Revised 2026-11-05.
 
 Owner direction: Mission Control music first, possible growth later, focus on making it work. Other engineering decisions below are this review's recommendations within that direction, not unrun qualification results. The initial versions of EM-DEC001–010 are preserved at baseline `ee7125e`; their stable identities remain.
 
@@ -27,7 +27,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC018 | Listener transport/hold and work isolation outrank automation | Music never overrides an explicit stop or disables MC work functions. |
 | EM-DEC019 | Initial DJ uses inspectable deterministic rules | A model-based selector must demonstrate benefit, cost and failure isolation before replacing it. |
 | EM-DEC020 | Broader product scope is earned by a real consumer/problem | Keep neutral interfaces; do not prebuild cloud/accounts/marketplaces or universal plugin systems. |
-| EM-DEC021 | No automatic CI; slices may be built on the PC or in the cloud and merged directly | Owner decision, 2026-11-04. Run `npm run check` and `npm run check:browser` on each OS available and report which ran. Reconsider if macOS/Linux regressions go unnoticed. |
+| EM-DEC030 | No automatic CI; slices may be built on the PC or in the cloud and merged directly | Owner decision, 2026-11-04. Run `npm run check` and `npm run check:browser` on each OS available and report which ran. Reconsider if macOS/Linux regressions go unnoticed. |
 
 ## Open, evidence-dependent choices
 
@@ -49,7 +49,7 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 
 ## S01 and platform direction — 2026-11-04
 
-**EM-DEC021:** The owner requires **Windows, macOS and Linux** support. Windows may lead the FL Studio/MCP integration; shared pack/playback/control code remains portable and OS-specific authoring behavior stays behind explicit adapters. Automated checks run on all three OSes. Browser lifecycle, audio output and FL compatibility require separate real-host evidence.
+**EM-DEC021:** The owner requires **Windows, macOS and Linux** support. Windows may lead the FL Studio/MCP integration; shared pack/playback/control code remains portable and OS-specific authoring behavior stays behind explicit adapters. Checks run on each OS that can be reached, reported per OS (EM-DEC030). Browser lifecycle, audio output and FL compatibility require separate real-host evidence.
 
 **EM-DEC022:** Implement a small versioned `em.audio-pack.v0` with PCM16 WAV, authored constant-tempo 4/4 cues, bounded data and exact media/reference validation. Use original, reproducible synthetic fixtures for contract/timing work, marked `fixture-only`. Descriptive recipe references do not constitute a generator. The common source and request harness do not constitute a DJ or audio renderer. [Executable boundary and omissions](S01_FOUNDATION.md).
 
@@ -77,3 +77,7 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 **EM-DEC029:** Compile one immutable eight-bar S01-palette performance from an explicit uint32 seed and Explore/Drive arrangement, with a separately versioned executable performer and independent deterministic role streams. Schedule its complete bounded note set on the existing Web Audio clock; keep one pending/resolved verified palette decode per player, and recheck current permissions on every intent. Stop/replacement and stale-operation guards remain in the common player. Keep the first audition separate from the two-recording DJ: replacement playback, a whole-performance exit fade and recipe identity alone do not supply S05 hybrid overlap, role transfer or full replay identity. Symbolic replay, call/state tests, native PCM and the browser flow pass on Windows/macOS/Linux at the pinned source; physical output and listening remain untested. Reconsider broader recipes, imported plans and scheduling strategies only against a concrete supported-content or resource requirement. [Guide](S04_PROCEDURAL.md), [completed branch handoff](handoffs/EMF-S04-HANDOFF.md).
 
 The native replay correction uses two fixed unity-gain buses (drum/percussion and bass/harmony) before the existing master. At most one active note per role bounds each sum to two active inputs. Both buses belong to the same gated scheduling/cleanup transaction. This preserves exact replay without widening the `0.000003` independent sample-oracle tolerance; failure cleanup and actual PCM replay passed at 44.1/48 kHz on all three OSes. Reconsider this grouping only with concrete additional-role/polyphony evidence, not as an unbounded general-purpose mixer. [Measured findings and independent review](reviews/EMF_S04_PROCEDURAL_REVIEW.md).
+
+## S05 hybrid handoff — 2026-11-05
+
+**EM-DEC031:** Hand off recording A → procedural bridge → recording B under one code-versioned policy, `s05-hybrid-handoff@1`, for the fixture's single route. Bass and harmony change owner only when the outgoing source is silent: the bridge's first bar plays percussion only while A fades, and at B's entry every non-percussion bridge attack is cancelled while only percussion fades over one bar. B enters at full gain on a phrase boundary. This avoids two simultaneous bass lines and keeps at most two nonzero sources summed, which preserves exact same-seed native replay. The timing and fades are engineering choices pending listening (S10); a new route, performer or timing needs a new policy revision.

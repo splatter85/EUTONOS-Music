@@ -21,11 +21,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `SURF-demo-http-server` Loopback demo HTTP server
 - Kind: surface
 - Aliases: serve.ts; npm run demo
-- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist now also covers /procedural.html and the dj, phrase-plan and procedural-source browser modules. Page content comes from web/, outside the source roots.
+- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist covers /procedural.html and the dj, phrase-plan, procedural-source and hybrid-handoff browser modules. Page content comes from web/, outside the source roots.
 - Evidence: `scripts/serve.ts`
 - Related: `SYS-demo-server`; `GAP-web-demo-outside-source-roots`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
 
 ### `SURF-dev-cli-scripts` Fixture, pack validation and browser check commands
 - Kind: surface
@@ -39,11 +39,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `SURF-library-exports` Package import surfaces
 - Kind: surface
 - Aliases: index.ts; node.ts
-- Summary: Programmatic entry points: src/index.ts is the browser-safe export barrel (types, pack validation, audio, sources, control, Web Audio, browser pack, player, and now dj, phrase-plan and procedural-source) and src/node.ts is the separate Node-only filesystem loader. No package exports map was inspected.
+- Summary: Programmatic entry points: src/index.ts is the browser-safe export barrel (types, pack validation, audio, sources, control, Web Audio, browser pack, player, dj, phrase-plan, procedural-source and, for S05, hybrid-handoff) and src/node.ts is the separate Node-only filesystem loader. No package exports map was inspected.
 - Evidence: `src/index.ts`; `src/node.ts`
-- Related: `SYS-pack-validation`; `SRC-audio-pack-contract`
+- Related: `SYS-pack-validation`; `SRC-audio-pack-contract`; `SYS-deterministic-dj`; `SYS-procedural-sampler`; `SYS-hybrid-handoff`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
 
 ### `INT-fl-create-project` fl_create_project: create a disposable project
 - Kind: interaction
@@ -227,11 +227,12 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-cli-browser-check` browser-check: run isolated browser checks
 - Kind: interaction
 - Aliases: check browser; Playwright check
-- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s04-browser): starts the demo server on an ephemeral loopback port, runs nine recorded and six procedural native offline audio checks, then drives the player and sampler pages with Playwright, writing offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
+- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s04-browser): starts the demo server on an ephemeral loopback port, runs nineteen native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright, writing offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
 - Evidence: `scripts/browser-check.ts`
 - Related: `SURF-dev-cli-scripts`; `SYS-demo-server`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+
 ### `SURF-demo-procedural-page` Demo procedural sampler page route
 - Kind: surface
 - Aliases: procedural.html; sampler page
@@ -257,3 +258,11 @@ meaningful interactions belong here. Decorative labels do not.
 - Related: `SYS-procedural-sampler`; `JRN-procedural-audition`; `SYS-demo-server`
 - Review: candidate
 - Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+### `INT-schedule-hybrid` SmallPlayer.scheduleHybrid: schedule A to bridge to B
+- Kind: interaction
+- Aliases: scheduleHybrid; hybrid handoff call
+- Summary: Library call scheduleHybrid(bridgePlan, exit = 'phrase') while A plays: plans with planHybridHandoff, decodes the palette (shared with playProcedural) and B, prepares both, plans again, then commits; a late or changed clock refuses and releases what was prepared, leaving A unchanged. snapshot().handoff reports the policy, bridge identity (recipe, performer, seed, state, exit), boundaries and a clock-derived phase: scheduled, lead-in, bridge, tail or complete. Cancel works until the bridge enters; Stop stays immediate.
+- Evidence: `src/player.ts`; `src/hybrid-handoff.ts`
+- Related: `SYS-hybrid-handoff`; `SYS-web-audio-transition-player`; `JRN-hybrid-handoff`
+- Review: candidate
+- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188

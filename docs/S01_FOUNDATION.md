@@ -25,7 +25,7 @@ There are no runtime npm dependencies. TypeScript 5.9.3 and Node type declaratio
 | `npm run validate` | Compile and validate `fixtures/s01`, including actual WAV bytes and rights-evidence files. |
 | `node dist/scripts/validate-pack.js PATH_TO_PACK` | After building, validate another local pack directory; exits nonzero on failure. |
 
-During S01–S04 a GitHub Actions workflow ran `npm ci --ignore-scripts` and `npm run check` on Ubuntu, Windows and macOS; the owner removed it on 2026-11-04 (EM-DEC021). A configured workflow is not a completed run: see the exact executed results in the handoff. Passing these checks does not establish physical output, background browser behavior or FL Studio compatibility.
+During S01–S04 a GitHub Actions workflow ran `npm ci --ignore-scripts` and `npm run check` on Ubuntu, Windows and macOS; the owner removed it on 2026-11-04 (EM-DEC030). A configured workflow is not a completed run: see the exact executed results in the handoff. Passing these checks does not establish physical output, background browser behavior or FL Studio compatibility.
 
 ## Files and boundaries
 

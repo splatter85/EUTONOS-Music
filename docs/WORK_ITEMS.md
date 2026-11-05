@@ -105,7 +105,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF01",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Bounded S01 to S04 reviews cover their implemented cloud boundaries; later slices extend them.",
+      "summary": "Bounded S01 to S05 reviews cover their implemented boundaries; later slices extend them.",
       "title": "Contract and adequacy review",
       "type": "stage"
     },
@@ -195,7 +195,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF04",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S02 player, S03 DJ and the S04 procedural source are cloud-verified; S05 hybrid handoffs remain.",
+      "summary": "S02 player, S03 DJ, S04 procedural source and S05 hybrid handoff are in main; S05 checked on Windows only. S06/S07 remain.",
       "title": "Working standalone cloud scaffold",
       "type": "stage"
     },
@@ -344,8 +344,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF09",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "Reviewed phrase mix, role substitution and safe fallback beyond the thin proof.",
+      "status": "active",
+      "summary": "S05 thin proof: checked route cues, A's one-bar exit fade and B's full-level phrase entry around a bridge; wider recorded transitions remain.",
       "title": "Recorded transition path",
       "type": "stage"
     },
@@ -404,8 +404,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF11",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "Generalize the small proof; shared context, bass, vocal and tail ownership and latency alignment.",
+      "status": "active",
+      "summary": "S05 proves one A to procedural bridge to B route with percussion-only overlaps and bass ownership across silence (Windows); generalization and listening remain.",
       "title": "Hybrid musical handoffs",
       "type": "stage"
     },
@@ -824,7 +824,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S05-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -840,13 +840,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "ed74eab0c8f1239c6d3830db3b39b7bdc97f9b2e4df9fc9fb8a36997f15dcbc7",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "27cf0eb0-c3f1-5798-bc53-d420fcee8317",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-05T06:49:15.346195+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF11"
       },
       "id": "EMF-S05",
-      "status": "planned",
+      "status": "completed",
       "summary": "DJ drives recording A to procedural to recording B with checked cues and a safe bridge.",
       "title": "S05 recorded/procedural handoffs (cloud)",
       "type": "slice"

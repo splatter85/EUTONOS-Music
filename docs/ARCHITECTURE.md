@@ -1,7 +1,7 @@
 # Preliminary architecture
 
 Document ID: `EM-D004`  
-Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, and [S02](S02_PLAYER.md) adds one native Web Audio recording renderer and A/B transport. [S03](S03_DJ.md) adds a deterministic DJ/request coordinator over that renderer. [S04](S04_PROCEDURAL.md) is COMPLETE as a CLOUD slice on `work/emf-s04-procedural-20261104`, implementing a finite original-palette sampler through the same clock/transport. Its corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. Main remains intentionally unchanged; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch, with no PC action required for S04. Hybrid handoffs and the broader planner remain later slices.
+Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, and [S02](S02_PLAYER.md) adds one native Web Audio recording renderer and A/B transport. [S03](S03_DJ.md) adds a deterministic DJ/request coordinator over that renderer. [S04](S04_PROCEDURAL.md) adds a finite original-palette sampler through the same clock/transport. [S05](S05_HYBRID.md) schedules recording A → procedural bridge → recording B on that one clock under one checked policy, with role-limited overlap. All are in main. Physical output and listening are NOT TESTED. Broader handoffs and the wider planner remain later slices.
 
 ## Platform boundary
 
