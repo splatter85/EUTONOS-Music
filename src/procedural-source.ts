@@ -2,7 +2,7 @@ import type {LoadedBrowserPack} from './browser-pack.js';
 import {sha256} from './audio.js';
 import {eligibleForPlayback, quartersToFrames} from './pack.js';
 import type {AudioClock, ClockStamp, PlayableSource, SourceExit, SourceStart} from './playable-source.js';
-import {assertCompiledS01Phrase, compileS01Phrase, type ProceduralPlan} from './phrase-plan.js';
+import {assertCompiledS01Phrase, compileS01Phrase, type ProceduralPlan, type S01PhraseRole} from './phrase-plan.js';
 import {requireAudio, WebAudioClock, type DecodedRecording} from './web-audio.js';
 
 /** Four resident samples, not a rendered-song cache. The limit counts Float32 samples. */
@@ -80,6 +80,7 @@ export class ProceduralSource implements PlayableSource {
   private clock: WebAudioClock | null = null;
   private generation = -1;
   private output: GainNode | null = null;
+  private mixBuses: GainNode[] = [];
   private notes = new Set<Note>();
   private samples: readonly DecodedRecording[];
   private readonly fadeIn: number;
@@ -160,15 +161,29 @@ export class ProceduralSource implements PlayableSource {
       requireAudio(frame + frames <= endFrame, 'A sample tail exceeds the declared finite phrase.');
       return {event, sample, frame, end: frame + frames};
     });
-    const boundaries = prepared.flatMap(note => [{frame: note.frame, delta: 1}, {frame: note.end, delta: -1}])
+    const boundaries = prepared.flatMap(note => [{frame: note.frame, delta: 1, role: note.event.role},
+      {frame: note.end, delta: -1, role: note.event.role}])
       .sort((a, b) => a.frame - b.frame || a.delta - b.delta);
     let voices = 0;
+    const roleVoices = new Map<S01PhraseRole, number>();
     for (const boundary of boundaries) {
       voices += boundary.delta;
       requireAudio(voices <= MAX_PROCEDURAL_VOICES, 'The finite sampler polyphony budget is exceeded.');
+      const count = (roleVoices.get(boundary.role) ?? 0) + boundary.delta;
+      requireAudio(count <= 1, `The finite sampler allows only one active note per role: ${boundary.role}.`);
+      roleVoices.set(boundary.role, count);
     }
     try {
       // Keep the master muted until the entire schedule is committed successfully.
+      // Fix the grouping of Float32 sums: rhythm and pitched pairs each have at
+      // most two active signals, and the master receives only those two buses.
+      // Register each allocation before any later native operation can fail.
+      for (let pair = 0; pair < 2; pair++) {
+        const bus = this.context.createGain();
+        this.mixBuses.push(bus);
+        bus.gain.value = 1;
+        bus.connect(this.output!);
+      }
       for (const item of prepared) {
         const node = this.context.createBufferSource();
         const gain = this.context.createGain();
@@ -178,12 +193,13 @@ export class ProceduralSource implements PlayableSource {
         node.buffer = item.sample.buffer;
         gain.gain.value = item.event.gain;
         node.connect(gain);
-        gain.connect(this.output!);
+        gain.connect(this.mixBuses[item.event.role === 'drum' || item.event.role === 'percussion' ? 0 : 1]!);
         node.onended = () => {
           node.onended = null;
           node.disconnect(); gain.disconnect(); this.notes.delete(note);
           if (this.notes.size === 0 && this.phase !== 'released') {
             this.phase = 'ended';
+            this.releaseMixBuses();
             this.output?.disconnect();
           }
         };
@@ -273,6 +289,7 @@ export class ProceduralSource implements PlayableSource {
       note.node.disconnect(); note.gain.disconnect();
     }
     this.notes.clear();
+    this.releaseMixBuses();
     this.output?.disconnect();
     this.output = null;
     this.clock = null;
@@ -280,10 +297,14 @@ export class ProceduralSource implements PlayableSource {
   }
 
   get endFrame(): number { return this.finishFrame; }
-  get resourceUsage(): {allocatedNoteNodes: number; liveNoteNodes: number; sampleValues: number; maximumVoices: number} {
-    return {allocatedNoteNodes: this.allocatedNotes, liveNoteNodes: this.notes.size,
+  get resourceUsage(): {allocatedNoteNodes: number; liveNoteNodes: number; liveMixBuses: number; sampleValues: number; maximumVoices: number} {
+    return {allocatedNoteNodes: this.allocatedNotes, liveNoteNodes: this.notes.size, liveMixBuses: this.mixBuses.length,
       sampleValues: this.samples.reduce((sum, s) => sum + s.buffer.length * s.buffer.numberOfChannels, 0),
       maximumVoices: MAX_PROCEDURAL_VOICES};
+  }
+  private releaseMixBuses(): void {
+    for (const bus of this.mixBuses) bus.disconnect();
+    this.mixBuses = [];
   }
   private checkGeneration(): void {
     requireAudio(this.clock && this.clock.engineGeneration === this.generation && this.context.state !== 'closed',

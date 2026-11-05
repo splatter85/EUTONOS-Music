@@ -122,7 +122,8 @@ async function render(loaded: LoadedBrowserPack, plan: ProceduralPlan, rate: num
   requireAudio(source.endFrame === naturalEnd, 'Finite phrase end differs from 32 quarters.');
   const allocated = source.resourceUsage;
   requireAudio(allocated.allocatedNoteNodes === plan.events.length && allocated.liveNoteNodes === plan.events.length &&
-    allocated.allocatedNoteNodes <= 256 && allocated.sampleValues <= 1024 * 1024, 'Native allocation budget was exceeded.');
+    allocated.allocatedNoteNodes <= 256 && allocated.liveMixBuses === 2 && allocated.sampleValues <= 1024 * 1024,
+    'Native allocation budget was exceeded.');
   let expectedEnd = naturalEnd, exit: number | null = null, cancelledAt: number | null = null, staleRejected = false;
   let rendering: Promise<AudioBuffer>;
   if (mode === 'stop') {
@@ -165,7 +166,7 @@ async function render(loaded: LoadedBrowserPack, plan: ProceduralPlan, rate: num
   requireAudio(mode === 'release' ? nonzero === 0 : peak > 0.01 && peak < 1 && nonzero > rate,
     'Procedural render is silent, clipped, or a released source produced audio.');
   source.release(); source.release();
-  requireAudio(source.resourceUsage.liveNoteNodes === 0 && source.resourceUsage.sampleValues === 0,
+  requireAudio(source.resourceUsage.liveNoteNodes === 0 && source.resourceUsage.liveMixBuses === 0 && source.resourceUsage.sampleValues === 0,
     'Release retained procedural nodes or samples.');
   return {pcm: actual,
     decoded: samples.map(sample => ({id: sample.asset.id, revision: sample.asset.revision, sampleRate: sample.buffer.sampleRate,
@@ -174,12 +175,12 @@ async function render(loaded: LoadedBrowserPack, plan: ProceduralPlan, rate: num
     evidence: {sampleRate: rate, seed: plan.seed, state: plan.state, mode,
     frames: actual.length, startFrame: start, endFrame: expectedEnd, exitFrame: exit, fadeInFrames: fadeIn,
     fadeOutFrames: exit === null ? 0 : fadeOut, cancelledAtFrame: cancelledAt, staleGenerationRejected: staleRejected,
-    eventCount: plan.events.length, allocatedNoteNodes: allocated.allocatedNoteNodes,
+    eventCount: plan.events.length, allocatedNoteNodes: allocated.allocatedNoteNodes, allocatedMixBuses: allocated.liveMixBuses,
     maximumVoices: oracle.maximumVoices, sampleValues: allocated.sampleValues,
     decodedSamples: samples.map(sample => ({id: sample.asset.id, revision: sample.asset.revision,
       nativeFrames: sample.asset.file.frames, decodedFrames: sample.buffer.length, sampleRate: sample.buffer.sampleRate})),
     comparedSamples: actual.length, maxAbsoluteSampleError: maxError, peak, nonzeroSamples: nonzero,
-    headAndTailSilent: true, releasedLiveNodes: source.resourceUsage.liveNoteNodes, tolerance,
+    headAndTailSilent: true, releasedLiveNodes: source.resourceUsage.liveNoteNodes, releasedMixBuses: source.resourceUsage.liveMixBuses, tolerance,
     output: 'OfflineAudioContext; no device output'}};
 }
 

@@ -122,7 +122,8 @@ test('review: note allocation failure disconnects the entire partial procedural 
   await source.prepare(clock);
   const createGain = context.createGain.bind(context);
   context.createGain = () => {
-    if (context.gains.length === 3) throw new Error('native gain allocation failed');
+    // Target a partial note graph independently of any fixed mixer gains.
+    if (context.sources.length === 3) throw new Error('native gain allocation failed');
     return createGain();
   };
   assert.throws(() => source.scheduleStart({at: clock.stamp(context.sampleRate), entryCueId: 'entry'}),
@@ -131,6 +132,30 @@ test('review: note allocation failure disconnects the entire partial procedural 
   assert.equal(source.resourceUsage.sampleValues, 0);
   assert.ok(context.sources.every(node => node.connections.length === 0 && node.onended === null));
   assert.ok(context.gains.every(gain => gain.connections.length === 0));
+  assert.equal(context.sources.length, 3, 'failure occurs while constructing the third note');
   assert.equal(context.sources.some(node => node.starts.length > 0), false);
+  source.release();
+});
+
+test('review: a pair-bus connection failure releases every allocated gain before any note starts', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  const samples = await decodeProceduralSamples(loaded, context.audio, plan);
+  const source = new ProceduralSource(context.audio, plan, samples, context.destination, {allowFixtures: true});
+  await source.prepare(clock);
+  const createGain = context.createGain.bind(context);
+  let newGains = 0;
+  context.createGain = () => {
+    const gain = createGain();
+    if (++newGains === 2) gain.connect = () => { throw new Error('second pair-bus connection failed'); };
+    return gain;
+  };
+  assert.throws(() => source.scheduleStart({at: clock.stamp(context.sampleRate), entryCueId: 'entry'}),
+    /second pair-bus connection failed/);
+  assert.equal(context.sources.length, 0, 'bus failure precedes note allocation');
+  assert.equal(source.resourceUsage.liveNoteNodes, 0);
+  assert.equal(source.resourceUsage.sampleValues, 0);
+  assert.ok(context.gains.every(gain => gain.connections.length === 0 && gain.disconnectCalls > 0));
+  assert.deepEqual(context.gains[0]!.gain.calls, [], 'the failed schedule never opens the master gate');
+  source.release();
   source.release();
 });
