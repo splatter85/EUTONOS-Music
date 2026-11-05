@@ -3,6 +3,8 @@
 Document ID: `EM-D022`  
 Scope: one finite seeded sampler/phrase source and its audition path. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current delivery status; the [handoff](handoffs/EMF-S04-HANDOFF.md) records source-pinned execution evidence and limits.
 
+**EMF-S04 — CLOUD is COMPLETE** on [`work/emf-s04-procedural-20261104`](https://github.com/splatter85/EUTONOS-Music/tree/work/emf-s04-procedural-20261104), using corrected source [`73c456a147dcf24161ce22187e5e62320c5141b5`](https://github.com/splatter85/EUTONOS-Music/commit/73c456a147dcf24161ce22187e5e62320c5141b5). [CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed on Windows, macOS and Linux. Main remains intentionally unchanged at [`66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`](https://github.com/splatter85/EUTONOS-Music/commit/66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb), as requested by the owner. No PC action is required for S04. **Physical output and human listening are NOT TESTED.**
+
 ## Try a variation
 
 Use **Node 24.x** on Windows, macOS or Linux:
@@ -19,7 +21,7 @@ Pause suspends the existing audio clock; Resume preserves its note schedule. Mut
 
 The seed and arrangement controls are disabled during preparation, scheduled playback, playback and pause. Requested selection, actual clock-active performance and clock diagnostics are shown separately. An invalid seed cannot start a performance. Natural completion releases ownership; replay is explicit.
 
-This page is a bounded source audition. The [recording DJ](S03_DJ.md) still has its two recordings and one A→B route. **S05** adds DJ selection and the recorded A → procedural → recorded B sequence; S04 does not invent those routes.
+This page is a bounded source audition. The [recording DJ](S03_DJ.md) still has its two recordings and one A→B route. **S05 — CLOUD** is the next separately assigned slice, starting from the published S04 branch. It adds DJ selection and the recorded A → procedural → recorded B sequence; S04 does not invent those routes.
 
 ## Musical boundary and replay identity
 
@@ -45,7 +47,7 @@ Only plans returned by `compileS01Phrase` in the current module instance can be 
 
 The only entry is quarter zero. Exits are **`phrase` at quarter 16 / eight seconds** and **`end` at quarter 32 / sixteen seconds**, expressed relative to the source timeline origin and converted into output-clock frames. `fadeInFrames` and `fadeOutFrames` are construction-time options in output-clock frames. A nonzero end fade would exceed this finite performance and is refused. A phrase fade must fit inside the remaining duration and follow a completed entry fade. Invalid or missed cues are refused before effects. The concrete source's `cancelTransition()` extension, which is not part of `PlayableSource`, can cancel a future exit before its onset, restoring the original envelope and each note's natural deadline; after onset it cannot be undone.
 
-Frames come from the same native context used by the recording player. Sample boundaries are rounded on that timeline. A native decoder may report a one-frame EOF difference; the sampler bounds each note by its declared end and actual decoded length, so padding cannot extend the phrase or create an extra same-role overlap. This is reported separately from cue placement and sample-comparison tolerances.
+Frames come from the same native context used by the recording player. Sample boundaries are rounded on that timeline. A native decoder may report a one-frame EOF difference; the sampler bounds each note by its declared end and actual decoded length, so padding cannot extend the phrase or create an extra same-role overlap. The source also checks that rounded output-frame intervals contain at most one active note per role. Decoder rounding is reported separately from cue placement and sample-comparison tolerances.
 
 `SmallPlayer.playProcedural(plan, ownership)` reuses the existing output gain, clock, context, transport states and operation epochs. A stopped or replaced decode cannot later schedule notes. Pause/resume does not allocate a second performance, and a denied ownership gate stays silent. The S03 DJ itself is unchanged; its A→B planner remains limited to recordings.
 
@@ -78,17 +80,22 @@ async function startSelected(ownershipPromise: Promise<void>): Promise<SmallPlay
 | --- | --- |
 | Plan | One eight-bar, sixteen-second performance; no loop or automatic continuation |
 | Events | At most 256 native note sources for one performance |
-| Polyphony | At most four concurrently sounding note intervals, including sample tails |
+| Polyphony | At most four concurrently sounding note intervals, including sample tails; at most one per role after output-frame rounding |
+| Mix buses | Two fixed unity-gain `GainNode` buses: drum + percussion and bass + harmony |
 | Decoded sample residency | At most 1,048,576 Float32 sample values / 4 MiB for the four samples |
 | Native scheduling | Entire finite schedule committed before the requested entry; a partial or late failure stays gated and releases all nodes |
 | Replay state | Seed/state and immutable plan for the current session; no persistent listening history |
 
-The event-node cap counts all scheduled future notes, not just currently sounding notes. Each completed note disconnects; explicit release drops the source's buffer references. The original pack loader separately retains verified compressed/file bytes under its existing 16 MiB demo cap. These are enforced allocation/interval bounds, not measured process RSS, underrun or long-session performance qualifications.
+The event-node cap counts all scheduled future notes, not just currently sounding notes. The two mix buses are additional fixed nodes alongside the per-note gains and source envelope; they fix the grouping of sample sums for replay. Both buses disconnect after failure, release or natural completion. Each completed note disconnects; explicit release drops the source's buffer references. The original pack loader separately retains verified compressed/file bytes under its existing 16 MiB demo cap. These are enforced allocation/interval bounds, not measured process RSS, underrun or long-session performance qualifications.
 
-The source accepts integer context rates from 8 to 192 kHz; the written native checks target **44.1 and 48 kHz**, but have not yet run for S04. Other sample rates, browsers, real devices and longer-running environments require their own evidence. No exact cross-browser or cross-platform audio-byte identity is assumed from symbolic determinism.
+The source accepts integer context rates from 8 to 192 kHz; native checks passed at **44.1 and 48 kHz** on Windows, macOS and Linux for the corrected source. Other sample rates, browsers, real devices and longer-running environments require their own evidence. No exact cross-browser or cross-platform audio-byte identity is assumed from symbolic determinism.
 
 ## Verification surfaces and limits
 
-`npm run check` passed 127 tests for the local S04 implementation, including phrase replay/constraint and source/transport lifecycle regressions; its context/source doubles do not render audio. **The six new native offline groups and sampler browser flow are implemented but NOT RUN.** The offline checks are designed to independently sum decoded samples at expected frames, compare rendering at 44.1 and 48 kHz using the specified maximum absolute sample-error tolerance of `0.000003`, and exercise replay/variation and stop/exit/release behavior. `npm run check:browser` is the written runner for the original DJ flow and sampler page in Chromium. No S04 measured native PCM result, browser screenshot or cross-platform CI result exists yet. See the [handoff](handoffs/EMF-S04-HANDOFF.md) for the source pin, publication/environment blocks and recovery route.
+`npm run check` passed 130 tests locally for the corrected S04 source, including phrase replay/constraint, bounded mixing and source/transport lifecycle regressions; independent review also passed 18 focused tests. Context/source doubles do not render audio. The original 127-test result remains historical evidence for the earlier source checkpoint.
 
-**Physical speaker/headphone output and human listening are separate acceptance work.** A nonzero, unclipped and repeatable render does not establish that the music is enjoyable, that every seed is coherent, or that transitions to recordings sound good. S05 joins the sources; S09 joins real FL material; S10 supplies owner listening acceptance. The whole standalone MVP and campaign remain open.
+**[CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed 130 Node tests, all 15 native offline checks and all 11 browser report groups on Windows, macOS and Linux.** The browser report comprises the native-check summary and ten UI groups, including the original DJ flow and sampler page. The run used Chromium **151.0.7922.34** and Playwright **1.62.1**, with Node **24.22.1** on Linux and **24.22.2** on macOS/Windows.
+
+The original [three-platform native run](https://github.com/splatter85/EUTONOS-Music/actions/runs/41959790896) failed strict replay; the [handoff](handoffs/EMF-S04-HANDOFF.md) records diagnosis and the corrected summing groups. The corrected source passed the strict zero-error replay gate at both 44.1 and 48 kHz. The independent sample-comparison tolerance remains `0.000003`. Native checks independently sum decoded samples at expected frames and exercise replay/variation and stop/exit/release behavior; `npm run check:browser` exercises the DJ and sampler pages in Chromium. See the handoff for exact source-pinned reports and retained artifacts.
+
+**Physical speaker/headphone output and human listening are NOT TESTED and remain separate acceptance work.** A nonzero, unclipped and repeatable render does not establish that the music is enjoyable, that every seed is coherent, or that transitions to recordings sound good. S05 joins the sources; S09 joins real FL material; S10 supplies owner listening acceptance. The whole standalone MVP and campaign remain open.

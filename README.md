@@ -2,9 +2,11 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status:** S03 connects a deterministic DJ to the Web Audio player. The local S04 candidate adds a finite, seeded procedural sampler and audition page through the same player; 127 Node tests and fixture/media checks pass. **S04 publication and native browser verification are blocked/pending**, so it is not integrated into main or declared complete. S08 separately proves the bounded FL authoring path on Windows. [Current evidence and recovery](docs/CURRENT_TASKS.md).
+**Status: EMF-S04 CLOUD is COMPLETE** on [`work/emf-s04-procedural-20261104`](https://github.com/splatter85/EUTONOS-Music/tree/work/emf-s04-procedural-20261104), using corrected source [`73c456a147dcf24161ce22187e5e62320c5141b5`](https://github.com/splatter85/EUTONOS-Music/commit/73c456a147dcf24161ce22187e5e62320c5141b5). The finite, seeded sampler and audition page share the existing player. [CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed **130 Node tests, 15 native offline checks and 11 browser report groups** on Windows, macOS and Linux. The 11 browser groups comprise the native-check summary and ten UI groups.
 
-**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S03 handoff](docs/handoffs/EMF-S03-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
+Main remains intentionally unchanged at [`66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`](https://github.com/splatter85/EUTONOS-Music/commit/66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb), as requested by the owner. No PC action is required for S04. **Physical output and human listening are NOT TESTED.** The next slice is **S05 — CLOUD**, separately assigned from the S04 branch. S08 separately proves the bounded FL authoring path on Windows. [Current evidence](docs/CURRENT_TASKS.md).
+
+**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
 ## Run the player
 
@@ -22,7 +24,7 @@ Open **http://127.0.0.1:4173/**. Press **Play**, then **Next Song** before A rea
 
 The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S03 controls, selection and limits](docs/S03_DJ.md).
 
-The local S04 candidate also serves **http://127.0.0.1:4173/procedural.html**. Press **Play variation** to audition seed 1, then Stop and try seed 2 or Drive. The source uses the four original sample inputs for one eight-bar performance, with exact plan replay and bounded notes/sample residency. Its native checks are implemented but have not run in this slice. [S04 guide and limits](docs/S04_PROCEDURAL.md).
+The published S04 branch also serves **http://127.0.0.1:4173/procedural.html**. Press **Play variation** to audition seed 1, then Stop and try seed 2 or Drive. The source uses the four original sample inputs for one eight-bar performance, with exact plan replay and bounded notes/sample residency. Its native checks passed on Windows, macOS and Linux with strict replay and the original sample-error tolerance unchanged. [S04 guide and limits](docs/S04_PROCEDURAL.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 

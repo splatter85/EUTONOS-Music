@@ -1,13 +1,13 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: S03 connects DJ requests to the small recording player; the full three-layer MVP remains staged work.
+Status: S03 connects DJ requests to the small recording player; the separate S04 sampler audition is COMPLETE as a CLOUD slice. The full three-layer MVP remains staged work.
 
 ## Implemented S03 subset
 
 [S03 setup and policy](S03_DJ.md) provides Play/Pause/Stop, Volume/Mute, State, Genre, Next Song, manual FIFO queue/cancellation and Hold state & genre. The app sends revisioned commands to one DJ, which schedules the existing A→B route through S02's one-clock renderer. Requested targets, scheduled sources, Now and queued entries are displayed separately. The [S03 handoff](handoffs/EMF-S03-HANDOFF.md) records actual evidence and limits.
 
-The recording fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. The local [S04 sampler page](S04_PROCEDURAL.md) auditions a finite seeded source through the same player, without adding it to DJ selection or routes; native verification and publication remain pending. Mission Control integration remains later work.
+The recording fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. The [S04 sampler page](S04_PROCEDURAL.md) auditions a finite seeded source through the same player, without adding it to DJ selection or routes. S04 is COMPLETE on `work/emf-s04-procedural-20261104` after Node, native and browser checks passed on Windows, macOS and Linux. Main remains intentionally unchanged. S04 requires no PC action; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch. Mission Control integration remains later work.
 
 ## Later full MVP
 

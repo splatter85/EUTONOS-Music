@@ -1,0 +1,755 @@
+{
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+  "results": [
+    {
+      "check": "Manifest, rights files and all six WAV hashes validated",
+      "status": "PASS",
+      "evidence": {
+        "pack": "s01-foundation",
+        "revision": 1,
+        "files": 6
+      }
+    },
+    {
+      "check": "Fixture mode is explicit",
+      "status": "PASS",
+      "evidence": {
+        "defaultModeRejectedFixtures": true
+      }
+    },
+    {
+      "check": "Native browser decoding of all six WAV files",
+      "status": "PASS",
+      "evidence": [
+        {
+          "id": "s01-recording-a",
+          "sampleRate": 48000,
+          "frames": 768000
+        },
+        {
+          "id": "s01-recording-b",
+          "sampleRate": 48000,
+          "frames": 768000
+        },
+        {
+          "id": "s01-kick",
+          "sampleRate": 48000,
+          "frames": 12000
+        },
+        {
+          "id": "s01-percussion",
+          "sampleRate": 48000,
+          "frames": 3600
+        },
+        {
+          "id": "s01-bass-a2",
+          "sampleRate": 48000,
+          "frames": 18000
+        },
+        {
+          "id": "s01-harmony-am",
+          "sampleRate": 48000,
+          "frames": 48000
+        }
+      ]
+    },
+    {
+      "check": "A → B native rendered samples at 48 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "frames": 1176000,
+        "startFrame": 12000,
+        "bEntryFrame": 396000,
+        "handoffFrame": 588000,
+        "endFrame": 1164000,
+        "decodedFrames": {
+          "a": 768000,
+          "b": 768000
+        },
+        "authoredEndFrame": 1164000,
+        "naturalEndDeltaFrames": 0,
+        "comparedSamples": 1176000,
+        "maxAbsoluteSampleError": 3.8311583960837226e-8,
+        "peak": 0.45646217465400696,
+        "nonzeroSamples": 1151822,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "A → B native rendered samples at 44.1 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "frames": 1080450,
+        "startFrame": 11025,
+        "bEntryFrame": 363825,
+        "handoffFrame": 540225,
+        "endFrame": 1069424,
+        "decodedFrames": {
+          "a": 705599,
+          "b": 705599
+        },
+        "authoredEndFrame": 1069425,
+        "naturalEndDeltaFrames": -1,
+        "comparedSamples": 1080450,
+        "maxAbsoluteSampleError": 3.6773092348951764e-8,
+        "peak": 0.45690467953681946,
+        "nonzeroSamples": 1058237,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "Release cancels future audio; stale generation rejected",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "renderedFrames": 48000,
+        "peak": 0,
+        "stalePlanRejected": true
+      }
+    },
+    {
+      "check": "Native render preserves pickup and nonzero entry offset",
+      "status": "PASS",
+      "evidence": {
+        "fileSampleRate": 24000,
+        "outputSampleRate": 44100,
+        "pickupSeconds": 1,
+        "sourceEntrySeconds": 9,
+        "observedImpulseFrame": 11029,
+        "expectedImpulseFrame": 11029
+      }
+    },
+    {
+      "check": "Cancelling A → B restores full A at 48 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "cancelledAtFrame": 96000,
+        "cancelledEntryFrame": 396000,
+        "restoredEndFrame": 780000,
+        "comparedSamples": 792000,
+        "maxAbsoluteSampleError": 0,
+        "tailPeak": 0.45646217465400696,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; cancelled B and restored full A compared sample by sample"
+      }
+    },
+    {
+      "check": "Cancelling A → B restores full A at 44.1 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "cancelledAtFrame": 88321,
+        "cancelledEntryFrame": 363825,
+        "restoredEndFrame": 716624,
+        "comparedSamples": 727650,
+        "maxAbsoluteSampleError": 0,
+        "tailPeak": 0.45690467953681946,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; cancelled B and restored full A compared sample by sample"
+      }
+    },
+    {
+      "check": "S04 independent native sample sum, finite boundaries and budgets at 48000 Hz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "seed": 1,
+        "state": "explore",
+        "mode": "natural",
+        "frames": 792000,
+        "startFrame": 12000,
+        "endFrame": 780000,
+        "exitFrame": null,
+        "fadeInFrames": 0,
+        "fadeOutFrames": 0,
+        "cancelledAtFrame": null,
+        "staleGenerationRejected": false,
+        "eventCount": 77,
+        "allocatedNoteNodes": 77,
+        "maximumVoices": 4,
+        "sampleValues": 81600,
+        "decodedSamples": [
+          {
+            "id": "s01-kick",
+            "revision": 1,
+            "nativeFrames": 6000,
+            "decodedFrames": 12000,
+            "sampleRate": 48000
+          },
+          {
+            "id": "s01-percussion",
+            "revision": 1,
+            "nativeFrames": 1800,
+            "decodedFrames": 3600,
+            "sampleRate": 48000
+          },
+          {
+            "id": "s01-bass-a2",
+            "revision": 1,
+            "nativeFrames": 9000,
+            "decodedFrames": 18000,
+            "sampleRate": 48000
+          },
+          {
+            "id": "s01-harmony-am",
+            "revision": 1,
+            "nativeFrames": 24000,
+            "decodedFrames": 48000,
+            "sampleRate": 48000
+          }
+        ],
+        "comparedSamples": 792000,
+        "maxAbsoluteSampleError": 2.1555460999467257e-8,
+        "peak": 0.24441173672676086,
+        "nonzeroSamples": 607200,
+        "headAndTailSilent": true,
+        "releasedLiveNodes": 0,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "S04 exact seed replay and representative/held-out diversity at 48000 Hz",
+      "status": "FAIL",
+      "evidence": "Same-browser seed replay was not sample-exact. {\"symbolicPlanExact\":true,\"decodedPcmBitwiseEqual\":true,\"decodedSamples\":[{\"id\":\"s01-kick\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":12000,\"replayFrames\":12000,\"comparedSamples\":12000,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-percussion\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":3600,\"replayFrames\":3600,\"comparedSamples\":3600,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-bass-a2\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":18000,\"replayFrames\":18000,\"comparedSamples\":18000,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-harmony-am\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":48000,\"replayFrames\":48000,\"comparedSamples\":48000,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]}],\"output\":{\"baselineFrames\":792000,\"replayFrames\":792000,\"comparedSamples\":792000,\"exact\":false,\"bitwiseEqual\":false,\"differentSamples\":18875,\"differentBitPatterns\":18875,\"maxAbsoluteDelta\":1.4901161193847656e-8,\"maximumDeltaFrame\":84065,\"firstDifferences\":[{\"frame\":84001,\"baseline\":0.0012156144948676229,\"replay\":0.001215614378452301,\"delta\":-1.1641532182693481e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84002,\"baseline\":-0.001873473753221333,\"replay\":-0.0018734736368060112,\"delta\":1.1641532182693481e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84005,\"baseline\":-0.008838304318487644,\"replay\":-0.00883830338716507,\"delta\":9.313225746154785e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84006,\"baseline\":-0.010774423368275166,\"replay\":-0.010774422436952591,\"delta\":9.313225746154785e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84014,\"baseline\":-0.019858215004205704,\"replay\":-0.019858213141560555,\"delta\":1.862645149230957e-9,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84018,\"baseline\":-0.020009951665997505,\"replay\":-0.020009949803352356,\"delta\":1.862645149230957e-9,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84031,\"baseline\":-0.002160867443308234,\"replay\":-0.002160867676138878,\"delta\":-2.3283064365386963e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":84033,\"baseline\":0.002796347951516509,\"replay\":0.0027963481843471527,\"delta\":2.3283064365386963e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]}],\"differencesByIntervalVoices\":[0,0,0,16665,2210],\"differencesByNonzeroContributors\":[0,0,0,16665,2210],\"differencesOutsideOverlap\":0,\"differencesWithFewerThanThreeContributors\":0},\"oracleMaxAbsoluteSampleError\":{\"baseline\":2.1555460999467257e-8,\"replay\":2.1555460999467257e-8},\"countArrayOrder\":\"voice/contributor counts 0 through 4; per-frame pairs are baseline, replay\"}"
+    },
+    {
+      "check": "S04 native entry/exit envelopes, stop, cancellation and stale release at 48000 Hz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "cases": [
+          {
+            "sampleRate": 48000,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "stop",
+            "frames": 792000,
+            "startFrame": 12000,
+            "endFrame": 114000,
+            "exitFrame": null,
+            "fadeInFrames": 480,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 3,
+            "sampleValues": 81600,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 12000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3600,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 18000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 48000,
+                "sampleRate": 48000
+              }
+            ],
+            "comparedSamples": 792000,
+            "maxAbsoluteSampleError": 2.1234154684579565e-8,
+            "peak": 0.24441173672676086,
+            "nonzeroSamples": 87599,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 48000,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "exit",
+            "frames": 792000,
+            "startFrame": 12000,
+            "endFrame": 408000,
+            "exitFrame": 396000,
+            "fadeInFrames": 480,
+            "fadeOutFrames": 12000,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 81600,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 12000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3600,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 18000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 48000,
+                "sampleRate": 48000
+              }
+            ],
+            "comparedSamples": 792000,
+            "maxAbsoluteSampleError": 2.785218028433789e-8,
+            "peak": 0.24441173672676086,
+            "nonzeroSamples": 334799,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 48000,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "cancel",
+            "frames": 792000,
+            "startFrame": 12000,
+            "endFrame": 780000,
+            "exitFrame": null,
+            "fadeInFrames": 480,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": 96000,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 81600,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 12000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3600,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 18000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 48000,
+                "sampleRate": 48000
+              }
+            ],
+            "comparedSamples": 792000,
+            "maxAbsoluteSampleError": 2.8638169169425964e-8,
+            "peak": 0.24441173672676086,
+            "nonzeroSamples": 665999,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 48000,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "release",
+            "frames": 792000,
+            "startFrame": 12000,
+            "endFrame": 780000,
+            "exitFrame": null,
+            "fadeInFrames": 480,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": true,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 81600,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 12000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3600,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 18000,
+                "sampleRate": 48000
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 48000,
+                "sampleRate": 48000
+              }
+            ],
+            "comparedSamples": 792000,
+            "maxAbsoluteSampleError": 0,
+            "peak": 0,
+            "nonzeroSamples": 0,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          }
+        ]
+      }
+    },
+    {
+      "check": "S04 independent native sample sum, finite boundaries and budgets at 44100 Hz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "seed": 1,
+        "state": "explore",
+        "mode": "natural",
+        "frames": 727650,
+        "startFrame": 11025,
+        "endFrame": 716625,
+        "exitFrame": null,
+        "fadeInFrames": 0,
+        "fadeOutFrames": 0,
+        "cancelledAtFrame": null,
+        "staleGenerationRejected": false,
+        "eventCount": 77,
+        "allocatedNoteNodes": 77,
+        "maximumVoices": 4,
+        "sampleValues": 74967,
+        "decodedSamples": [
+          {
+            "id": "s01-kick",
+            "revision": 1,
+            "nativeFrames": 6000,
+            "decodedFrames": 11024,
+            "sampleRate": 44100
+          },
+          {
+            "id": "s01-percussion",
+            "revision": 1,
+            "nativeFrames": 1800,
+            "decodedFrames": 3307,
+            "sampleRate": 44100
+          },
+          {
+            "id": "s01-bass-a2",
+            "revision": 1,
+            "nativeFrames": 9000,
+            "decodedFrames": 16537,
+            "sampleRate": 44100
+          },
+          {
+            "id": "s01-harmony-am",
+            "revision": 1,
+            "nativeFrames": 24000,
+            "decodedFrames": 44099,
+            "sampleRate": 44100
+          }
+        ],
+        "comparedSamples": 727650,
+        "maxAbsoluteSampleError": 2.4622713673538854e-8,
+        "peak": 0.24409909546375275,
+        "nonzeroSamples": 557844,
+        "headAndTailSilent": true,
+        "releasedLiveNodes": 0,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "S04 exact seed replay and representative/held-out diversity at 44100 Hz",
+      "status": "FAIL",
+      "evidence": "Same-browser seed replay was not sample-exact. {\"symbolicPlanExact\":true,\"decodedPcmBitwiseEqual\":true,\"decodedSamples\":[{\"id\":\"s01-kick\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":11024,\"replayFrames\":11024,\"comparedSamples\":11024,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-percussion\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":3307,\"replayFrames\":3307,\"comparedSamples\":3307,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-bass-a2\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":16537,\"replayFrames\":16537,\"comparedSamples\":16537,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]},{\"id\":\"s01-harmony-am\",\"revision\":1,\"formatEqual\":true,\"baselineFrames\":44099,\"replayFrames\":44099,\"comparedSamples\":44099,\"exact\":true,\"bitwiseEqual\":true,\"differentSamples\":0,\"differentBitPatterns\":0,\"maxAbsoluteDelta\":0,\"maximumDeltaFrame\":null,\"firstDifferences\":[]}],\"output\":{\"baselineFrames\":727650,\"replayFrames\":727650,\"comparedSamples\":727650,\"exact\":false,\"bitwiseEqual\":false,\"differentSamples\":16956,\"differentBitPatterns\":16956,\"maxAbsoluteDelta\":1.4901161193847656e-8,\"maximumDeltaFrame\":77246,\"firstDifferences\":[{\"frame\":77176,\"baseline\":0.0009658028720878065,\"replay\":0.0009658029302954674,\"delta\":5.820766091346741e-11,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77177,\"baseline\":-0.002430383348837495,\"replay\":-0.0024303835816681385,\"delta\":-2.3283064365386963e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77181,\"baseline\":-0.011821662075817585,\"replay\":-0.01182166114449501,\"delta\":9.313225746154785e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77183,\"baseline\":-0.01526441890746355,\"replay\":-0.015264419838786125,\"delta\":-9.313225746154785e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77187,\"baseline\":-0.019450927153229713,\"replay\":-0.019450925290584564,\"delta\":1.862645149230957e-9,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77203,\"baseline\":-0.0033919888082891703,\"replay\":-0.0033919885754585266,\"delta\":2.3283064365386963e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77204,\"baseline\":-0.0007924709934741259,\"replay\":-0.0007924707606434822,\"delta\":2.3283064365386963e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]},{\"frame\":77205,\"baseline\":0.0019127740524709225,\"replay\":0.0019127745181322098,\"delta\":4.656612873077393e-10,\"intervalVoices\":[3,3],\"nonzeroContributors\":[3,3]}],\"differencesByIntervalVoices\":[0,0,0,15404,1552],\"differencesByNonzeroContributors\":[0,0,0,15404,1552],\"differencesOutsideOverlap\":0,\"differencesWithFewerThanThreeContributors\":0},\"oracleMaxAbsoluteSampleError\":{\"baseline\":2.4622713673538854e-8,\"replay\":2.4622713673538854e-8},\"countArrayOrder\":\"voice/contributor counts 0 through 4; per-frame pairs are baseline, replay\"}"
+    },
+    {
+      "check": "S04 native entry/exit envelopes, stop, cancellation and stale release at 44100 Hz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "cases": [
+          {
+            "sampleRate": 44100,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "stop",
+            "frames": 727650,
+            "startFrame": 11025,
+            "endFrame": 104738,
+            "exitFrame": null,
+            "fadeInFrames": 441,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 3,
+            "sampleValues": 74967,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 11024,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3307,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 16537,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 44099,
+                "sampleRate": 44100
+              }
+            ],
+            "comparedSamples": 727650,
+            "maxAbsoluteSampleError": 2.2421590972765415e-8,
+            "peak": 0.24409909546375275,
+            "nonzeroSamples": 80479,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 44100,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "exit",
+            "frames": 727650,
+            "startFrame": 11025,
+            "endFrame": 374850,
+            "exitFrame": 363825,
+            "fadeInFrames": 441,
+            "fadeOutFrames": 11025,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 74967,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 11024,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3307,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 16537,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 44099,
+                "sampleRate": 44100
+              }
+            ],
+            "comparedSamples": 727650,
+            "maxAbsoluteSampleError": 2.7220230541802337e-8,
+            "peak": 0.24409909546375275,
+            "nonzeroSamples": 307585,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 44100,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "cancel",
+            "frames": 727650,
+            "startFrame": 11025,
+            "endFrame": 716625,
+            "exitFrame": null,
+            "fadeInFrames": 441,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": 88321,
+            "staleGenerationRejected": false,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 74967,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 11024,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3307,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 16537,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 44099,
+                "sampleRate": 44100
+              }
+            ],
+            "comparedSamples": 727650,
+            "maxAbsoluteSampleError": 2.527609466174141e-8,
+            "peak": 0.24409909546375275,
+            "nonzeroSamples": 611866,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          },
+          {
+            "sampleRate": 44100,
+            "seed": 305419896,
+            "state": "drive",
+            "mode": "release",
+            "frames": 727650,
+            "startFrame": 11025,
+            "endFrame": 716625,
+            "exitFrame": null,
+            "fadeInFrames": 441,
+            "fadeOutFrames": 0,
+            "cancelledAtFrame": null,
+            "staleGenerationRejected": true,
+            "eventCount": 87,
+            "allocatedNoteNodes": 87,
+            "maximumVoices": 4,
+            "sampleValues": 74967,
+            "decodedSamples": [
+              {
+                "id": "s01-kick",
+                "revision": 1,
+                "nativeFrames": 6000,
+                "decodedFrames": 11024,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-percussion",
+                "revision": 1,
+                "nativeFrames": 1800,
+                "decodedFrames": 3307,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-bass-a2",
+                "revision": 1,
+                "nativeFrames": 9000,
+                "decodedFrames": 16537,
+                "sampleRate": 44100
+              },
+              {
+                "id": "s01-harmony-am",
+                "revision": 1,
+                "nativeFrames": 24000,
+                "decodedFrames": 44099,
+                "sampleRate": 44100
+              }
+            ],
+            "comparedSamples": 727650,
+            "maxAbsoluteSampleError": 0,
+            "peak": 0,
+            "nonzeroSamples": 0,
+            "headAndTailSilent": true,
+            "releasedLiveNodes": 0,
+            "tolerance": 0.000003,
+            "output": "OfflineAudioContext; no device output"
+          }
+        ]
+      }
+    }
+  ],
+  "listening": "NOT TESTED",
+  "physicalOutput": "NOT TESTED"
+}

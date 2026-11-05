@@ -1,0 +1,56 @@
+{
+  "browser": "151.0.7922.34",
+  "platform": "linux",
+  "node": "v24.22.1",
+  "playwright": "1.62.1",
+  "elapsedMilliseconds": 20041,
+  "checks": [
+    {
+      "name": "Nine recorded-source and six procedural native offline audio checks",
+      "status": "PASS"
+    },
+    {
+      "name": "Stopped requests and manual initial selection",
+      "status": "PASS"
+    },
+    {
+      "name": "Paused FIFO reservation, future cancellation and explicit Next rescheduling",
+      "status": "PASS"
+    },
+    {
+      "name": "Hold refuses target changes, release replays nothing, and mute survives resume",
+      "status": "PASS"
+    },
+    {
+      "name": "One live A to B handoff with renderer-reported queue consumption and mixture",
+      "status": "PASS"
+    },
+    {
+      "name": "Unsupported target reports no match without starting audio",
+      "status": "PASS"
+    },
+    {
+      "name": "Blocked FIFO head cannot be overtaken; removal and Next serve the retained tail",
+      "status": "PASS"
+    },
+    {
+      "name": "Same-origin playback ownership conflict and explicit transfer",
+      "status": "PASS"
+    },
+    {
+      "name": "Reload clears pending audio and permits a fresh explicit Play",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile controls, viewport fit and no page script errors",
+      "status": "PASS"
+    },
+    {
+      "name": "S04 sampler selection, replay metadata, transport, shared ownership and mobile layout",
+      "status": "PASS"
+    }
+  ],
+  "offlineReport": "offline.json",
+  "physicalOutput": "NOT TESTED",
+  "listening": "NOT TESTED"
+}

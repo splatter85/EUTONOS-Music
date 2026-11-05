@@ -1,110 +1,105 @@
 # EMF-S04 — original-palette procedural source handoff
 
-**Campaign:** EMF / `campaign-emf-001`  
-**Slice:** EMF-S04  
-**Disposition:** **BLOCKED at publication and native verification; implementation is a local candidate, not complete or integrated into main.**  
-**Environment:** CLOUD; Linux coding runtime, Node 24.22.1, npm 11.9.0, TypeScript 5.9.3, Playwright 1.62.1.  
-**Recorded:** 2026-11-04, America/Chicago  
-**Inspected base/main:** `66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`, tree `0bad48392217372af9a491b699f908bc6fd86b13`.  
-**Local branch:** `work/emf-s04-procedural-20261104`  
-**Locally tested implementation commit:** `d921382ba948b5bad370751c90b39fb695888058`, tree `a28ff92757aa7c03f479ef4f5921290cfb148008`.  
-**Publication:** Automatic approval review rejected the push to the public repository. Read-only remote inspection found main still at the inspected base and no S04 branch. This handoff and its closeout are local only; no S04 GitHub commit, CI run, native report or integration receipt exists.
+**Campaign:** EMF / `campaign-emf-001`
 
-The [campaign checkpoint](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint) owns current status. This file records the blocked checkpoint; its containing documentation commit is reported in the completing chat, since a file cannot name its own commit hash.
+**Slice / environment:** EMF-S04 — CLOUD
+
+**Disposition:** **COMPLETE for the assigned cloud engineering scope on the separate S04 branch. Main remains unchanged by owner instruction. Physical output and human listening are NOT TESTED.**
+
+**Recorded:** 2026-11-04, America/Chicago
+
+**Inspected base and unchanged main:** `66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`, tree `0bad48392217372af9a491b699f908bc6fd86b13`.
+
+**Published branch:** [`work/emf-s04-procedural-20261104`](https://github.com/splatter85/EUTONOS-Music/tree/work/emf-s04-procedural-20261104)
+
+**Verified runtime/test source:** `73c456a147dcf24161ce22187e5e62320c5141b5`, tree `92362e7d5dd6552c0255ae0e9220115d104fe052`. Local tested commit `f4c804075db713918ddf7a09a3a4f622b7e930c1` has the identical tree. Different publication metadata gives different commit hashes.
+
+**Native/browser verification:** [GitHub Actions run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555), completed successfully on Windows, macOS and Linux at that exact published source. The containing closeout commit adds documentation/evidence only; its SHA is reported in the completing chat after publication and readback because this file cannot contain its own commit hash.
+
+The [campaign checkpoint](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint) owns status. [Retained evidence](../evidence/emf-s04/README.md) includes passing reports, screenshots and the earlier failed runs with their original source applicability. Main integration is outside this delivery and is not a blocker to branch completion.
 
 ## Assignment and inspected predecessor
 
-The owner selected **S04 — CLOUD** after the completed [S03 handoff](EMF-S03-HANDOFF.md): build the first procedural sampler/phrase source over the original palette, retain the common clock and `prepare/start/exit/release` lifecycle, and establish bounded resources and reproducible seeded variation. The worker inspected a clean main at the exact owner-supplied containing commit and read the repository instructions and canonical contracts before implementation. Node 24 setup and the existing 101-test baseline passed.
+The owner selected S04 after the completed [S03 handoff](EMF-S03-HANDOFF.md): implement the original-palette sampler/phrase source on the common clock and `prepare/start/exit/release` lifecycle, with bounded resources and reproducible seeded variation. The worker inspected clean main at the supplied S03-containing commit, read the repository instructions/contracts and ran Node 24 setup and the 101-test predecessor baseline.
 
-The scope is one finite performer and a source audition path. S05 owns recording A → procedural → recording B and its musical handoff policy. The two-recording DJ, one directed route, original media, FL authoring facade and private PC material retain their existing boundaries. S08's green Windows CI is predecessor evidence, not S04 validation. No DAW or Mission Control operation was performed.
+The delivered scope is one finite performer and a source audition path. S05 owns recording A → procedural → recording B and its musical handoff policy. The two-recording DJ, one directed A→B route, original media and FL authoring facade retain their boundaries. S08's green Windows CI is predecessor evidence, not S04 validation. No DAW or Mission Control operation was performed. No PC pull or owner-side work is required to complete this cloud slice.
 
-## Delivered local changes
+## Delivered behavior
 
-| Files | Actual implementation |
+| Area | Actual result |
 | --- | --- |
-| `src/phrase-plan.ts`, `tests/phrase-plan.test.ts` | An immutable, compiled, versioned eight-bar performer with explicit uint32 seed, Explore/Drive arrangement, four-bar statement/answer, bounded role choices, phrase fills and cadence rests. Exact replay hashes and a 560 seed/state constraint sweep are checked. |
-| `src/procedural-source.ts`, `tests/procedural-source.test.ts` | Native Web Audio sample scheduling on the caller's existing clock, verified four-sample decode, declared phrase exits, bounded fades, Stop, future-exit cancellation and idempotent release. Deterministic doubles check lifecycle and failure effects. |
-| `src/player.ts`, `tests/procedural-review.test.ts` | Procedural audition through the existing context, output gain, clock and transport; one shared pending/resolved palette decode; stale-operation, ownership, rights and Pause/Resume regressions. |
-| `web/procedural.html`, `web/procedural.ts`, existing page/style/server/export files | A separate seed/state audition page with Play, Pause/Resume, Stop, Volume/Mute, selected/clock-active diagnostics, hidden-page pause and the existing cooperating-tab lock. Browser execution is pending. |
-| `web/procedural-checks.ts`, `web/checks.ts`, `scripts/browser-check.ts`, `.github/workflows/validate.yml` | Six additional native offline groups and one sampler browser group, retaining the S03 flow; Node 24 Windows/macOS/Linux matrix and S04 artifact names. Written and compiled, **not run natively**. |
-| [S04 guide](../S04_PROCEDURAL.md), [review](../reviews/EMF_S04_PROCEDURAL_REVIEW.md), [local evidence](../evidence/emf-s04/README.md), canonical owners | API/limits, bounded review findings, raw passing Node log and an explicit blocked recovery route. |
+| Phrase compiler | `src/phrase-plan.ts` compiles an immutable, versioned eight-bar performer from an explicit uint32 seed (including zero) and Explore/Drive arrangement. Independent deterministic role streams, four-bar statement/answer, bounded role choices, fills and cadence rests produce tested variation. |
+| Native sampler | `src/procedural-source.ts` verifies/decodes four original samples and schedules finite notes on the existing clock, with declared phrase exits, entry/exit fades, Stop, pre-onset exit cancellation and idempotent release. |
+| Player integration | `SmallPlayer.playProcedural()` uses the existing context, master output, clock, transport and ownership. One pending/resolved palette decode is shared across cancelled/replaced requests; every intent rechecks metadata and rights. |
+| Audition page | `web/procedural.html` supplies seed/state selection, Play, Pause/Resume, Stop, Volume/Mute, separate selected and clock-active diagnostics, hidden-page pause and the cooperating-tab lock. Its desktop/mobile flows passed on all three OSes. |
+| Verification | Ten compiler tests, sampler/player/reviewer regressions, six new native groups and a sampler browser group extend the retained S03 checks. The final suite passes 130 Node tests, 15 native groups and 11 browser report groups on each OS. |
 
-There are no new runtime dependencies, sample recordings, proprietary assets, private renders or credentials in this change. The original six WAVs, manifest, generator and provenance are unchanged. The new performer uses **s01-foundation@1**, **s01-recipe@1**, **s01-palette@1** and executable identity **s04-s01-performer@1**. Playback remains explicitly opted into `fixture-only` status and checks both playback and sample-reuse permission. [S01 provenance](../../fixtures/s01/PROVENANCE.md) remains authoritative for the audio.
+There are no new runtime dependencies or sample recordings. The original six WAVs, manifest, generator and provenance are unchanged. Identities remain **s01-foundation@1**, **s01-recipe@1**, **s01-palette@1** and **s04-s01-performer@1**. Fixture playback is explicitly opted in and both playback and sample-reuse permissions are required. [S01 provenance](../../fixtures/s01/PROVENANCE.md) remains authoritative; no private FL render, proprietary asset or credential was added.
 
-### Source behavior and resource boundary
+### Clock, identity and resource boundaries
 
-The source plays a finite sixteen seconds: eight bars of 4/4 at 120 BPM, constant A minor, unchanged sample pitch. Seed/state controls rhythm and arrangement; it does not imply unique music for every uint32 seed. Independent deterministic streams govern drums, bass, percussion and harmony. The source's `reference` is the recipe revision; full performance identity requires the immutable plan, including performer version, pack/palette/sample bindings, seed and state. JSON-rehydrated or caller-forged event lists are refused; replay recompiles the recorded identity against the exact eligible source versions.
+Each performance is finite: eight bars / sixteen seconds, 4/4, 120 BPM, constant A minor and unchanged sample pitch. Seed/state selects rhythm and arrangement; it does not promise a unique song for every possible seed. The source reference names the recipe revision. Full replay identity also includes the performer version, pack/palette/sample bindings, seed and state. Only authentic plans compiled by the current module are accepted; replay recompiles those exact versioned inputs rather than accepting arbitrary or rehydrated event JSON.
 
-The plan is symbolic preparation. Native note scheduling happens only after explicit Play, verified decoding and ownership. All note starts use the same `WebAudioClock` as the recording player. Every finite note is committed before entry, with a muted master gate until allocation and schedule validation finish. Timers and UI refreshes do not start notes. A partial allocation/schedule failure releases the graph before opening the gate. Resource ceilings are **256 scheduled note sources**, **four simultaneous sounding intervals including tails**, and **1,048,576 Float32 sample values / 4 MiB** across the four decoded samples. These are code-enforced bounds, not measured process memory or endurance results.
+All notes are scheduled before entry on the recording player's `WebAudioClock`. Timers and UI refreshes do not start notes. The master remains muted until the complete finite schedule has been allocated and validated; partial failures clean up before opening the gate. Code-enforced ceilings are **256 note sources**, **four simultaneous sounding intervals including tails**, and **1,048,576 Float32 sample values / 4 MiB** across the four decoded samples. These are allocation bounds, not measured browser process memory or endurance qualification.
 
-The only entry is quarter zero. Declared exits are `phrase` at quarter 16/eight seconds and `end` at quarter 32/sixteen seconds. Entry/exit fade lengths are construction-time output-frame options. A nonzero fade past the natural end is refused. A future exit can be cancelled with the concrete source's `cancelTransition()` extension before its onset; this is not part of the common interface. Generation invalidation cannot prevent release from cancelling future notes.
+Two fixed unity-gain buses pair drum/percussion and bass/harmony before the existing master. Rounded native-frame intervals enforce at most one active note per role, so each pair has at most two active signals. Both buses are registered inside the gated scheduling transaction and are released on allocation/connection failure, explicit release and last-note completion. `liveMixBuses` is zero before scheduling, two while scheduled and zero after cleanup. Note/sample ceilings are unchanged.
 
-`SmallPlayer.playProcedural()` is a replacement/audition operation: it releases old voices and invalidates their generation. It does not schedule an overlapping hybrid handoff. `transitionOut()` fades the whole precommitted performance, including later attacks during the fade; it does not implement tails-only release or separate bass/role ownership. S05 must define and verify these policies before adding a route.
+The only entry is quarter zero. Declared exits are `phrase` at quarter 16 / eight seconds and `end` at quarter 32 / sixteen seconds. Fade lengths are construction-time output-frame options; a nonzero fade beyond natural end is refused. The concrete source's `cancelTransition()` can cancel a future exit before onset; it is not part of the common lifecycle. Stale generation does not prevent release from cancelling future notes.
 
-Stop retains one bounded verified palette cache for replay; disposal drops the player's references. Repeated Play/Stop shares the same pending four-sample decode instead of starting parallel decode chains. Each intent still rechecks the current pack, complete sample metadata and permissions. A changed palette binding requires a reload. Physical memory reclamation is the browser's responsibility.
+`playProcedural()` replaces current playback; it does not schedule a hybrid overlap. `transitionOut()` fades the whole precommitted performance, including later attacks during the fade. Tails-only release and separate bass/role ownership belong to S05. Stop retains one verified palette cache for replay; disposal drops player references. Every new intent checks current metadata/permissions, and a changed binding requires reload. Browser memory reclamation is not asserted.
 
-## Executed verification and explicit gaps
+## Executed verification
 
-| Command or check | Actual result | Evidence and limit |
-| --- | --- | --- |
-| `npm ci --ignore-scripts` on Node 24.22.1 | PASS | Existing locked dependencies installed; no dependency or lockfile change. |
-| Baseline `npm run check` at main `66e974c…` | PASS | 101 Node tests, seven deterministic fixture files, six validated WAVs. |
-| Final `npm run check` for local source `d921382…` | **PASS** | **127 tests, 127 pass, zero failed/skipped**; TypeScript build, seven byte-identical regenerated fixture files and all six media validations. [Retained raw log](../evidence/emf-s04/local-check.log). |
-| Phrase compiler suite | PASS | Ten tests include pinned event digests, 12 selected plus 12 designated held-out seeds, and 256 additional seeds across both states: **560 seed/state combinations** in the bounds sweep. Timing/structure varies in the tested sets. |
-| Independent focused source/player review | PASS on the earlier working candidate | Six added reviewer regressions plus eleven existing player cases: **17 passed**, before final role-stream/end-rounding edits. The final 127-test integrator run includes all six regressions; the reviewer then read final source/log. [Review](../reviews/EMF_S04_PROCEDURAL_REVIEW.md). |
-| Native sampler scheduling in Node doubles | PASS as call/state tests | The source tests cover both 44.1 and 48 kHz calculations, scheduling, cleanup and failures; doubles do not render audio. |
-| Native offline rendering | **NOT RUN for S04** | Six new groups are written, for a total of fifteen with S03's nine. The new groups compare independent sample sums, replay/variation, entry/exit envelopes, Stop, cancellation and stale release at 44.1/48 kHz. No measured S04 PCM result exists. |
-| Full S03 + sampler browser flow | **NOT RUN for S04** | Harness compiled; no S04 UI screenshot/report or live browser result was produced. |
-| GitHub Actions on Windows/macOS/Linux | **NOT RUN for S04** | No published S04 ref exists to trigger the workflow. Prior green S03/S08 runs are historical. |
-| Physical speaker/headphone output | **NOT TESTED** | No device output qualification. |
-| Human listening / musical acceptance | **NOT TESTED** | No seed, arrangement or hybrid transition was auditioned by a listener. |
+| Check | Actual result and applicability |
+| --- | --- |
+| Setup and predecessor | `npm ci --ignore-scripts`, then `npm run check` at main `66e974c…`: 101 Node tests, seven deterministic fixture files and six WAV validations passed. |
+| Corrected local source | `npm run check`: **130 passed, zero failed/skipped**, TypeScript build, seven byte-identical regenerated fixture files and six media validations. Linux Node 24.22.1, npm 11.9.0, TypeScript 5.9.3. [Raw log](../evidence/emf-s04/fixed-local-check.log). |
+| Phrase bounds/replay | Ten tests include pinned event digests, 12 selected and 12 designated held-out seeds plus 256 further seeds across both states: **560 seed/state combinations** in the bounds sweep. Tested sets vary in timing/structure; no universal listening claim. |
+| Independent corrected review | Reviewer independently built and ran seven reviewer regressions plus eleven existing player cases: **18 passed, zero failed/skipped**. Allocation/connection failure, shared decode, stale operations, permission changes, ownership and Pause/Resume are covered. [Review](../reviews/EMF_S04_PROCEDURAL_REVIEW.md). |
+| Windows CI | **130 Node tests, 15 native groups and 11 browser report groups passed**; Node 24.22.2, Chromium 151.0.7922.34, Playwright 1.62.1. Job `127027428061`. |
+| macOS CI | **130 Node tests, 15 native groups and 11 browser report groups passed**; Node 24.22.2, same Chromium/Playwright. Job `127027428208`. |
+| Linux CI | **130 Node tests, 15 native groups and 11 browser report groups passed**; Node 24.22.1, same Chromium/Playwright. Job `127027428387`. |
+| Exact native replay | Same-seed decoded PCM and rendered output are bitwise identical within each tested OS/rate. **Zero differing samples, zero differing bit patterns and zero maximum replay error** at both 48 kHz and 44.1 kHz. |
+| Native sample/lifecycle oracle | Independent Float64 sample sums, variation, finite boundaries, resource cleanup, entry/exit fades, Stop, cancellation and stale release pass at both rates. Original maximum absolute error tolerance **0.000003** is unchanged. |
+| UI and screenshots | Full retained S03 flow plus sampler selection/invalid seed/play/pause/resume/mute/stop/replay metadata/shared ownership/mobile fit passed. Eleven report groups comprise one native summary plus ten UI groups. Reports and seven screenshots per OS are retained; inspected views and limits are recorded in the evidence index. |
+| Physical output / human listening | **NOT TESTED.** No speaker/headphone qualification or musical acceptance is claimed. |
 
-The final local check log belongs to the implementation tree above. This closeout changes only documentation/evidence, not runtime, tests, fixtures, dependencies or workflow. Local documentation checks verify links, stable IDs, source pin applicability and the unchanged historical Progress prefix. The full campaign remains in progress; effort percentage is unknown.
+Exact replay compares **792,000 output samples at 48 kHz** and **727,650 at 44.1 kHz** per replay pair. Seed 2 changes 350,400 / 321,900 samples and held-out seed `0xdeadbeef` changes 136,800 / 125,666 samples, respectively, on all three OSes. This verifies the measured runs and deterministic identity, not identical audio bytes across browsers/OSes or uniqueness of every seed. Native context rates from 8–192 kHz are accepted by source validation, but only 44.1/48 kHz are natively qualified here.
 
-The new native checks retain the existing **0.000003** maximum absolute sample-error tolerance. They target same-browser/rate replay and compare different seeds; they do not promise identical audio bytes across browsers or operating systems. Their actual measurements must be recorded after execution. The source accepts integer native context rates from 8 to 192 kHz, but native verification is planned only at 44.1 and 48 kHz; other rates are unqualified.
+Node doubles prove state and native-call intent; hosted OfflineAudioContext checks supply actual native PCM measurements; browser automation supplies UI/ownership evidence. None substitutes for device output, human listening, long-session reliability or full MVP acceptance. The campaign remains in progress with effort percentage unknown.
 
-## Review findings and corrections
+The documentation closeout check passed for **18 changed Markdown files and 241 relative links/anchors**. All 22 unique document IDs (including all 21 predecessor IDs), 20 campaign stages, 13 slices and 12 acceptance IDs are preserved. The 23,255-byte historical Progress prefix is unchanged, all 27 retained final artifact files match their recorded hashes, and `git diff --check` passes. Runtime/tests, fixtures, packages and workflow are unchanged from the corrected tested source. Original fixtures, authoring code/configuration and packages are also unchanged from intake main.
 
-An independent agent reviewed the source/transport and added six regression cases without changing the implementation. It found a material resource issue: rapid replaced/cancelled Play requests could each launch a decode chain. The integrator changed this to one bounded pending/resolved four-sample cache, retaining per-intent validation and generation/ownership checks. The focused reviewer suite then passed on that working candidate. After later role-stream/end-rounding edits, the integrator reran the full 127-test suite including those regressions; the reviewer read the final source and log without claiming another independent execution.
+## Review findings and correction history
 
-A source test also exposed a one-frame end calculation at 44.1 kHz. The corrected scheduler converts the absolute authored endpoint from integer native-sample frames, then bounds it by the actual decoded length. This avoids fractional-second rounding that could extend a one-shot into the next same-role event. The independent native oracle uses the same documented authored-frame convention with separate arithmetic; no comparison tolerance was widened. Native execution remains pending.
+The independent initial review found that rapid replaced/cancelled Play could launch repeated decode chains. The integrator introduced one pending/resolved four-sample cache while preserving per-intent eligibility and generation checks. The reviewer initially ran 17 focused cases on an earlier candidate; the later 127-test integrator run included those regressions after final role-stream/end-rounding edits. This historical invocation is not relabelled as an independent final-source execution.
 
-Review also clarified cache lifetime, plan versus recipe identity, replacement semantics, whole-performance fade behavior and the selected/ready/playback UI wording. These are documented for S05 so a caller cannot mistake audition support for an already-qualified hybrid transition. The bounded source disposition is KEEP after corrections, subject to the explicit native/publication gate; it is not S04 completion or listener acceptance.
+A source test also exposed a one-frame endpoint error at 44.1 kHz. Scheduling now converts the absolute authored endpoint from integer native-sample frames and bounds it by decoded length, avoiding an accidental same-role overlap. No native oracle tolerance was widened.
 
-## Blockers, last verified state and recovery
+The first published run [41959790896](https://github.com/splatter85/EUTONOS-Music/actions/runs/41959790896), at `9f89e1ed9459260c228f8ed4cc22bed089bb55b6`, passed 127 Node tests and 13 of 15 native groups on all three OSes. Strict same-seed replay failed at both rates, so UI execution stopped. Diagnostic source `9e087fa8a140048e014ad7d4d215a9ac68e0856c` and [run 41960453351](https://github.com/splatter85/EUTONOS-Music/actions/runs/41960453351) preserved the gate. Plans and decoded samples were exact; all small output differences occurred with three/four simultaneous contributors, never outside overlap or with fewer than three contributors. This supports a floating-point summation issue but does not prove a particular Chromium internal iteration mechanism.
 
-### Publication
+The two fixed buses described above make the supported summation grouping reproducible. The independent reviewer added a bus-connection-failure regression and passed 18 focused cases on the corrected candidate; the assembled suite increased to 130. Corrected run 41961109555 passes strict replay, the unchanged independent oracle and the full browser flow on all three OSes. [Raw failure, diagnostic and passing evidence](../evidence/emf-s04/README.md) retain separate source pins. The bounded engineering disposition is KEEP; S05 musical routing remains unimplemented.
 
-The attempted shell operation created local commit `d921382…` and then requested a Git push. **Automatic approval review rejected the external publication** because the operation would publish the complete new source, tests, workflow and documentation to the public `splatter85/EUTONOS-Music` repository without explicit authorization for that payload. A read-only remote check confirmed main at `66e974c…` and no branch `work/emf-s04-procedural-20261104`. There was no successful S04 upload or integration. No alternative GitHub write API was used to bypass the rejection.
+## Publication history and recovery
 
-Repository handoff policy calls for publication even at a blocked boundary, but this approval rejection prevents that step. The local handoff, source and raw evidence make the blocked result reviewable. The owner must explicitly approve publishing these S04 changes to the named public repo, running its CI and integrating into main after required checks pass before those external writes resume. Ordinary local review and documentation are complete without that approval.
+The initial shell operation created local source `d921382ba948b5bad370751c90b39fb695888058`; automatic approval review then rejected public publication because that payload lacked explicit authorization. At that checkpoint, main remained `66e974c…` and no S04 branch existed. No alternate write route was used to bypass the rejection. The original local blocked closeout remains in repository history and Progress.
 
-A fresh GitHub clone cannot recover these unpublished S04 commits. Preserve this checkout or the **`EMF-S04-local.bundle`** recovery file supplied in the completing chat. That incremental Git bundle contains the implementation and documentation commits and requires the public intake commit `66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`, which an up-to-date clone of the repository already has. Its branch tip and SHA-256 are supplied with the file after local verification. To recover into an existing clone, replace the example absolute bundle path with the downloaded file's path:
+The owner then explicitly authorized pushing S04 to a separate branch and excluded main. Command-line Git lacked a login; the connected GitHub app published the authorized work. Published source `d2ae7e9e8c6a56ead6b28b4e249c5f2b99128abf` has the identical `a28ff92757aa7c03f479ef4f5921290cfb148008` tree to local `d921382…`; published checkpoint `9f89e1e…` has the identical `d7cf5bbcf5b6efddcf7f771e50dc44a0f9c274cd` tree to local closeout `c5f1637574c76ff01625e38ecb34fadd7f840e45`. Subsequent diagnostics and the corrected source were published only on this branch. Exact tree comparisons and readback preserve provenance across different commit metadata.
 
-```sh
-git fetch /absolute/path/to/EMF-S04-local.bundle work/emf-s04-procedural-20261104
-git switch -c recovery/emf-s04 FETCH_HEAD
-```
+Local Chromium could not create its process-singleton socket; the connected browser lacked an originating context and a cloud-browser fallback could not reach loopback. These were local environment limitations, not successful checks. The actual required native/UI verification subsequently completed through the existing three-OS GitHub Actions route. No environment restriction was bypassed.
 
-This recovery is local and does not publish anything. Inspect the recovered tree and current upstream state before continuing; public writes still require the recorded authorization.
+For recovery or the next assigned slice:
 
-### Browser execution
-
-The local Chromium launch failed because its process-singleton socket was denied (`Operation not permitted`). No runtime restriction was bypassed. The connected Browser plugin was unavailable without an originating browser context. A permitted cloud-browser fallback could not reach the loopback server (`ERR_CONNECTION_REFUSED`). These are environment failures, not successful audio/UI checks and not demonstrated application failures. The existing three-OS GitHub Actions route remains the next verification environment once publication is authorized.
-
-### Resume procedure
-
-1. Inspect the current checkout, branch, worktree and remote main. Read this handoff and the [campaign checkpoint](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint). Preserve the local source and documentation commits; reconcile any later upstream work before publication.
-2. Verify explicit owner approval for the public source/test/workflow/documentation publication and eventual checked integration. Do not route around the recorded rejection with another tool.
-3. With approval, publish the scoped S04 branch and read back the exact commit/tree. Trigger the existing Node 24 Windows/macOS/Linux validation workflow. If this workspace or dependencies changed, run `npm ci --ignore-scripts` and `npm run check` first.
-4. Run the written native/browser gate (`npm run check:browser`; CI installs Chromium and runs the same checked source). Investigate concrete failures, preserve the original tolerance and source applicability, and repeat only affected checks plus required gates after fixes.
-5. Retain actual JSON reports and inspected screenshots with source/run/platform provenance under `docs/evidence/emf-s04/`. Keep the existing local check log as historical evidence; add new logs instead of relabelling it.
-6. Update this handoff, campaign and Current Tasks with actual outcomes. Only after all assigned engineering gates pass, publish/read back the closeout, integrate the verified revision into main, and give the owner its containing SHA and mini handoff. Physical output/listening must remain explicitly untested unless separately performed.
+1. Inspect current main, branch/HEAD and working changes, preserving unrelated work. Fetch `work/emf-s04-procedural-20261104` and read this handoff and the campaign checkpoint at the published closeout revision.
+2. Start from the checked S04 branch. Main intentionally lacks S04; **do not merge, reset or update main** as part of this delivery.
+3. Use Node 24.x: `npm ci --ignore-scripts`, then `npm run check`. For native/browser verification use `npx playwright install --with-deps chromium` and `npm run check:browser` in a provisioned environment, or the existing three-OS CI workflow.
+4. For optional audition, `npm run demo` serves http://127.0.0.1:4173/procedural.html. Select a seed/arrangement and explicitly Play. This is optional owner use, not an unfinished S04 gate.
+5. Preserve historical reports at their source pins. A later runtime change requires new applicability evidence. Continue branch-only publication unless the owner gives a different instruction.
 
 ## One next actionable slice
 
-**Resume EMF-S04 — CLOUD**, completing publication and native verification of the existing procedural candidate. **Do not start S05 while S04 remains blocked.** The first action is to inspect current local/remote state and verify publication authorization; after approval, publish and run the already-written three-OS checks. The intended subsequent S05 assignment is the recorded/procedural/recorded handoff, only after a completed S04 closeout.
+**Next: EMF-S05 — CLOUD**, when separately assigned, from the verified S04 branch: recording A → procedural → different recording B with checked cues, bass/tail ownership and safe fades/bridge. First inspect current main and fetch/read the S04 branch handoff, then run Node 24 setup/checks. S05 is not dispatched automatically by S04 completion.
 
-**Separate PC owner action:** the S08 one-time project MCP approval remains in interactive Claude Code. Its formerly queued Windows CI is green, as supplied by the owner; it does not resolve or cause the S04 cloud block. S09 still joins eligible real FL material on PC, S10 supplies owner listening acceptance, and S12 follows that standalone acceptance. No new PC action was executed or requested to substitute for the cloud gate.
+**Separate PC owner action:** the S08 one-time project MCP approval remains in interactive Claude Code. Its formerly queued Windows CI is green. That action does not block this completed cloud slice. S09 joins eligible real FL material on PC; S10 supplies owner listening acceptance before S12 Mission Control integration.
 
-No native EUTONOS board or RAM integration is configured in this checkout. The updated Markdown owners are readable recovery records, not native filing receipts. The sequence and stable IDs are unchanged; S04 is blocked at delivery/verification, and the overall campaign remains **IN_PROGRESS** with effort **unknown**.
+No native EUTONOS board or RAM integration is configured. These Markdown owners are recovery records, not native filing receipts. Stable IDs and the slice order are unchanged; the whole campaign remains **IN_PROGRESS**, with effort **unknown**.

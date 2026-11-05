@@ -19,7 +19,7 @@ The [S02 handoff](EMF-S02-HANDOFF.md) records the small browser player's source,
 
 The [S03 handoff](EMF-S03-HANDOFF.md) records deterministic DJ/request integration, FIFO and cancellation behavior, retry/race review, native browser evidence and the S04 procedural-source pickup. Consult its disposition and the campaign for the actual completion state.
 
-The [S04 handoff](EMF-S04-HANDOFF.md) records the local procedural sampler candidate, passing Node checks, independent review and the publication/native-verification block. It is a recovery checkpoint, not a claim that S04 is published or complete.
+The [S04 handoff](EMF-S04-HANDOFF.md) records **S04 CLOUD COMPLETE** on the separate published branch: the corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. It preserves the earlier 127-test result and original native replay failure as historical evidence. Main remains intentionally unchanged at the owner's request. S04 requires no PC action; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch.
 
 The [S08 handoff](EMF-S08-HANDOFF.md) records the PC FL Studio authoring facade, its live Claude Code/Codex evidence and limits. Its renders are owner-local and unauditioned.
 

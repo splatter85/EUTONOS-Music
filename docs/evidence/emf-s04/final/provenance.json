@@ -1,0 +1,182 @@
+{
+  "schema": "emf-s04-evidence.v1",
+  "repository": "splatter85/EUTONOS-Music",
+  "branch": "work/emf-s04-procedural-20261104",
+  "sourceCommit": "73c456a147dcf24161ce22187e5e62320c5141b5",
+  "sourceTree": "92362e7d5dd6552c0255ae0e9220115d104fe052",
+  "runId": 41961109555,
+  "runUrl": "https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555",
+  "runConclusion": "success",
+  "physicalOutput": "NOT TESTED",
+  "listening": "NOT TESTED",
+  "artifacts": [
+    {
+      "platform": "linux",
+      "jobId": 127027428387,
+      "jobConclusion": "success",
+      "artifactId": 13385252565,
+      "zipBytes": 865094,
+      "zipSha256": "830a08c29cebfeb11e89d87d1230da38d7e40f79a31d71b93759d94c50ff29af",
+      "zipDigestVerifiedBeforeExtraction": true,
+      "files": [
+        {
+          "path": "linux/browser.json",
+          "bytes": 1586,
+          "sha256": "85522bca0ef58b8e43c1e19ba734218777229b01f70281e208851ded051c53b6"
+        },
+        {
+          "path": "linux/offline.json",
+          "bytes": 42653,
+          "sha256": "8db118134e09e32e1f088690c7ba0b0942b645419fcb6d607e9aebd36e0bad3d"
+        },
+        {
+          "path": "linux/player-blocked-queue.png",
+          "bytes": 150098,
+          "sha256": "7ea964fccfcc78d02c15136a1ec5fd6bfbcc5b1d9838c242cb5ded31349dfbe4"
+        },
+        {
+          "path": "linux/player-crossfade.png",
+          "bytes": 139566,
+          "sha256": "8ad44ce1414c638dcc2ef13bbe952dbacc69513338dea0e890ad58af3fc6d6d1"
+        },
+        {
+          "path": "linux/player-mobile.png",
+          "bytes": 132899,
+          "sha256": "4e70023f3fd7ee61647cb786b0a267063a6a83de9cccefeb96eb6d4c5d67473f"
+        },
+        {
+          "path": "linux/player-paused.png",
+          "bytes": 140172,
+          "sha256": "85742bf6d8facc1748fbbb0651b1430d6e0fc0b7a9f6e9381859efeb9038098f"
+        },
+        {
+          "path": "linux/player-ready.png",
+          "bytes": 133266,
+          "sha256": "9635758c24fcebd814a12046451a52a5fac5fc118baee4450df5be6e2e7c3c07"
+        },
+        {
+          "path": "linux/sampler-mobile.png",
+          "bytes": 102839,
+          "sha256": "84f34a1605df58632661368c27b47f89483c8a83b65c9e1b6bc83c069782b897"
+        },
+        {
+          "path": "linux/sampler-ready.png",
+          "bytes": 113274,
+          "sha256": "8bdcf0162822d5bd809e9f3a368a510b9a1d70e5afc38d4a72c97287252892c5"
+        }
+      ]
+    },
+    {
+      "platform": "macos",
+      "jobId": 127027428208,
+      "jobConclusion": "success",
+      "artifactId": 13385631699,
+      "zipBytes": 868228,
+      "zipSha256": "3385ccf5dbe498defaee26a3a4ce0498af91f87922ee75c236759ebae96d970e",
+      "zipDigestVerifiedBeforeExtraction": true,
+      "files": [
+        {
+          "path": "macos/browser.json",
+          "bytes": 1587,
+          "sha256": "204205e048952a7f569ba85a8e3870f715f2ffe46483399600591b42c5bd22a1"
+        },
+        {
+          "path": "macos/offline.json",
+          "bytes": 42673,
+          "sha256": "3a420e1c12f4d316db0f661b7d723ef42f976fdf85c85b7f3c5b28167426eb04"
+        },
+        {
+          "path": "macos/player-blocked-queue.png",
+          "bytes": 152207,
+          "sha256": "bcb46fa55cc59b19efc565b6a4738ffccc486fcc5d165391f45b22ea7536793a"
+        },
+        {
+          "path": "macos/player-crossfade.png",
+          "bytes": 138918,
+          "sha256": "093035edb4cd8da0963429535f300d55505670ae376af49eac13b3c96ab9ead2"
+        },
+        {
+          "path": "macos/player-mobile.png",
+          "bytes": 133631,
+          "sha256": "5e62bfec3bf7be1ff5bbe099a2025c7294d6182626da49b7d0cb510a0d17039d"
+        },
+        {
+          "path": "macos/player-paused.png",
+          "bytes": 142153,
+          "sha256": "8a9aabdd21fa9be2f1c6a0d5c64ee23c89824accd4be2d34c38632cc725b3e75"
+        },
+        {
+          "path": "macos/player-ready.png",
+          "bytes": 134841,
+          "sha256": "878c9b1d460cbce84b8dbadbdd0246fc4a42dd5322f1b53bb6d760f7da7b2ac1"
+        },
+        {
+          "path": "macos/sampler-mobile.png",
+          "bytes": 100501,
+          "sha256": "2e1dacb042dd1b4a951808d4ce0d2df48ed4e661f309be73b3d6f1d5d6a28fa4"
+        },
+        {
+          "path": "macos/sampler-ready.png",
+          "bytes": 111460,
+          "sha256": "4c56129f7ed7bc2371b340143d2f31646682b3281de27bc77442cf7b290e9367"
+        }
+      ]
+    },
+    {
+      "platform": "windows",
+      "jobId": 127027428061,
+      "jobConclusion": "success",
+      "artifactId": 13384968281,
+      "zipBytes": 532207,
+      "zipSha256": "e5479e33e73d576344033ab8fb84eb8c699d36d0d22f1ee7fabc04bdea4cd77b",
+      "zipDigestVerifiedBeforeExtraction": true,
+      "files": [
+        {
+          "path": "windows/browser.json",
+          "bytes": 1586,
+          "sha256": "d75aa97a01aa95441d919e90dfa5e6592973e6b50a9c19f20544096f46d5ab32"
+        },
+        {
+          "path": "windows/offline.json",
+          "bytes": 42663,
+          "sha256": "551ffafe79dbaf2b546d481e7c8d1205c1fe337db9d2e238b3bf6389341dc52d"
+        },
+        {
+          "path": "windows/player-blocked-queue.png",
+          "bytes": 95684,
+          "sha256": "6a7bf5ed265fe859e55890f23b448413b6f47ecb1d08367ed311e84527bc56fd"
+        },
+        {
+          "path": "windows/player-crossfade.png",
+          "bytes": 90825,
+          "sha256": "deb0eebc897eb042bfa486c60a68c7a1318f164dc7f75463f10d009ac8542598"
+        },
+        {
+          "path": "windows/player-mobile.png",
+          "bytes": 81612,
+          "sha256": "d66e848ee30aa2ad1f3fd1c92f9b7e43e3ff9104182101d9a4ff8c0b2bc635d5"
+        },
+        {
+          "path": "windows/player-paused.png",
+          "bytes": 90814,
+          "sha256": "d1bfa11441faa15e16938282cce86a7de2b27e1f81c7b4cc3125443506eeaaca"
+        },
+        {
+          "path": "windows/player-ready.png",
+          "bytes": 86228,
+          "sha256": "e8c3c957adef7b8ef35a2c22e371f798c383e04e7b2c7845dad387bc9ea0acde"
+        },
+        {
+          "path": "windows/sampler-mobile.png",
+          "bytes": 58688,
+          "sha256": "4e14427ea94729d5592d8c6f005b9b9a3ef39cea7e8082e4c0b1e0041d1c5f9d"
+        },
+        {
+          "path": "windows/sampler-ready.png",
+          "bytes": 68335,
+          "sha256": "e7e8f0c099c419aced69c1e8de46f53205acac01de9096d7a2cf8556429cc6e1"
+        }
+      ]
+    }
+  ]
+}
