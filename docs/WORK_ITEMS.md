@@ -105,7 +105,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF01",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Bounded S01 to S05 reviews cover their implemented boundaries; later slices extend them.",
+      "summary": "Bounded S01 to S06 reviews cover their implemented boundaries; later slices extend them.",
       "title": "Contract and adequacy review",
       "type": "stage"
     },
@@ -195,7 +195,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF04",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S02 player, S03 DJ, S04 procedural source and S05 hybrid handoff are in main; S05 checked on Windows only. S06/S07 remain.",
+      "summary": "S02 player, S03 DJ, S04 procedural source, S05 hybrid handoff and S06 importer are in main; S05 and S06 checked on Windows only. S07 remains.",
       "title": "Working standalone cloud scaffold",
       "type": "stage"
     },
@@ -254,8 +254,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF06",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "Metadata, hashes, eligibility, cues and useful errors without a mandatory annotation wall.",
+      "status": "active",
+      "summary": "S06 importer: producer deliveries become checked packs with measured PCM, producer-hash checks, silent-tail trimming, rights evidence and coded refusals (Windows). Library, catalogue and real FL material remain.",
       "title": "Versioned library and importer",
       "type": "stage"
     },
@@ -525,7 +525,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF15",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S08 verified a bounded authoring path on Windows; live GUI control, mixer/plugins, render settings and non-Windows FL remain open.",
+      "summary": "S08 verified a bounded authoring path on Windows; S06 adds mock-producer contract tests with no FL Studio. Live GUI control, mixer/plugins, render settings and non-Windows FL remain open.",
       "title": "Unified FL Studio MCP authoring control",
       "type": "stage"
     },
@@ -867,7 +867,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S06-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -883,13 +883,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "f3f68906ed1eae9f4efc4ac89755b694b4307a68226b4d85eed3c3afbd358be2",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "33bae4a7-e722-54ce-8396-3965d92a638a",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-05T08:37:51.047183+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF06"
       },
       "id": "EMF-S06",
-      "status": "planned",
+      "status": "completed",
       "summary": "Portable import/manifest validation and mock FL-producer/MCP contract tests; no claim of real FL control.",
       "title": "S06 importer and mock FL producer (cloud)",
       "type": "slice"
