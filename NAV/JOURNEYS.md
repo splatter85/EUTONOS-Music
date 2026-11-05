@@ -21,20 +21,21 @@ state, persistence, failure paths, and terminal conditions.
 ### `JRN-load-pack-play-ab-transition` Load a pack and play an A/B transition
 - Kind: journey
 - Aliases: demo playback; schedule A to B
-- Summary: Entry: the demo server serves the page, which loads a pack by manifest URL (the page script is in web/, not cited here). Steps: loadBrowserPack fetches the manifest over HTTP(S), validates it, enforces size, one-or-two-recording and eligibility limits, fetches and validates every media file and rights evidence; SmallPlayer is built on a checked A to B route; play(a|b) resumes the AudioContext from the user gesture, decodes recordings once, schedules the chosen source at its entry cue; scheduleAB is allowed only after Play A and plans the exit cue against the shared clock, schedules B with a fade-in and sets A to transition out at that frame. Pause, resume, stop, volume and mute are immediate, and each new play or pause invalidates in-flight work via an operation counter. Failures such as ineligible audio, a passed exit cue or a closed context surface as errors. Physical output and listening are not established by these sources.
+- Summary: Entry: the demo server serves the page, which loads a pack by manifest URL (the page script is in web/, not cited). loadBrowserPack fetches, validates and size-limits the manifest and media; SmallPlayer is built on a checked A to B route; play(a|b) resumes the AudioContext from the user gesture, decodes once and schedules the source at its entry cue; scheduleAB (allowed after Play A) plans the exit cue against the shared clock, schedules B with a fade-in and sets A to transition out. A transition operation counter now also lets a future handoff be cancelled before its cue. Pause, resume, stop, volume and mute are immediate. Failures such as ineligible audio, a passed exit cue or a closed context surface as errors. Physical output is not tested.
 - Evidence: `src/browser-pack.ts`; `src/player.ts`; `src/web-audio.ts`; `scripts/serve.ts`
 - Related: `SURF-demo-http-server`; `AREA-pack-ab-playback-demo`; `SYS-web-audio-transition-player`; `SYS-pack-validation`; `SYS-demo-server`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `JRN-control-request-lifecycle` Control request acceptance lifecycle
 - Kind: journey
 - Aliases: DJ request flow; command receipts
-- Summary: Library-level only. A caller builds a ControlContract from a catalog and an engine generation, then accept(request) canonicalizes the request: a repeat of the same commandId returns the stored receipt, a different body under that id rejects with id-conflict; otherwise checks run (valid request, expected revision, manual-only types, hold, queue and catalog availability), and on acceptance the requested state or FIFO queue changes, revision increments and a receipt reports execution pending with immediate or musical-boundary urgency. The caller then peekNext and acknowledgeQueueHead, reports a prepared plan, and a renderer reports audible state; audible state is changed only by that report. No inspected consumer wires this to the player, so the journey stops at the contract boundary.
+- Summary: A caller (now DeterministicDj) builds a ControlContract from a catalog, an engine generation and an initial state, then accept(request) canonicalizes: a repeat commandId returns the stored receipt, a different body rejects with id-conflict; otherwise checks run (valid request, expected revision, manual-only types including cancelQueue and cancelNext, hold, queue entry and catalog availability) and on acceptance intent or the FIFO queue changes, the revision increments and a receipt reports execution pending. The caller acknowledges the queue head, reports a prepared plan and the renderer reports audible state; a new engine generation clears prepared and audible evidence but not retry identities.
 - Evidence: `src/control.ts`; `src/index.ts`
 - Related: `SYS-control-request-contract`; `GAP-control-contract-unwired`; `SURF-library-exports`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+
 ### `JRN-project-revision-lifecycle` FL project revision lifecycle and recovery
 - Kind: journey
 - Aliases: project history; backups; journal replay
@@ -52,3 +53,20 @@ state, persistence, failure paths, and terminal conditions.
 - Related: `SYS-fixture-pipeline`; `SYS-pack-validation`; `SURF-dev-cli-scripts`
 - Review: candidate
 - Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+### `JRN-dj-request-to-transition` DJ request to scheduled A/B handoff
+- Kind: journey
+- Aliases: Next song; queue track; DJ flow
+- Summary: A caller builds DeterministicDj from a loaded pack and sends requests. accept() canonicalizes and deduplicates; execute() either changes intent (state, genre, Hold) or selects a target: the FIFO head, else a different eligible recording matching intent. While stopped, selection is recorded but no audio starts; Play starts the first track. While A plays, selection calls scheduleAB, which plans the exit cue on the shared clock. snapshot() later marks the plan started once the renderer frame reaches it, acknowledges the queue head only then, and reports audible state. Cancel next or removing a scheduled queue entry cancels the future voice only before the cue; a late cue gives a visible no-match and keeps the reservation. Hold refuses automatic targets but allows manual queue and Next. Physical output is not tested.
+- Evidence: `src/dj.ts`; `src/control.ts`; `src/player.ts`; `src/web-audio.ts`
+- Related: `SYS-deterministic-dj`; `SYS-web-audio-transition-player`; `JRN-control-request-lifecycle`; `INT-dj-request`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+
+### `JRN-procedural-audition` Compile and audition a seeded procedural phrase
+- Kind: journey
+- Aliases: sampler audition; seed replay
+- Summary: A caller loads the S01 fixture pack with fixtures allowed, calls compileS01Phrase with a seed and state, then SmallPlayer.playProcedural. The player resumes the context, decodes the four-sample palette once with hash and memory checks, builds a ProceduralSource, schedules all notes at a lead frame on the shared clock and unmutes only after the whole schedule commits. The phrase ends at 32 quarters unless an exit at 16 is used for a handoff; stop, release and a stale generation silence it. The same seed and state replay the same events; other packs are refused.
+- Evidence: `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/player.ts`; `src/browser-pack.ts`
+- Related: `SYS-procedural-sampler`; `INT-play-procedural`; `SYS-web-audio-transition-player`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c

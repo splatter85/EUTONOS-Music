@@ -35,12 +35,12 @@ IDs, then inspect current source before editing.
 
 ### `AREA-pack-ab-playback-demo` Pack loading and A/B transition playback demo
 - Kind: area
-- Aliases: S02 demo; small player
-- Summary: Capability: a loopback demo loads the S01 fixture pack in the browser (fixture mode on) and plays recording A or B, scheduling a cue-aligned A to B transition through SmallPlayer. web/app.ts, outside the NAV source roots, wires loadBrowserPack and SmallPlayer, requires a secure context with Web Audio, Web Locks and Web Crypto, and takes a Web Lock for playback ownership; web/index.html loads the compiled app. It is fixture-only; arbitrary packs, streaming and production hosting are out of scope per code comments.
+- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page
+- Summary: Capability: a loopback demo loads the S01 fixture pack in the browser (fixture mode on), plays recordings through SmallPlayer, takes DJ requests (state, genre, Next, queue, Hold, cancel, transport) and auditions seeded procedural phrases. The pages and scripts live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts and the procedural source are the cited code. scripts/serve.ts now also routes /procedural.html and the dj, phrase-plan and procedural-source browser modules, and scripts/browser-check.ts runs native offline and Chromium checks for player and sampler. Fixture-only; production hosting and arbitrary packs are out of scope.
 - Evidence: `src/browser-pack.ts`; `src/player.ts`; `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-playback`; `SRC-dev-scripts`; `GAP-web-demo-outside-source-roots`; `SURF-demo-http-server`; `JRN-load-pack-play-ab-transition`; `GAP-authored-pack-not-playable-in-demo`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SYS-pack-validation` Audio pack manifest and media validation
 - Kind: system
@@ -54,20 +54,20 @@ IDs, then inspect current source before editing.
 ### `SYS-web-audio-transition-player` Web Audio source, transition planning and small player
 - Kind: system
 - Aliases: RecordedSource; planTransition; SmallPlayer
-- Summary: Caller-owned WebAudioClock with engine generations, cue-to-frame mapping, route checks and transition planning, a one-shot RecordedSource with fades, and SmallPlayer, the A/B transport (play, scheduleAB, pause, resume, stop, volume, mute, snapshot, dispose) that cancels stale voices through an operation counter and reacts to AudioContext state changes.
+- Summary: Caller-owned WebAudioClock with engine generations, cue-to-frame mapping, route checks and transition planning, a one-shot RecordedSource with fades and a cancelTransition that restores its envelope before the exit, and SmallPlayer, the transport (play, playProcedural, scheduleAB, pause, resume, stop, volume, mute, snapshot, dispose). A transition operation counter lets cancelTransitionPreparation and cancelPendingTransition withdraw an in-flight or future A to B without touching committed audio; snapshot now lists voices and transition stamps for reconciliation.
 - Evidence: `src/playable-source.ts`; `src/web-audio.ts`; `src/player.ts`; `src/browser-pack.ts`
-- Related: `SRC-playback`; `SYS-pack-validation`
+- Related: `SRC-playback`; `SYS-pack-validation`; `SYS-deterministic-dj`; `SYS-procedural-sampler`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SYS-control-request-contract` Control request acceptance and receipts
 - Kind: system
 - Aliases: ControlContract; em.control.v0
-- Summary: Pure in-memory ControlContract: validates versioned requests, enforces revision checks, command-id idempotency, a 32-entry manual queue and hold policy, retains receipts for the session, and records requested versus renderer-reported audible state. It has no server, timers or execution of its own.
+- Summary: In-memory ControlContract: validates versioned requests (now including cancelQueue, cancelNext and a nullable genre), enforces revision checks, command-id idempotency, a 32-entry manual queue and hold policy, retains receipts for the session, and records requested versus renderer-reported prepared and audible state. It can adopt a new engine generation and take an initial state. It has no server, timers or execution; DeterministicDj executes it.
 - Evidence: `src/control.ts`
 - Related: `SRC-control-contract`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SYS-authoring-broker` FL authoring broker: lease, lock, journal, revisions
 - Kind: system
@@ -117,34 +117,52 @@ IDs, then inspect current source before editing.
 ### `SYS-demo-server` Loopback demo server and browser check runner
 - Kind: system
 - Aliases: serve.ts; browser-check.ts
-- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web page, dist browser modules, S01 fixtures), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner drives it with an injected Playwright module and writes evidence.
+- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan and procedural-source, S01 fixtures), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner drives it with an injected Playwright module, runs native offline checks plus player and sampler page stages, and writes evidence.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-dev-scripts`; `AREA-pack-ab-playback-demo`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
-### `GAP-control-contract-unwired` Control contract has no inspected consumer
+### `GAP-control-contract-unwired` Control contract reaches only the session-local DJ
 - Kind: gap
-- Aliases: S03 integration pending
-- Summary: Within src, scripts, tests and a grep of web/, only tests/control.test.ts and the src/index.ts re-export reference ControlContract; SmallPlayer and web/app.ts do not use it, and the player comment defers DJ/control integration to S03. Do not treat the control contract as reachable at runtime.
+- Aliases: S03 integration done; no Mission Control consumer
+- Summary: Resolved in part: src/dj.ts constructs ControlContract and src/index.ts exports DeterministicDj, so the contract now drives SmallPlayer through the DJ, with tests in tests/dj.test.ts. Remaining: nothing under src or scripts exposes it over a server or to Mission Control, and DJ state is session-local with no persistence. Do not treat it as an external API.
 - Evidence: `src/control.ts`; `src/player.ts`; `src/index.ts`; `tests/control.test.ts`
 - Related: `SYS-control-request-contract`; `SYS-web-audio-transition-player`
 - Review: gap
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `GAP-web-demo-outside-source-roots` Demo page sources are outside any source family
 - Kind: gap
-- Aliases: web/ unowned; checks page
-- Summary: web/ (app.ts, checks.ts, index.html, checks.html, style.css) is not under the configured source roots, so no source family owns it and the demo UI is only reachable in NAV through SRC-dev-scripts and the playback family. A manual read of web/app.ts (not citable as evidence, outside obtained source) shows it imports loadBrowserPack and SmallPlayer. Resolving this needs web added as a source root or an explicit exclusion.
+- Aliases: web/ unowned; checks page; procedural page
+- Summary: web/ (the player, checks and procedural pages and their scripts, plus style.css) is not under the configured source roots, so no source family owns it. The DJ and sampler UIs are therefore reachable in NAV only through scripts/serve.ts (which routes /procedural.html and the dj, phrase-plan and procedural-source browser modules) and scripts/browser-check.ts (which drives the pages). Page logic cannot be cited. Resolving this needs web added as a source root or an explicit exclusion.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `AREA-pack-ab-playback-demo`; `SYS-demo-server`
 - Review: gap
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+
 ### `GAP-authored-pack-not-playable-in-demo` Authored packs have no route and are not demo-playable
 - Kind: gap
 - Aliases: fl_build_pack output to player
-- Summary: fl_build_pack writes a pack with one recording, empty palettes, recipes and routes, eligibility unreviewed and playback-only owner-local rights. SmallPlayer needs a directed A to B route over two distinct recordings and checkedRoute demands fixture mode, which admits only fixture-only audio, while eligibleForPlayback otherwise needs listening-reviewed. So the authoring journey does not currently continue into the demo player, and no source here shows a review step that would make it eligible.
+- Summary: fl_build_pack writes a pack with one recording, empty palettes, recipes and routes, eligibility unreviewed and playback-only owner-local rights. SmallPlayer needs a directed A to B route over two distinct recordings and fixture mode, and the S04 sampler compiles only the exact s01-foundation@1 recipe and palette, so an authored pack is playable by neither path, and the DJ catalog would exclude its ineligible recording. No source here shows a review step that makes it eligible; unchanged by S03 and S04.
 - Evidence: `src/authoring/broker.ts`; `src/web-audio.ts`; `src/pack.ts`; `src/player.ts`
 - Related: `JRN-author-sketch-to-pack`; `JRN-load-pack-play-ab-transition`; `INT-fl-build-pack`; `SYS-web-audio-transition-player`
 - Review: gap
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+### `SYS-deterministic-dj` Deterministic DJ coordinator
+- Kind: system
+- Aliases: DeterministicDj; S03 DJ; request executor
+- Summary: DeterministicDj builds a ControlContract from the loaded pack (sorted recordings the renderer pair supports, loaded, and eligibleForPlayback; a genre catalog derived from them) and executes accepted requests: transport stop, pause, mute, unmute, play; hold; cancelNext; cancelQueue; setState; requestGenre; queueTrack; nextSong. select() prefers the manual FIFO head, else a different eligible recording matching state and genre, and calls SmallPlayer.scheduleAB, so only A to B is reachable. Exact retries return the stored operation and a reused id with another body is rejected. snapshot() reconciles scheduled clock events (started, completed, applied, cancelled, superseded, no-match, blocked, failed) and reports prepared and audible state back to the contract; there is no timer, network service or persistence, and device output is not measured.
+- Evidence: `src/dj.ts`; `src/control.ts`; `src/player.ts`
+- Related: `SYS-control-request-contract`; `SYS-web-audio-transition-player`; `SRC-dj-procedural`; `JRN-dj-request-to-transition`; `INT-dj-request`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+
+### `SYS-procedural-sampler` Seeded phrase compiler and finite sampler source
+- Kind: system
+- Aliases: compileS01Phrase; ProceduralSource; s04-s01-performer
+- Summary: compileS01Phrase turns an explicit uint32 seed and a state (explore or drive) into an immutable eight-bar, 120 bpm plan of at most 256 note events, accepted only for the exact s01-foundation@1 pack, s01-recipe@1 and four-sample s01-palette@1, and only for assets with playback and sample-reuse rights and eligible review (or fixture opt-in). ProceduralSource is a finite PlayableSource that schedules every note on the owner's WebAudioClock in one pass, with at most four voices and one per role, exits at the 16-quarter phrase and the 32-quarter end, and fails silent on a stale clock or partial schedule. decodeProceduralSamples rechecks hashes and a decoded-memory budget. Any other pack or recipe fails closed.
+- Evidence: `src/dj.ts`; `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/pack.ts`
+- Related: `SRC-dj-procedural`; `SYS-web-audio-transition-player`; `SYS-pack-validation`; `JRN-procedural-audition`; `GAP-authored-pack-not-playable-in-demo`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c

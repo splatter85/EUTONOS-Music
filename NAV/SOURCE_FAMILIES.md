@@ -22,20 +22,20 @@ a claim that every file in a directory shares one owner.
 ### `SRC-playback` Playback clock, sources and small player
 - Kind: source-family
 - Aliases: S02 player; Web Audio renderer; RecordedSource
-- Summary: Caller-owned audio clock and playable-source interface, Web Audio recorded source and transition planning, browser pack loading/decoding and the SmallPlayer A/B transport state machine.
+- Summary: Caller-owned audio clock and playable-source interface, Web Audio recorded source and transition planning, browser pack loading/decoding and the SmallPlayer transport, which now also plays procedural sources and supports cancelling a pending transition. The DJ and sampler layers on top live in SRC-dj-procedural.
 - Evidence: `src/playable-source.ts`; `src/web-audio.ts`; `src/player.ts`; `src/browser-pack.ts`
 - Related: `SYS-web-audio-transition-player`; `AREA-pack-ab-playback-demo`; `JRN-load-pack-play-ab-transition`; `GAP-authored-pack-not-playable-in-demo`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SRC-control-contract` Control request contract
 - Kind: source-family
 - Aliases: em.control.v0; DJ request contract
-- Summary: Versioned control requests (transport, state, queue), limits, receipts, rejection codes and snapshots; the contract a later DJ and Mission Control call.
+- Summary: Versioned control requests (transport, state, genre, queue, cancel), limits, receipts, rejection codes and snapshots; now consumed by DeterministicDj.
 - Evidence: `src/control.ts`
 - Related: `SYS-control-request-contract`; `GAP-control-contract-unwired`; `JRN-control-request-lifecycle`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SRC-fl-authoring` FL Studio authoring MCP facade
 - Kind: source-family
@@ -49,17 +49,33 @@ a claim that every file in a directory shares one owner.
 ### `SRC-dev-scripts` Fixture generation, demo server and checks
 - Kind: source-family
 - Aliases: npm scripts; fixtures generator; demo server
-- Summary: Offline deterministic fixture generator, loopback-only demo server, browser check runner and the pack validation CLI used by `npm run check`.
+- Summary: Offline deterministic fixture generator, loopback-only demo server (now serving the DJ and sampler pages and modules), browser check runner (player and sampler stages) and the pack validation CLI used by `npm run check`.
 - Evidence: `scripts/browser-check.ts`; `scripts/generate-fixtures.ts`; `scripts/serve.ts`; `scripts/validate-pack.ts`
 - Related: `SYS-fixture-pipeline`; `SYS-demo-server`; `SURF-dev-cli-scripts`; `SURF-demo-http-server`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
 
 ### `SRC-tests` Node test suites
 - Kind: source-family
 - Aliases: tests; node:test
-- Summary: node:test suites for packs, fixtures, control, sources, Web Audio, player, server, browser pack loading and the authoring broker/MCP server; `tests/audio-double.ts` is a shared test double, not a suite.
+- Summary: node:test suites for packs, fixtures, control, sources, Web Audio, player, server, browser pack loading and the authoring broker/MCP server, plus S03 and S04 suites: dj and dj-review (DeterministicDj behavior, queue, Hold, cancellation, native-handoff races), phrase-plan (seeded phrase compiler) and procedural-source and procedural-review (the finite sampler source and its failure cleanup). tests/audio-double.ts is a shared test double, not a suite. Suite contents were skimmed by title.
 - Evidence: `tests/audio-double.ts`; `tests/authoring.test.ts`; `tests/browser-pack.test.ts`; `tests/control.test.ts`; `tests/fixtures.test.ts`; `tests/pack.test.ts`; `tests/player.test.ts`; `tests/server.test.ts`; `tests/source.test.ts`; `tests/web-audio.test.ts`
 - Related: `SRC-audio-pack-contract`; `SRC-playback`; `SRC-control-contract`; `SRC-fl-authoring`; `SRC-dev-scripts`
 - Review: candidate
-- Revision: 431ecb2e38117c4fc16eb73d6bccf5af54d2bfc0a598686aeb986632649921db
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+### `SRC-dj-procedural` Deterministic DJ and procedural sampler
+- Kind: source-family
+- Aliases: S03 DJ; S04 sampler; DeterministicDj; ProceduralSource
+- Summary: Session-local deterministic DJ over the two-recording SmallPlayer, a seeded phrase compiler and a finite native sampler source, all browser-safe and exported from src/index.ts. Covered by dj, dj-review, phrase-plan, procedural-source and procedural-review test suites.
+- Evidence: `src/dj.ts`; `src/phrase-plan.ts`; `src/procedural-source.ts`
+- Related: `SYS-deterministic-dj`; `SYS-procedural-sampler`; `SRC-playback`; `SRC-control-contract`; `SRC-tests`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+### `SRC-dj-procedural-tests` DJ and sampler test suites
+- Kind: source-family
+- Aliases: dj tests; phrase-plan tests; procedural-source tests
+- Summary: The five node:test suites added with S03 and S04, a bounded subset of SRC-tests: dj and dj-review drive DeterministicDj over SmallPlayer with the shared audio double (queue, Hold, cancellation, native-handoff races); phrase-plan covers the seeded compiler, replay and fail-closed metadata; procedural-source and procedural-review cover sampler scheduling, decode, and partial-failure cleanup. Read at headers and titles only, not run.
+- Evidence: `tests/dj.test.ts`; `tests/dj-review.test.ts`; `tests/phrase-plan.test.ts`; `tests/procedural-source.test.ts`; `tests/procedural-review.test.ts`
+- Related: `SRC-tests`; `SRC-dj-procedural`; `SYS-deterministic-dj`; `SYS-procedural-sampler`
+- Review: candidate
+- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
