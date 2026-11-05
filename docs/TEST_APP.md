@@ -7,7 +7,7 @@ Status: S03 connects DJ requests to the small recording player; the full three-l
 
 [S03 setup and policy](S03_DJ.md) provides Play/Pause/Stop, Volume/Mute, State, Genre, Next Song, manual FIFO queue/cancellation and Hold state & genre. The app sends revisioned commands to one DJ, which schedules the existing A→B route through S02's one-clock renderer. Requested targets, scheduled sources, Now and queued entries are displayed separately. The [S03 handoff](handoffs/EMF-S03-HANDOFF.md) records actual evidence and limits.
 
-The fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. There is no procedural performer or Mission Control integration yet.
+The recording fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. The local [S04 sampler page](S04_PROCEDURAL.md) auditions a finite seeded source through the same player, without adding it to DJ selection or routes; native verification and publication remain pending. Mission Control integration remains later work.
 
 ## Later full MVP
 

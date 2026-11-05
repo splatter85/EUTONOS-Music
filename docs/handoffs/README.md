@@ -19,6 +19,8 @@ The [S02 handoff](EMF-S02-HANDOFF.md) records the small browser player's source,
 
 The [S03 handoff](EMF-S03-HANDOFF.md) records deterministic DJ/request integration, FIFO and cancellation behavior, retry/race review, native browser evidence and the S04 procedural-source pickup. Consult its disposition and the campaign for the actual completion state.
 
+The [S04 handoff](EMF-S04-HANDOFF.md) records the local procedural sampler candidate, passing Node checks, independent review and the publication/native-verification block. It is a recovery checkpoint, not a claim that S04 is published or complete.
+
 The [S08 handoff](EMF-S08-HANDOFF.md) records the PC FL Studio authoring facade, its live Claude Code/Codex evidence and limits. Its renders are owner-local and unauditioned.
 
 **Special PC notices:** at S01 completion, tell the owner the checked pack revision allows **S08 PC** to begin in parallel with cloud S02–S07. At S07 completion, supply the tested cloud build revision/run commands for **S09 PC** after S08 real FL outputs exist. Both notices happen during their respective slice closeouts.

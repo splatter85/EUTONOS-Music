@@ -1,7 +1,7 @@
 # Design decisions and open questions
 
 Document ID: `EM-D011`  
-Status: current design decisions, including bounded S01/S02/S03/S08 implementation updates, revised 2026-11-04.
+Status: current design decisions, including S01/S02/S03/S08 implementation and the local S04 candidate; S04 native verification/publication blocked, revised 2026-11-04.
 
 Owner direction: Mission Control music first, possible growth later, focus on making it work. Other engineering decisions below are this review's recommendations within that direction, not unrun qualification results. The initial versions of EM-DEC001–010 are preserved at baseline `ee7125e`; their stable identities remain.
 
@@ -16,7 +16,7 @@ Owner direction: Mission Control music first, possible growth later, focus on ma
 | EM-DEC007 | Compatibility is directed and version/scenario-specific | Start with a few authored routes; generalize only within tested content classes. |
 | EM-DEC008 | Three-day endurance and musical breadth are separate | Seed counts and graph reachability do not establish enjoyment. |
 | EM-DEC009 | Intended-use provenance is required for distributed packs | Private authoring, compositions, stems, reusable sounds and weights are distinct decisions. |
-| EM-DEC010 | Work follows the current bounded assignment; the S08 completion handoff assigns S03 CLOUD implementation/publication | Later slice ordering is not automatic dispatch. No runtime or listening stage closes without its actual evidence. |
+| EM-DEC010 | Work follows the current bounded assignment: S04 CLOUD implementation/verification; public publication is blocked by automatic approval review pending explicit owner authorization | Resume the existing S04 candidate after resolving the recorded publication block. Later slice ordering is not automatic dispatch; no runtime or listening stage closes without actual evidence. |
 | EM-DEC011 | Audible proof precedes broad infrastructure | EMF04 demonstrates a controlled recorded/generated journey; EMF05 reviews it before breadth. |
 | EM-DEC012 | FL MCP and production jobs stay in full EMF but do not block usable MC pilot | EMF15/16 are retained. Advance only a narrow helper when a measured bottleneck justifies it. |
 | EM-DEC013 | Adaptation is optional and tested against fixed-state music | No productivity or attention inference from activity counts alone. |
@@ -70,3 +70,7 @@ Actual palette/family preferences, default dwell/contrast/variation, renderer be
 
 **EM-DEC028:** Acceptance receipts and renderer effects are separate. Caller-known canonical retries recover the original receipt and current execution outcome without repeating native scheduling, including after Stop or a generation change. Retain reservations before awaits and consume a queue entry only after its native entry frame has been observed; delayed promise observation cannot put started music back in the queue. Before entry, Cancel next restores outgoing A's original envelope/end and removes B while retaining an unstarted queue entry. Cancellation after onset is refused; Stop/Mute remain immediate. Receipt durability, external adapters and expiry/lease rules remain later work. [Review and evidence](handoffs/EMF-S03-HANDOFF.md).
 
+
+## S04 finite procedural source — 2026-11-04
+
+**EM-DEC029:** Compile one immutable eight-bar S01-palette performance from an explicit uint32 seed and Explore/Drive arrangement, with a separately versioned executable performer and independent deterministic role streams. Schedule its complete bounded note set on the existing Web Audio clock; keep one pending/resolved verified palette decode per player, and recheck current permissions on every intent. Stop/replacement and stale-operation guards remain in the common player. Keep the first audition separate from the two-recording DJ: replacement playback, a whole-performance exit fade and recipe identity alone do not supply S05 hybrid overlap, role transfer or full replay identity. Symbolic replay and call/state tests pass locally; native PCM/browser results, publication and listening must be stated separately. Reconsider broader recipes, imported plans and scheduling strategies only against a concrete supported-content or resource requirement. [Guide](S04_PROCEDURAL.md), [blocked handoff](handoffs/EMF-S04-HANDOFF.md).

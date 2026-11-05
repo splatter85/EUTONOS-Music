@@ -2,7 +2,7 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status:** S03 connects a deterministic DJ to the Web Audio player: state/genre/Next, a manual FIFO queue, Hold, cancellable future handoffs and idempotent requests. S08 separately proves the bounded FL authoring path on Windows. The procedural performer, joined three-layer MVP and listening acceptance remain later slices. [Current evidence and next slice](docs/CURRENT_TASKS.md).
+**Status:** S03 connects a deterministic DJ to the Web Audio player. The local S04 candidate adds a finite, seeded procedural sampler and audition page through the same player; 127 Node tests and fixture/media checks pass. **S04 publication and native browser verification are blocked/pending**, so it is not integrated into main or declared complete. S08 separately proves the bounded FL authoring path on Windows. [Current evidence and recovery](docs/CURRENT_TASKS.md).
 
 **Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S03 handoff](docs/handoffs/EMF-S03-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
@@ -21,6 +21,8 @@ Open **http://127.0.0.1:4173/**. Press **Play**, then **Next Song** before A rea
 `check` compiles TypeScript, runs Node tests, checks deterministic fixture regeneration, and validates all six committed WAV files. `demo` starts a small loopback-only development server. No runtime npm package, DAW, model or paid service is needed. TypeScript and Playwright are development dependencies.
 
 The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S03 controls, selection and limits](docs/S03_DJ.md).
+
+The local S04 candidate also serves **http://127.0.0.1:4173/procedural.html**. Press **Play variation** to audition seed 1, then Stop and try seed 2 or Drive. The source uses the four original sample inputs for one eight-bar performance, with exact plan replay and bounded notes/sample residency. Its native checks are implemented but have not run in this slice. [S04 guide and limits](docs/S04_PROCEDURAL.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
@@ -42,6 +44,7 @@ A **tiny standalone app** exposes requests to the DJ. The current S03 demo provi
 - [Architecture](docs/ARCHITECTURE.md)
 - [Executable S01 foundation](docs/S01_FOUNDATION.md)
 - [S03 deterministic DJ and controls](docs/S03_DJ.md)
+- [S04 procedural sampler and audition](docs/S04_PROCEDURAL.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
 - [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)

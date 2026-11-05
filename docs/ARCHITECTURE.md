@@ -1,7 +1,7 @@
 # Preliminary architecture
 
 Document ID: `EM-D004`  
-Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, and [S02](S02_PLAYER.md) adds one native Web Audio recording renderer and A/B transport. [S03](S03_DJ.md) adds a deterministic DJ/request coordinator over that renderer. The procedural performer and broader planner remain later slices.
+Status: wider runtime design remains proposed; the [S01 foundation](S01_FOUNDATION.md) implements the small pack and source/control contract subset, and [S02](S02_PLAYER.md) adds one native Web Audio recording renderer and A/B transport. [S03](S03_DJ.md) adds a deterministic DJ/request coordinator over that renderer. The local [S04](S04_PROCEDURAL.md) candidate implements a finite original-palette sampler through the same clock/transport, with Node verification; publication and native checks remain pending. Hybrid handoffs and the broader planner remain later slices.
 
 ## Platform boundary
 
