@@ -3,7 +3,7 @@
 Document ID: `EM-D005`  
 Status: proposed design, 2026-11-03.
 
-**Executable subset:** [S01 foundation](S01_FOUNDATION.md) owns the small `em.audio-pack.v0` contract and validator. [The original S01 fixture pack](../fixtures/s01/README.md) contains actual reproducible WAV bytes. The broader catalogue, importer, listening reviews and transition graph below remain future work.
+**Executable subset:** [S01 foundation](S01_FOUNDATION.md) owns the small `em.audio-pack.v0` contract and validator. [The original S01 fixture pack](../fixtures/s01/README.md) contains actual reproducible WAV bytes. [S06](S06_IMPORT.md) adds the first producer importer and its receipt. The broader catalogue, listening reviews and transition graph below remain future work.
 
 ## The library is more than a folder of tracks
 

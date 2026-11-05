@@ -162,3 +162,13 @@ S05 adds `src/hybrid-handoff.ts` with one policy, `s05-hybrid-handoff@1`, for th
 Windows only, Node 26.12.1 (the package declares 24), headless Chromium 151: **143 Node tests**, unchanged fixture/media checks, **19 native offline groups** and **12 browser report groups** passed. The new native groups compare separately rendered A, bridge and B with an independent oracle at 44.1/48 kHz and confirm role ownership, headroom, bitwise replay, the `end` exit and exact pre-bridge cancellation. An independent read-only review is recorded in [the S05 review](reviews/EMF_S05_HYBRID_REVIEW.md). **macOS and Linux were not run. Physical output and human listening are NOT TESTED.** Campaign effort remains unknown.
 
 **Next: S06 — CLOUD** (portable importer and mock FL-producer contract), when separately assigned. See the [S05 handoff](handoffs/EMF-S05-HANDOFF.md).
+
+## 2026-11-05 — S06 producer import built on PC and integrated
+
+The owner asked for S06 to be built on the PC, from main `c64df9a604733f00a87de3aa7021cc5525d15dd1`, and integrated directly into main. Tested source: `8708c7806bb1ffc1d68c3ed8c2f34d29af0d9f4d`.
+
+S06 adds `src/importer.ts`, which turns any producer's data-only delivery (`em.producer-delivery.v0`) into an `em.audio-pack.v0` pack: it measures every WAV itself, keeps PCM unchanged behind a canonical header, checks producer hashes, trims only a tail at or below −60 dBFS, requires rights evidence, refuses listening-review claims and writes a timestamp-free `IMPORT.json` receipt. `compilePhrase()` now binds any palette meeting `s06-performer-palette@1` (EM-DEC032) instead of the S01 palette alone; S01 plans are unchanged and another producer's palette gives the same events. `scripts/mock-fl-producer.ts` drives the real S08 broker over MCP against a synthesizing mock host and imports the result. **No FL Studio ran.**
+
+Windows only, Node 26.12.1 (the package declares 24), headless Chromium 151: **161 Node tests**, unchanged fixture/media checks, **23 native offline groups** and **12 browser report groups** passed. The four new native groups load the imported mock pack in the browser and compare each stereo channel with an independent sample sum. An independent read-only review found one medium and four low issues, all corrected; the receipt now says whether the current browser player can load the pack. See the [S06 review](reviews/EMF_S06_IMPORT_REVIEW.md). **Physical output and human listening are NOT TESTED.**
+
+**Next: S07 — CLOUD** (integrated app/demo and scaffold review), when separately assigned. See the [S06 handoff](handoffs/EMF-S06-HANDOFF.md).

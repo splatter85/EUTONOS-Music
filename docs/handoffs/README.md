@@ -21,7 +21,9 @@ The [S03 handoff](EMF-S03-HANDOFF.md) records deterministic DJ/request integrati
 
 The [S04 handoff](EMF-S04-HANDOFF.md) records **S04 CLOUD COMPLETE** on the separate published branch: the corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. It preserves the earlier 127-test result and original native replay failure as historical evidence. Main remains intentionally unchanged at the owner's request. S04 requires no PC action; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch.
 
-The [S05 handoff](EMF-S05-HANDOFF.md) records **S05 COMPLETE**, built on the owner's PC and integrated into main: the A → procedural bridge → B policy, its checks and the Windows-only evidence (143 Node tests, 19 native checks, 12 browser report groups). macOS/Linux were not run; physical output and listening are NOT TESTED. S06 is next.
+The [S05 handoff](EMF-S05-HANDOFF.md) records **S05 COMPLETE**, built on the owner's PC and integrated into main: the A → procedural bridge → B policy, its checks and the Windows-only evidence (143 Node tests, 19 native checks, 12 browser report groups). macOS/Linux were not run; physical output and listening are NOT TESTED.
+
+The [S06 handoff](EMF-S06-HANDOFF.md) records **S06 COMPLETE**, built on the owner's PC and integrated into main: the producer delivery format and importer, the performer palette contract and a mock FL producer that drives the S08 broker with no FL Studio, with Windows-only evidence (161 Node tests, 23 native checks, 12 browser report groups). macOS/Linux were not run; physical output and listening are NOT TESTED. S07 is next.
 
 The [S08 handoff](EMF-S08-HANDOFF.md) records the PC FL Studio authoring facade, its live Claude Code/Codex evidence and limits. Its renders are owner-local and unauditioned.
 

@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: standalone-first design and production guidebook, with the S01 foundation, S02 browser renderer, S03 deterministic DJ, S04 sampler, S05 hybrid handoff and S08 bounded Windows FL authoring path, all in main. S05 passed 143 Node tests, 19 native checks and 12 browser report groups on Windows only; S04's three-platform results remain its own evidence. Physical output and listening are NOT TESTED. S06 is next when assigned. Broader recipes and handoffs and the joined MVP remain future work.
+Status: standalone-first design and production guidebook, with the S01 foundation, S02 browser renderer, S03 deterministic DJ, S04 sampler, S05 hybrid handoff, S06 producer import and S08 bounded Windows FL authoring path, all in main. S06 passed 161 Node tests, 23 native checks and 12 browser report groups on Windows only, with a mock FL producer (no FL Studio ran); S04's three-platform results remain its own evidence. Physical output and listening are NOT TESTED. S07 is next when assigned. Broader recipes and handoffs and the joined MVP remain future work.
 
 ## Start with the next audible result
 
@@ -20,6 +20,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S03 DJ](S03_DJ.md) | Deterministic request integration, manual FIFO, Hold, cancellation, effect reconciliation and current demo controls |
 | [S04 sampler](S04_PROCEDURAL.md) | Finite original-palette phrase plans, sampler lifecycle, shared-player audition, resource bounds and passing Windows/macOS/Linux native/browser evidence |
 | [S05 hybrid](S05_HYBRID.md) | The checked A → procedural bridge → B policy, role lead-in and tail, DJ handoff choice, bridge seed/state reporting and Windows native/browser evidence |
+| [S06 import](S06_IMPORT.md) | The producer delivery format, the importer and its refusals and receipt, the performer palette contract and the mock FL producer (no FL Studio) |
 | [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |
 | [State/API](STATE_AND_CONTROL_API.md) | Intent, actual playback, command/hold/retry semantics and proposed tools |

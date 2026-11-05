@@ -107,7 +107,7 @@ The full HTTP/MCP protocol, multi-client leases, durable receipts/reconnect, exp
 
 ## Producer seam and next slices
 
-S08 can author on Windows independently once this contract is published. Export original eligible PCM16 WAV, copy bytes into a portable pack, supply truthful format/hash/timing/rights metadata, and validate using the same command. No Windows path, FL project dependency or plugin code belongs in a listener pack. Exported FL audio enters the same asset/palette/reference types as the synthetic cloud fixture. Full importer/MCP behavior remains S06/S08 work.
+S08 can author on Windows independently once this contract is published. Export original eligible PCM16 WAV, copy bytes into a portable pack, supply truthful format/hash/timing/rights metadata, and validate using the same command. No Windows path, FL project dependency or plugin code belongs in a listener pack. Exported FL audio enters the same asset/palette/reference types as the synthetic cloud fixture. [S06](S06_IMPORT.md) now supplies that importer for any producer's delivery, and S08 the MCP facade.
 
 **Next cloud slice: S02.** Build one small Web Audio player with the existing A/B assets, explicit fixture eligibility, one clock and a checked scheduled A→B transition. Record browser/offline and lifecycle evidence separately from physical listening. Do not expand into the full DJ, procedural performer or Mission Control merely because those types now exist.
 

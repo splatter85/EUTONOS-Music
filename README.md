@@ -2,9 +2,9 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status: EMF-S05 is COMPLETE** in main. The DJ can now drive recording A → a seeded procedural bridge → recording B, with checked cues, a one-bar bass/tail handoff and safe fades ([S05 guide](docs/S05_HYBRID.md)). It was built and checked on Windows: **143 Node tests, 19 native offline checks and 12 browser report groups** passed. macOS and Linux were not run for S05.
+**Status: EMF-S06 is COMPLETE** in main. Any producer's data-only delivery can now be imported into a checked pack, and the procedural performer plays any palette that meets a written contract ([S06 guide](docs/S06_IMPORT.md)). A mock FL producer exercises the path; **no FL Studio ran**. S05 before it added the recording A → procedural bridge → recording B handoff ([S05 guide](docs/S05_HYBRID.md)). S06 was built and checked on Windows: **161 Node tests, 23 native offline checks and 12 browser report groups** passed. macOS and Linux were not run for S05 or S06.
 
-**Physical output and human listening are NOT TESTED.** The next slice is **S06** (portable importer and mock FL-producer contract), when assigned. S08 separately proves the bounded FL authoring path on Windows. [Current evidence](docs/CURRENT_TASKS.md).
+**Physical output and human listening are NOT TESTED.** The next slice is **S07** (integrated app/demo and scaffold review), when assigned. S08 separately proves the bounded FL authoring path on Windows. [Current evidence](docs/CURRENT_TASKS.md).
 
 **Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. There is no automatic CI: run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. The last three-platform results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
@@ -48,6 +48,7 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S03 deterministic DJ and controls](docs/S03_DJ.md)
 - [S04 procedural sampler and audition](docs/S04_PROCEDURAL.md)
 - [S05 recording → procedural → recording handoff](docs/S05_HYBRID.md)
+- [S06 producer import and palette contract](docs/S06_IMPORT.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
 - [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)

@@ -21,11 +21,11 @@ Pause suspends the existing audio clock; Resume preserves its note schedule. Mut
 
 The seed and arrangement controls are disabled during preparation, scheduled playback, playback and pause. Requested selection, actual clock-active performance and clock diagnostics are shown separately. An invalid seed cannot start a performance. Natural completion releases ownership; replay is explicit.
 
-This page is a bounded source audition. The [recording DJ](S03_DJ.md) still has its two recordings and one A→B route. **S05 — CLOUD** is the next separately assigned slice, starting from the published S04 branch. It adds DJ selection and the recorded A → procedural → recorded B sequence; S04 does not invent those routes.
+This page is a bounded source audition. The [recording DJ](S03_DJ.md) still has its two recordings and one A→B route. **S05 — CLOUD** is the next separately assigned slice, starting from the published S04 branch. It adds DJ selection and the recorded A → procedural → recorded B sequence; S04 does not invent those routes. (Since then [S05](S05_HYBRID.md) and [S06](S06_IMPORT.md) are complete.)
 
 ## Musical boundary and replay identity
 
-`src/phrase-plan.ts` implements one versioned, compiled performer, `s04-s01-performer@1`, over the unchanged **s01-foundation@1** pack, **s01-recipe@1** descriptor and **s01-palette@1**. The pack schema remains `em.audio-pack.v0`. Recipe metadata is data, not executable code or an uploaded script.
+`src/phrase-plan.ts` implements one versioned, compiled performer, `s04-s01-performer@1`, over the unchanged **s01-foundation@1** pack, **s01-recipe@1** descriptor and **s01-palette@1**. The pack schema remains `em.audio-pack.v0`. Recipe metadata is data, not executable code or an uploaded script. Since [S06](S06_IMPORT.md) the same performer also plays any palette that meets `s06-performer-palette@1`; every S01 plan is unchanged.
 
 The original [S01 palette](../fixtures/s01/PROVENANCE.md) supplies a kick, seeded percussion, A2 bass and A-minor harmony. Every sample retains its original pitch and full bounded one-shot duration. There is no pitch shifting, time stretching, synth/plugin execution, model call, network production job or FL dependency in playback.
 
