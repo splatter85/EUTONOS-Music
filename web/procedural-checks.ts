@@ -7,7 +7,60 @@ const tolerance = 0.000003;
 type Mode = 'natural' | 'stop' | 'exit' | 'cancel' | 'release';
 interface Rendered {
   pcm: Float32Array;
+  decoded: {id: string; revision: number; sampleRate: number; channels: number; pcm: Float32Array}[];
+  intervalVoices: Uint8Array;
+  nonzeroContributors: Uint8Array;
   evidence: Record<string, unknown>;
+}
+
+/** Bounded diagnostics only: retain the strict replay gate below. */
+function comparePcm(baseline: Float32Array, replay: Float32Array) {
+  const baselineBits = new Uint32Array(baseline.buffer, baseline.byteOffset, baseline.length);
+  const replayBits = new Uint32Array(replay.buffer, replay.byteOffset, replay.length);
+  let differentSamples = 0, differentBitPatterns = 0, maxAbsoluteDelta = 0;
+  let maximumDeltaFrame: number | null = null;
+  const firstDifferences: {frame: number; baseline: number | null; replay: number | null; delta: number | null}[] = [];
+  for (let frame = 0; frame < Math.max(baseline.length, replay.length); frame++) {
+    if (baselineBits[frame] !== replayBits[frame]) differentBitPatterns++;
+    const a = baseline[frame], b = replay[frame];
+    if (a === b) continue;
+    differentSamples++;
+    const delta = a === undefined || b === undefined ? null : b - a;
+    if (delta !== null && Math.abs(delta) > maxAbsoluteDelta) { maxAbsoluteDelta = Math.abs(delta); maximumDeltaFrame = frame; }
+    if (firstDifferences.length < 8) firstDifferences.push({frame, baseline: a ?? null, replay: b ?? null, delta});
+  }
+  return {baselineFrames: baseline.length, replayFrames: replay.length, comparedSamples: Math.min(baseline.length, replay.length),
+    exact: baseline.length === replay.length && differentSamples === 0,
+    bitwiseEqual: baseline.length === replay.length && differentBitPatterns === 0,
+    differentSamples, differentBitPatterns, maxAbsoluteDelta, maximumDeltaFrame, firstDifferences};
+}
+
+function replayDiagnostics(baseline: Rendered, replay: Rendered) {
+  const output = comparePcm(baseline.pcm, replay.pcm);
+  const differencesByIntervalVoices = [0, 0, 0, 0, 0], differencesByNonzeroContributors = [0, 0, 0, 0, 0];
+  let differencesOutsideOverlap = 0, differencesWithFewerThanThreeContributors = 0;
+  for (let frame = 0; frame < Math.max(baseline.pcm.length, replay.pcm.length); frame++) {
+    if (baseline.pcm[frame] === replay.pcm[frame]) continue;
+    const voices = baseline.intervalVoices[frame] ?? 0, contributors = baseline.nonzeroContributors[frame] ?? 0;
+    differencesByIntervalVoices[voices] = (differencesByIntervalVoices[voices] ?? 0) + 1;
+    differencesByNonzeroContributors[contributors] = (differencesByNonzeroContributors[contributors] ?? 0) + 1;
+    if (voices <= 1 || (replay.intervalVoices[frame] ?? 0) <= 1) differencesOutsideOverlap++;
+    if (contributors < 3 || (replay.nonzeroContributors[frame] ?? 0) < 3) differencesWithFewerThanThreeContributors++;
+  }
+  const decodedSamples = baseline.decoded.map(sample => {
+    const other = replay.decoded.find(item => item.id === sample.id && item.revision === sample.revision);
+    return {id: sample.id, revision: sample.revision,
+      formatEqual: !!other && sample.sampleRate === other.sampleRate && sample.channels === other.channels,
+      ...comparePcm(sample.pcm, other?.pcm ?? new Float32Array(0))};
+  });
+  return {symbolicPlanExact: true, decodedPcmBitwiseEqual: decodedSamples.every(sample => sample.formatEqual && sample.bitwiseEqual),
+    decodedSamples, output: {...output, differencesByIntervalVoices, differencesByNonzeroContributors,
+      differencesOutsideOverlap, differencesWithFewerThanThreeContributors,
+      firstDifferences: output.firstDifferences.map(difference => ({...difference,
+        intervalVoices: [baseline.intervalVoices[difference.frame] ?? 0, replay.intervalVoices[difference.frame] ?? 0],
+        nonzeroContributors: [baseline.nonzeroContributors[difference.frame] ?? 0, replay.nonzeroContributors[difference.frame] ?? 0]}))},
+    oracleMaxAbsoluteSampleError: {baseline: baseline.evidence.maxAbsoluteSampleError, replay: replay.evidence.maxAbsoluteSampleError},
+    countArrayOrder: 'voice/contributor counts 0 through 4; per-frame pairs are baseline, replay'};
 }
 
 /** Independent oracle: add native decoded samples on the authored sample grid.
@@ -16,8 +69,9 @@ interface Rendered {
  */
 function expectedSamples(plan: ProceduralPlan, samples: readonly DecodedRecording[], rate: number,
   frames: number, start: number, end: number, fadeIn: number, exit: number | null, fadeOut: number,
-  released: boolean): {pcm: Float64Array; maximumVoices: number} {
+  released: boolean): {pcm: Float64Array; maximumVoices: number; intervalVoices: Uint8Array; nonzeroContributors: Uint8Array} {
   const pcm = new Float64Array(frames);
+  const intervalVoices = new Uint8Array(frames), nonzeroContributors = new Uint8Array(frames);
   const boundaries: {frame: number; delta: number}[] = [];
   requireAudio(plan.bpm === 120 && plan.durationQuarters === 32, 'Unexpected S01 phrase grid.');
   for (const event of plan.events) {
@@ -28,9 +82,14 @@ function expectedSamples(plan: ProceduralPlan, samples: readonly DecodedRecordin
     const last = Math.min(start + Math.round(nativeEnd * rate / sample.asset.file.sample_rate),
       first + sample.buffer.length, end);
     if (first < last) boundaries.push({frame: first, delta: 1}, {frame: last, delta: -1});
-    if (released) continue;
     const data = sample.buffer.getChannelData(0);
-    for (let frame = first; frame < last; frame++) pcm[frame] = pcm[frame]! + data[frame - first]! * event.gain;
+    for (let frame = first; frame < last; frame++) {
+      intervalVoices[frame] = intervalVoices[frame]! + 1;
+      if (released) continue;
+      const contribution = data[frame - first]! * event.gain;
+      if (contribution !== 0) nonzeroContributors[frame] = nonzeroContributors[frame]! + 1;
+      pcm[frame] = pcm[frame]! + contribution;
+    }
   }
   let voices = 0, maximumVoices = 0;
   boundaries.sort((a, b) => a.frame - b.frame || a.delta - b.delta);
@@ -41,7 +100,7 @@ function expectedSamples(plan: ProceduralPlan, samples: readonly DecodedRecordin
     pcm[frame] = pcm[frame]! * entryGain * exitGain;
   }
   requireAudio(maximumVoices <= 4, `Oracle observed ${maximumVoices} simultaneous notes.`);
-  return {pcm, maximumVoices};
+  return {pcm, maximumVoices, intervalVoices, nonzeroContributors};
 }
 
 async function render(loaded: LoadedBrowserPack, plan: ProceduralPlan, rate: number,
@@ -108,7 +167,11 @@ async function render(loaded: LoadedBrowserPack, plan: ProceduralPlan, rate: num
   source.release(); source.release();
   requireAudio(source.resourceUsage.liveNoteNodes === 0 && source.resourceUsage.sampleValues === 0,
     'Release retained procedural nodes or samples.');
-  return {pcm: actual, evidence: {sampleRate: rate, seed: plan.seed, state: plan.state, mode,
+  return {pcm: actual,
+    decoded: samples.map(sample => ({id: sample.asset.id, revision: sample.asset.revision, sampleRate: sample.buffer.sampleRate,
+      channels: sample.buffer.numberOfChannels, pcm: new Float32Array(sample.buffer.getChannelData(0))})),
+    intervalVoices: oracle.intervalVoices, nonzeroContributors: oracle.nonzeroContributors,
+    evidence: {sampleRate: rate, seed: plan.seed, state: plan.state, mode,
     frames: actual.length, startFrame: start, endFrame: expectedEnd, exitFrame: exit, fadeInFrames: fadeIn,
     fadeOutFrames: exit === null ? 0 : fadeOut, cancelledAtFrame: cancelledAt, staleGenerationRejected: staleRejected,
     eventCount: plan.events.length, allocatedNoteNodes: allocated.allocatedNoteNodes,
@@ -135,8 +198,9 @@ export async function runProceduralChecks(loaded: LoadedBrowserPack,
       const replayPlan = compileS01Phrase(loaded.pack, {seed: 1, state: 'explore', allowFixtures: true});
       requireAudio(JSON.stringify(plan) === JSON.stringify(replayPlan), 'The same seed changed its immutable plan.');
       const replay = await render(loaded, replayPlan, rate);
+      const diagnostics = replayDiagnostics(baseline, replay);
       requireAudio(baseline.pcm.length === replay.pcm.length && baseline.pcm.every((value, index) => value === replay.pcm[index]),
-        'Same-browser seed replay was not sample-exact.');
+        'Same-browser seed replay was not sample-exact. ' + JSON.stringify(diagnostics));
       const variations = [];
       for (const seed of [2, 0xdeadbeef]) {
         const variationPlan = compileS01Phrase(loaded.pack, {seed, state: 'explore', allowFixtures: true});
@@ -148,7 +212,7 @@ export async function runProceduralChecks(loaded: LoadedBrowserPack,
         variations.push({seed, heldOut: seed === 0xdeadbeef, differentSamples, render: variation.evidence});
       }
       return {sampleRate: rate, replayExact: true, replayComparedSamples: baseline.pcm.length,
-        replayMaxAbsoluteSampleError: 0, replay: replay.evidence, variations};
+        replayMaxAbsoluteSampleError: 0, diagnostics, replay: replay.evidence, variations};
     });
     await record(`S04 native entry/exit envelopes, stop, cancellation and stale release at ${rate} Hz`, async () => {
       const drive = compileS01Phrase(loaded.pack, {seed: 0x12345678, state: 'drive', allowFixtures: true});
