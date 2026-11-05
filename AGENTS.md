@@ -41,23 +41,19 @@ Use checks aimed at concrete risk. Docs need link/ID/example/consistency checks;
 
 Update canonical owners at meaningful boundaries. Close out with practical result, checks/limits, current milestone/stage, effort with basis or unknown and one next step. Git publication, integration, native filing, runtime qualification and owner acceptance are distinct.
 
-EUTONOS is adopted here (see Setup status below). Readable Markdown owners stay canonical: the campaign owns stage status, [Current Tasks](docs/CURRENT_TASKS.md) stays hand-written, and [the native board](docs/WORK_ITEMS.md) changes only through the EUTONOS boards CLI. Never fabricate board, RAM, NAV or acceptance receipts. The [documentation map](docs/README.md) routes canonical owners; cross-link instead of copying long contracts. Public docs stay generic and do not transplant private project policies or history.
+EUTONOS is adopted here (see the setup notes and Setup status block below). Readable Markdown owners stay canonical: the campaign owns stage status, [Current Tasks](docs/CURRENT_TASKS.md) stays hand-written, and [the native board](docs/WORK_ITEMS.md) changes only through the EUTONOS boards CLI. Never fabricate board, RAM, NAV or acceptance receipts. The [documentation map](docs/README.md) routes canonical owners; cross-link instead of copying long contracts. Public docs stay generic and do not transplant private project policies or history.
 
-## EUTONOS setup status
+## EUTONOS setup notes
 
-Status as of 2026-11-04. These are local, unpublished checks. Project key `eutonos-music-696a3fe8967d`, adopted through the add-repository checklist on a Windows PC with a dev-linked runtime.
+Module states (Docs, NAV, RAM) live in the generated **EUTONOS setup status** block at the end of this file; `eutonos-setup status --apply` maintains it. These notes add what that block does not say. They are local, unpublished checks on a Windows PC with a dev-linked runtime. Project key `eutonos-music-696a3fe8967d`.
 
-- **Docs: ready.** The adoption profile has been applied and verified. It added the delegation and rule-reference blocks below, plus `eutonos.read.json`, `eutonos.adoption.json` and `tools/eutonos_project.py`. Orientation reads the single `tokenslang-work` entry in Current Tasks.
-- **Boards: ready.** `eutonos.boards.json` points to [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md). It holds the EMF campaign, stages EMF00–EMF19 and slices EMF-S01–S13, filed through `boards batch submit`. Batch submission does not regenerate Current Tasks.
-- **NAV: ready (build complete).** Run `emf-nav-build-20261104` finished all 16 sweeps and holds 51 records in `NAV/`; `nav maintenance` is a no-op. Semantic acceptance is unproven. The bootstrap `GAP-bootstrap` placeholder remains. It can only be removed in the final sweep of a `--mode refinement` run.
-- **RAM: ready.** `eutonos.ram.json` stores records in `RAM/`. The first closeout record was filed and read back from a fresh process with `eutonos-ram recent`. Closeout keeps exactly one `tokenslang-ram-links` fence at the end of Current Tasks. Leave it intact and never copy or duplicate it, because a second fence makes later RAM writes refuse.
-- **Finalize and acceptance: locally verified.** `eutonos-setup finalize` wrote [eutonos.acceptance.json](eutonos.acceptance.json), which records the commit it checked: outcome `verified`, manifest `eutonos.adoption.json` `locally-verified`, package 0.5.4. Re-run finalize after changing adopted owners. As an adopted repository there is no `eutonos.installation.json`. That file lists its own limits: no AI-comprehension, UI or audio acceptance, and a cooperative local host only. Do not edit it by hand.
-- **Permission entries: blocked.** `add-project` ran with `--no-permissions` because this PC's runtime is dev-linked and the installer was not run (the owner's decision). Nothing was hand-written into `.claude/` or `.codex/`.
+- **Boards:** `eutonos.boards.json` points to [docs/WORK_ITEMS.md](docs/WORK_ITEMS.md). It holds the EMF campaign, stages EMF00–EMF19 and slices EMF-S01–S13. Change it only through `boards batch submit`, which does not regenerate Current Tasks.
+- **NAV:** the build run `emf-nav-build-20261104` and maintenance run `emf-nav-maint-20261105` (after the S03/S04 merge) hold 60 records in `NAV/`. Semantic acceptance is unproven. The `GAP-bootstrap` placeholder can only be removed in the final sweep of a `--mode refinement` run.
+- **RAM:** records live in `RAM/`. Keep exactly one `tokenslang-ram-links` fence at the end of Current Tasks. A second fence makes later RAM writes refuse.
+- **Acceptance:** `eutonos-setup finalize` writes [eutonos.acceptance.json](eutonos.acceptance.json). Re-run it after changing adopted owners, and never edit it by hand. It does not cover AI comprehension, UI or audio acceptance.
+- **Permission entries: blocked.** `add-project` ran with `--no-permissions` because the runtime is dev-linked and the installer was not run (the owner's decision). Nothing was hand-written into `.claude/` or `.codex/`.
 - **Person steps: optional, not done.** Claude Desktop Auto mode and Codex project trust are not set up.
-- **Runtime note:** this PC has no installed launchers. When you call `tools/eutonos_project.py` or `python -m eutonos.*`, set `EUTONOS_PYTHON` to the EUTONOS runtime's Python.
-
-Next incomplete module: none required. Optional follow-ups: retire the NAV `GAP-bootstrap` placeholder through a `--mode refinement` run, add permission entries once an installed runtime has install consent, and the person steps above.
-
+- **Runtime:** there are no installed launchers. Set `EUTONOS_PYTHON` to the EUTONOS runtime's Python when calling `tools/eutonos_project.py` or `python -m eutonos.*`.
 
 <!-- eutonos:delegation:start -->
 ## EUTONOS delegation
@@ -146,3 +142,28 @@ Keep the readable AGENTS/selected onboarding route if optional orientation is un
 
 Requests to implement features or finish campaigns, stages, slices or implementation work include integration and merging into the established target unless explicitly scoped to exploration, research, testing, prototypes or another narrower deliverable. Implementation is finished when scoped changes pass required checks, are integrated into that target, and the target state is verified. Local edits, a commit, passing tests, worker handback or an open PR are intermediate; unmerged implementation remains unfinished. The coordinator owns final integration. Resolve the target from repository and campaign rules (a stage target may be a campaign branch, not main); ask only about material ambiguity. Preserve required reviews, branch protections, dependency ordering, concurrent work and explicit narrower instructions. Use the appropriate fast-forward, squash or merge strategy. If blocked, state the exact remaining step rather than claim completion. Merge does not authorize deployment, installation, restart or release, bypass permissions, or widen the task. Follow applicable global and repository instructions; surface conflicts rather than silently overriding them.
 <!-- eutonos:completion:end -->
+
+<!-- EUTONOS setup: begin -->
+## EUTONOS setup status
+
+Docs configuration is readable through `eutonos.read.json`. Native owners remain authoritative. Verify the installation before claiming readiness; interrupted apply may be incomplete. Setup preferences do not dispatch work or schedule reminders.
+
+- Docs: ready
+- NAV: ready
+- RAM: ready
+
+3 of 3 selected modules ready. Next module: none.
+
+- [architecture](docs/ARCHITECTURE.md)
+- [campaign emf](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md)
+- [current task](docs/CURRENT_TASKS.md)
+- [decisions](docs/DECISIONS.md)
+- [progress](docs/PROGRESS.md)
+- [purpose](docs/PRODUCT_GOAL.md)
+- [validation](docs/VALIDATION.md)
+- [work model](docs/WORK_MODEL.md)
+
+```tokenslang-setup
+{"docs":"ready","manifest":"eutonos.adoption.json","nav":"ready","next_module":null,"preferences":{"continuation":"paused","last_offer_at":null,"next_eligible_at":null,"reminders":"off","reoffer_used":false},"profile":"eutonos.tokenslang.setup.v1","ram":"ready","selected_modules":["docs","nav","ram"]}
+```
+<!-- EUTONOS setup: end -->
