@@ -1,0 +1,159 @@
+{
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+  "results": [
+    {
+      "check": "Manifest, rights files and all six WAV hashes validated",
+      "status": "PASS",
+      "evidence": {
+        "pack": "s01-foundation",
+        "revision": 1,
+        "files": 6
+      }
+    },
+    {
+      "check": "Fixture mode is explicit",
+      "status": "PASS",
+      "evidence": {
+        "defaultModeRejectedFixtures": true
+      }
+    },
+    {
+      "check": "Native browser decoding of all six WAV files",
+      "status": "PASS",
+      "evidence": [
+        {
+          "id": "s01-recording-a",
+          "sampleRate": 48000,
+          "frames": 768000
+        },
+        {
+          "id": "s01-recording-b",
+          "sampleRate": 48000,
+          "frames": 768000
+        },
+        {
+          "id": "s01-kick",
+          "sampleRate": 48000,
+          "frames": 12000
+        },
+        {
+          "id": "s01-percussion",
+          "sampleRate": 48000,
+          "frames": 3600
+        },
+        {
+          "id": "s01-bass-a2",
+          "sampleRate": 48000,
+          "frames": 18000
+        },
+        {
+          "id": "s01-harmony-am",
+          "sampleRate": 48000,
+          "frames": 48000
+        }
+      ]
+    },
+    {
+      "check": "A → B native rendered samples at 48 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "frames": 1176000,
+        "startFrame": 12000,
+        "bEntryFrame": 396000,
+        "handoffFrame": 588000,
+        "endFrame": 1164000,
+        "decodedFrames": {
+          "a": 768000,
+          "b": 768000
+        },
+        "authoredEndFrame": 1164000,
+        "naturalEndDeltaFrames": 0,
+        "comparedSamples": 1176000,
+        "maxAbsoluteSampleError": 3.2706200725485246e-7,
+        "peak": 0.4564621150493622,
+        "nonzeroSamples": 1151822,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "A → B native rendered samples at 44.1 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "frames": 1080450,
+        "startFrame": 11025,
+        "bEntryFrame": 363825,
+        "handoffFrame": 540225,
+        "endFrame": 1069424,
+        "decodedFrames": {
+          "a": 705599,
+          "b": 705599
+        },
+        "authoredEndFrame": 1069425,
+        "naturalEndDeltaFrames": -1,
+        "comparedSamples": 1080450,
+        "maxAbsoluteSampleError": 3.300068262546141e-7,
+        "peak": 0.45690470933914185,
+        "nonzeroSamples": 1058237,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; no device output"
+      }
+    },
+    {
+      "check": "Release cancels future audio; stale generation rejected",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "renderedFrames": 48000,
+        "peak": 0,
+        "stalePlanRejected": true
+      }
+    },
+    {
+      "check": "Native render preserves pickup and nonzero entry offset",
+      "status": "PASS",
+      "evidence": {
+        "fileSampleRate": 24000,
+        "outputSampleRate": 44100,
+        "pickupSeconds": 1,
+        "sourceEntrySeconds": 9,
+        "observedImpulseFrame": 11029,
+        "expectedImpulseFrame": 11029
+      }
+    },
+    {
+      "check": "Cancelling A → B restores full A at 48 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 48000,
+        "cancelledAtFrame": 96000,
+        "cancelledEntryFrame": 396000,
+        "restoredEndFrame": 780000,
+        "comparedSamples": 792000,
+        "maxAbsoluteSampleError": 0,
+        "tailPeak": 0.4564621150493622,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; cancelled B and restored full A compared sample by sample"
+      }
+    },
+    {
+      "check": "Cancelling A → B restores full A at 44.1 kHz",
+      "status": "PASS",
+      "evidence": {
+        "sampleRate": 44100,
+        "cancelledAtFrame": 88321,
+        "cancelledEntryFrame": 363825,
+        "restoredEndFrame": 716624,
+        "comparedSamples": 727650,
+        "maxAbsoluteSampleError": 0,
+        "tailPeak": 0.45690470933914185,
+        "tolerance": 0.000003,
+        "output": "OfflineAudioContext; cancelled B and restored full A compared sample by sample"
+      }
+    }
+  ],
+  "listening": "NOT TESTED",
+  "physicalOutput": "NOT TESTED"
+}

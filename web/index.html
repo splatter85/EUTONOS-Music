@@ -1,113 +1,41 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="A small EUTONOS Music player for two original audio fixtures and a scheduled A to B handoff.">
-    <title>EUTONOS Music — fixture player</title>
-    <link rel="stylesheet" href="/web/style.css">
-    <script type="module" src="/dist/web/app.js"></script>
-  </head>
-  <body>
-    <div class="page-shell">
-      <header class="masthead">
-        <a class="brand" href="/" aria-label="EUTONOS Music player">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span>EUTONOS <span class="brand-divider">/</span> <span class="brand-product">Music</span></span>
-        </a>
-        <span class="badge">Fixture demo</span>
-      </header>
-
-      <main>
-        <section class="intro" aria-labelledby="page-title">
-          <p class="eyebrow">The first handoff</p>
-          <h1 id="page-title">Two tracks. One timeline.</h1>
-          <p class="intro-copy">Play either recording, then try a scheduled transition from A to B.</p>
-        </section>
-
-        <section class="player-panel" aria-label="Playback">
-          <div class="playing-grid">
-            <div class="playing-item">
-              <p class="section-label"><span class="label-dot dot-a" aria-hidden="true"></span>Now</p>
-              <h2 id="now-title">Nothing playing</h2>
-              <p id="now-detail" class="muted">Choose A or B to begin.</p>
-            </div>
-            <div class="playing-item next-item">
-              <p class="section-label"><span class="label-dot dot-b" aria-hidden="true"></span>Next</p>
-              <h2 id="next-title">Nothing scheduled</h2>
-              <p id="next-detail" class="muted">Start A to set up the handoff.</p>
-            </div>
-          </div>
-
-          <progress id="progress" max="1" value="0" aria-label="Playback progress"></progress>
-          <div class="status-row">
-            <p id="status" role="status" aria-live="polite">Preparing player</p>
-            <p id="loading" class="muted">Checking the included audio…</p>
-          </div>
-
-          <div class="tracks" aria-label="Included recordings">
-            <article class="track-card track-a" id="track-a" aria-labelledby="track-a-title">
-              <div class="track-art art-a" aria-hidden="true"><span>A</span></div>
-              <div class="track-info">
-                <p class="track-label">Recording A</p>
-                <h3 id="track-a-title">S01 A — slow triangle pulse</h3>
-                <p class="track-meta">16 seconds · 120 BPM · A minor</p>
-              </div>
-              <button id="play-a" class="play-button" type="button" disabled>Play A</button>
-            </article>
-            <article class="track-card track-b" id="track-b" aria-labelledby="track-b-title">
-              <div class="track-art art-b" aria-hidden="true"><span>B</span></div>
-              <div class="track-info">
-                <p class="track-label">Recording B</p>
-                <h3 id="track-b-title">S01 B — syncopated pulse</h3>
-                <p class="track-meta">16 seconds · 120 BPM · A minor</p>
-              </div>
-              <button id="play-b" class="play-button" type="button" disabled>Play B</button>
-            </article>
-          </div>
-
-          <div class="transport-row">
-            <div class="transport-buttons" aria-label="Transport controls">
-              <button id="pause" type="button" disabled>Pause</button>
-              <button id="stop" class="quiet-button" type="button" disabled>Stop</button>
-            </div>
-            <button id="transition" class="transition-button" type="button" disabled>Schedule A → B</button>
-          </div>
-
-          <div class="volume-row">
-            <label for="volume">Volume</label>
-            <input id="volume" type="range" min="0" max="1" step="0.05" value="0.65" disabled>
-            <button id="mute" class="quiet-button" type="button" aria-pressed="false" disabled>Mute</button>
-          </div>
-          <p id="error" class="error-message" role="alert"></p>
-        </section>
-
-        <section class="handoff-guide" aria-labelledby="handoff-title">
-          <div class="guide-heading">
-            <h2 id="handoff-title">Try the A → B handoff</h2>
-            <span class="guide-note">4-second overlap</span>
-          </div>
-          <p>Play A, then schedule A → B before A reaches 8 seconds. Pause holds the playback position and any scheduled handoff.</p>
-          <ol class="timeline" aria-label="Scheduled handoff timing, measured from the start of A">
-            <li><span class="timeline-time">0s</span><span>A starts</span></li>
-            <li><span class="timeline-time">8s</span><span>B enters</span></li>
-            <li><span class="timeline-time">12s</span><span>Handoff complete</span></li>
-            <li><span class="timeline-time">24s</span><span>B ends</span></li>
-          </ol>
-          <p class="timeline-caption">Times are measured from the start of A. Each recording is 16 seconds long.</p>
-        </section>
-
-        <details class="diagnostics">
-          <summary>Playback details</summary>
-          <p id="clock-detail">The audio clock is created when you first press Play.</p>
-        </details>
-        <noscript><p class="error-message">JavaScript is required to validate the audio and use this player.</p></noscript>
-      </main>
-
-      <footer>
-        <p>Original synthetic fixtures · Engineering demo · Listening not reviewed</p>
-        <a href="/checks.html">Offline checks <span aria-hidden="true">↗</span></a>
-      </footer>
-    </div>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EUTONOS Music — Deterministic DJ</title>
+  <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="masthead"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span><span>EUTONOS <span class="brand-divider">/</span><span class="brand-product">Music</span></span></a><span class="badge">S03 · synthetic fixture</span></header>
+    <section class="intro"><p class="eyebrow">Deterministic DJ</p><h1>Two tracks. One timeline.</h1><p id="loading" class="intro-copy">Loading the verified fixture pack…</p></section>
+    <section class="player-panel" aria-label="Player">
+      <div class="target-row"><div><p class="section-label">Requested target</p><p id="requested-target">explore · any genre</p></div><span id="revision">Revision 0</span></div>
+      <div class="playing-grid">
+        <div class="playing-item"><p class="section-label"><span class="label-dot dot-a" aria-hidden="true"></span>Now</p><h2 id="now-title">Nothing playing</h2><p id="now-detail" class="muted">idle · 0.0s / 0.0s</p></div>
+        <div class="playing-item next-item"><p class="section-label"><span class="label-dot dot-b" aria-hidden="true"></span>Scheduled next</p><h2 id="next-title">Nothing scheduled</h2><p id="next-detail" class="muted">Choose Next Song or add a track to the queue.</p></div>
+      </div>
+      <progress id="progress" value="0" max="1" aria-label="Playback progress"></progress>
+      <div class="status-row"><p id="status" role="status">Loading fixture…</p><span class="clock-mark">ONE AUDIO CLOCK</span></div>
+      <div class="tracks">
+        <article class="track-card track-a" id="track-a"><div class="track-art art-a" aria-hidden="true"><span>A</span></div><div class="track-info"><p class="track-label">Recording A</p><h3>Slow triangle pulse</h3><p class="track-meta">16 seconds · original fixture</p></div><button id="queue-a" class="play-button" type="button" disabled>Queue A</button></article>
+        <article class="track-card track-b" id="track-b"><div class="track-art art-b" aria-hidden="true"><span>B</span></div><div class="track-info"><p class="track-label">Recording B</p><h3>Syncopated pulse</h3><p class="track-meta">16 seconds · original fixture</p></div><button id="queue-b" class="play-button" type="button" disabled>Queue B</button></article>
+      </div>
+      <div class="transport" aria-label="Transport"><button id="play" class="primary" type="button" disabled>Play</button><button id="pause" type="button" disabled>Pause</button><button id="stop" type="button" disabled>Stop</button><button id="next-song" class="primary" type="button" disabled>Next Song</button><button id="cancel-next" type="button" disabled>Cancel next</button></div>
+      <div class="target-controls">
+        <label for="state">State<select id="state"><option value="explore">Explore</option><option value="browse">Browse</option><option value="drive">Drive</option><option value="surge">Surge</option><option value="afterglow">Afterglow</option></select></label><button id="apply-state" type="button" disabled>Request state</button>
+        <label for="genre">Genre<input id="genre" value="synthetic-test" placeholder="Blank means any genre"></label><button id="apply-genre" type="button" disabled>Request genre</button><button id="hold" type="button" aria-pressed="false" disabled>Hold state &amp; genre</button>
+      </div>
+      <p class="control-help">Only Explore and Drive have recordings in this fixture. A missing genre is refused. Hold protects state and genre requests.</p>
+      <div class="queue-heading"><p class="section-label">Manual queue · first in, first out</p></div><ul id="queue" class="queue"><li class="empty-queue">Manual queue is empty.</li></ul>
+      <div class="volume-row"><label for="volume">Volume</label><input id="volume" type="range" min="0" max="1" step="0.01" value="0.65"><button id="mute" type="button" aria-pressed="false" disabled>Mute</button></div>
+      <div class="execution-row"><p class="section-label">Latest execution</p><p id="execution" role="status">No command yet. Acceptance and playback are separate steps.</p></div><p id="error" class="error-message" role="alert"></p>
+    </section>
+    <section class="handoff-guide"><div class="guide-heading"><h2>The fixture’s one authored route</h2><span class="guide-note">Fixed 4s overlap</span></div><p>A → B uses a fixed four-second overlap. An accepted request can remain queued, blocked, or without a matching recording.</p><ol class="timeline"><li><span class="timeline-time">0s</span>A begins</li><li><span class="timeline-time">8s</span>B enters</li><li><span class="timeline-time">12s</span>A ends</li><li><span class="timeline-time">24s</span>B ends</li></ol></section>
+    <details class="diagnostics"><summary>Clock, ownership, and validation limits</summary><p id="clock-detail">Audio context starts on your first control request.</p><p>One AudioContext schedules both recordings. This tab holds a same-origin Web Lock while it owns playback. Hiding the tab pauses the clock; reloading starts silent. Browser timing does not measure physical device output, acoustic gaps, or listening quality. Device timing and human listening remain unreviewed.</p></details>
+    <footer><a href="/procedural.html">Procedural sampler ↗</a><span>Original synthetic fixture · no private PC renders</span><a href="/checks.html">Native offline checks ↗</a></footer>
+  </main>
+  <script type="module" src="/dist/web/app.js"></script>
+</body>
 </html>

@@ -1,7 +1,7 @@
 # First playable — standalone three-layer MVP
 
 Document ID: `EM-D016`  
-Status: **S01 contracts/fixtures and the S02 small recording player are implemented; the full three-layer MVP and listening qualification remain incomplete**. Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements. [Current player boundary](S02_PLAYER.md).
+Status: **S01 contracts/fixtures, the S02 recording player, S03 thin DJ and S08 bounded PC authoring path are implemented. S04 CLOUD is COMPLETE and integrated into main: the corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. Physical output and human listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from main. The full three-layer MVP and listening qualification remain incomplete.** Supersedes the previous Mission-Control-first sequence, without deleting the wider requirements. [Current DJ/player boundary](S03_DJ.md), [S04 publication and evidence](handoffs/EMF-S04-HANDOFF.md).
 
 **Platforms:** Windows first for real FL/MCP integration, with Windows, macOS and Linux required for the shared music system. Each host-specific authoring adapter and browser/audio-device path needs its own verification; portable fixture/test execution alone does not establish it.
 

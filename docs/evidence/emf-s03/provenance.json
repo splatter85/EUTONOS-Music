@@ -1,0 +1,153 @@
+{
+  "sourceCommit": "71d954534087ff1637b8ff0e8fc51c393a89abfa",
+  "sourceTree": "2eba5fc6ccfb4b3f475ef92512a37436656f1623",
+  "runId": 41925003036,
+  "runConclusion": "success",
+  "runUrl": "https://github.com/splatter85/EUTONOS-Music/actions/runs/41925003036",
+  "observedDate": "2026-11-04",
+  "playwright": "1.62.1",
+  "chromium": "151.0.7922.34",
+  "platforms": [
+    {
+      "platform": "linux",
+      "jobId": 126906961905,
+      "runner": "ubuntu-latest",
+      "image": "ubuntu-26.04",
+      "imageVersion": "20261025.179.1",
+      "os": "Ubuntu 26.04.1 LTS",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "artifactId": 13368447130,
+      "artifactName": "s03-browser-ubuntu-latest",
+      "artifactSha256": "9ce168e70195f756b139ccad7ae0d9135e543c6a2ff97de5f3644a4e567e2f0f",
+      "conclusion": "success",
+      "nodeTests": 101,
+      "nodeSkipped": 0,
+      "deterministicFixtureFiles": 7,
+      "validatedWavs": 6,
+      "offlineChecks": 9,
+      "browserReportGroups": 10
+    },
+    {
+      "platform": "windows",
+      "jobId": 126906962429,
+      "runner": "windows-latest",
+      "image": "windows-2025-vs2026",
+      "imageVersion": "20261030.294.1",
+      "os": "Microsoft Windows Server 2025 10.0.26100 Datacenter",
+      "node": "v24.22.2",
+      "npm": "11.19.1",
+      "artifactId": 13367439886,
+      "artifactName": "s03-browser-windows-latest",
+      "artifactSha256": "b1c468a97c3d56981599a27b622c1ca5b12f8bd12b32f454c92168bfa151fc87",
+      "conclusion": "success",
+      "nodeTests": 101,
+      "nodeSkipped": 0,
+      "deterministicFixtureFiles": 7,
+      "validatedWavs": 6,
+      "offlineChecks": 9,
+      "browserReportGroups": 10
+    },
+    {
+      "platform": "macos",
+      "jobId": 126906962548,
+      "runner": "macos-latest",
+      "image": "macos-26-arm64",
+      "imageVersion": "20261026.0455.2",
+      "os": "macOS 26.6.2 (25G83)",
+      "node": "v24.22.1",
+      "npm": "11.19.1",
+      "artifactId": 13368596881,
+      "artifactName": "s03-browser-macos-latest",
+      "artifactSha256": "3bf9a7fb2146d1c199af47a47ed085dccb7a0d38c4811a1aa8d3112fd5fc2cb8",
+      "conclusion": "success",
+      "nodeTests": 101,
+      "nodeSkipped": 0,
+      "deterministicFixtureFiles": 7,
+      "validatedWavs": 6,
+      "offlineChecks": 9,
+      "browserReportGroups": 10
+    }
+  ],
+  "files": [
+    {
+      "path": "linux-browser.json",
+      "sourceArtifactId": 13368447130,
+      "sourceEntry": "browser.json",
+      "bytes": 1412,
+      "sha256": "49d2ad5068b81613cb7fc229672bd144f780f26b24f04c517330463c2d971bf6"
+    },
+    {
+      "path": "linux-offline.json",
+      "sourceArtifactId": 13368447130,
+      "sourceEntry": "offline.json",
+      "bytes": 4422,
+      "sha256": "64b4affdac75b2c581f3d17b679d0491ccca4467d13034467ac9bc7036bdbf92"
+    },
+    {
+      "path": "windows-browser.json",
+      "sourceArtifactId": 13367439886,
+      "sourceEntry": "browser.json",
+      "bytes": 1412,
+      "sha256": "e204e0c24cfac559344d15ec8495146c530b8fef0588320c29f9f7824ad1fc8f"
+    },
+    {
+      "path": "windows-offline.json",
+      "sourceArtifactId": 13367439886,
+      "sourceEntry": "offline.json",
+      "bytes": 4432,
+      "sha256": "51eac081824b35106c23d73e9fe0d02d964f2f7c6854aa6a679c5dc8968aae35"
+    },
+    {
+      "path": "macos-browser.json",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "browser.json",
+      "bytes": 1413,
+      "sha256": "08fcb807b4a12c5f686a528fa8e64c4aceaf6308108b204d1d9ac6f76691c86c"
+    },
+    {
+      "path": "macos-offline.json",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "offline.json",
+      "bytes": 4441,
+      "sha256": "9be4fd22ff104c7330c4561df58f1e30ee21e11916aa13d73e519768b2a2716d"
+    },
+    {
+      "path": "player-blocked-queue.png",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "player-blocked-queue.png",
+      "bytes": 150706,
+      "sha256": "b14c32dda4aa9a4ea5d146f250d542bd456339d2394a0d2db23c2465f3666af4"
+    },
+    {
+      "path": "player-crossfade.png",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "player-crossfade.png",
+      "bytes": 137686,
+      "sha256": "388f981baf623d38fa6b193bb877aacdf8977dd62a9898822c27d81d063f58ab"
+    },
+    {
+      "path": "player-mobile.png",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "player-mobile.png",
+      "bytes": 131905,
+      "sha256": "418bbc5e1b388d73f7593462dfe80a1bb37da43d8e180f37b79c3785b5bda779"
+    },
+    {
+      "path": "player-ready.png",
+      "sourceArtifactId": 13368596881,
+      "sourceEntry": "player-ready.png",
+      "bytes": 133513,
+      "sha256": "cdd184dae3dcf89943da83bb7829f2a49a80de8509a5de0f7e195a9629cd097c"
+    }
+  ],
+  "notes": [
+    "Reports and screenshots copied unchanged from ZIPs verified against GitHub artifact SHA-256 digests.",
+    "Browser report offlineReport values retain the original offline.json name; README maps each platform pair.",
+    "Runner OS/image facts come from job logs; user-agent compatibility strings are not exact OS identities.",
+    "The ten browser result groups include one summary of the nine offline checks.",
+    "Native rendering and headless browser behavior do not establish physical audio output or human listening."
+  ],
+  "physicalOutput": "NOT TESTED",
+  "listening": "NOT TESTED"
+}

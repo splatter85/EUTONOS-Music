@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Portable audio-pack foundation and small Web Audio player for EMF-S02",
+  "description": "Portable music foundation, Web Audio player and deterministic EMF-S03 DJ",
   "engines": {
     "node": ">=24 <25"
   },

@@ -1,6 +1,7 @@
 import {decodeRecordings, loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import type {AudioAsset} from '../src/pack-types.js';
 import {planTransition, RecordedSource, requireAudio, WebAudioClock} from '../src/web-audio.js';
+import {runProceduralChecks} from './procedural-checks.js';
 
 const runButton = document.getElementById('run-checks') as HTMLButtonElement;
 const status = document.getElementById('check-status')!;
@@ -75,6 +76,47 @@ async function cancellation(loaded: LoadedBrowserPack): Promise<unknown> {
   return {sampleRate: 48000, renderedFrames: rendered.length, peak: 0, stalePlanRejected: true};
 }
 
+/** Cancel after A has really rendered, before B's entry, then compare all A bytes. */
+async function restoreCancelledTransition(loaded: LoadedBrowserPack, rate: number): Promise<unknown> {
+  const context = new OfflineAudioContext(1, Math.round(rate * 16.5), rate);
+  const clock = new WebAudioClock(context);
+  const recordings = await decodeRecordings(loaded, context);
+  const start = {at: clock.stamp(Math.round(rate / 4)), entryCueId: 'entry'};
+  const plan = planTransition(loaded.pack, 's01-a-to-b', start, clock, true);
+  const recording = recordings.find(r => r.asset.id === plan.from.id)!;
+  const from = new RecordedSource(context, recording, context.destination,
+    {allowFixtures: true, fadeOutFrames: plan.overlapFrames});
+  const to = new RecordedSource(context, recordings.find(r => r.asset.id === plan.to.id)!, context.destination,
+    {allowFixtures: true, fadeInFrames: plan.overlapFrames});
+  await Promise.all([from.prepare(clock), to.prepare(clock)]);
+  from.scheduleStart(start);
+  const originalEnd = from.endFrame;
+  to.scheduleStart({at: plan.at, entryCueId: plan.route.entry_cue});
+  from.transitionOut(plan.route.exit_cue, plan.at);
+  const suspension = context.suspend(2);
+  const rendering = context.startRendering();
+  await suspension;
+  const cancelledAt = clock.currentFrame;
+  requireAudio(from.cancelTransition(), 'A refused a pre-boundary cancellation.');
+  to.release();
+  requireAudio(from.endFrame === originalEnd, 'Cancellation did not restore the natural end.');
+  await context.resume();
+  const output = (await rendering).getChannelData(0), data = recording.buffer.getChannelData(0);
+  let maxError = 0, tailPeak = 0;
+  for (let frame = 0; frame < output.length; frame++) {
+    const expected = frame >= start.at.frame && frame < originalEnd ? data[frame - start.at.frame]! : 0;
+    requireAudio(Number.isFinite(output[frame]), 'Cancelled transition produced a non-finite sample.');
+    maxError = Math.max(maxError, Math.abs(output[frame]! - expected));
+    if (frame >= plan.end.frame && frame < originalEnd) tailPeak = Math.max(tailPeak, Math.abs(output[frame]!));
+  }
+  requireAudio(maxError < 0.000003 && tailPeak > 0.01, 'A was altered or ended early after cancellation.');
+  from.release();
+  return {sampleRate: rate, cancelledAtFrame: cancelledAt, cancelledEntryFrame: plan.at.frame,
+    restoredEndFrame: originalEnd, comparedSamples: output.length,
+    maxAbsoluteSampleError: maxError, tailPeak, tolerance: 0.000003,
+    output: 'OfflineAudioContext; cancelled B and restored full A compared sample by sample'};
+}
+
 async function entryOffset(loaded: LoadedBrowserPack): Promise<unknown> {
   const rate = 44100;
   const context = new OfflineAudioContext(1, Math.round(rate * 8.5), rate);
@@ -136,6 +178,9 @@ async function run(): Promise<void> {
     await record('A → B native rendered samples at 44.1 kHz', () => renderTransition(loaded, 44100));
     await record('Release cancels future audio; stale generation rejected', () => cancellation(loaded));
     await record('Native render preserves pickup and nonzero entry offset', () => entryOffset(loaded));
+    await record('Cancelling A → B restores full A at 48 kHz', () => restoreCancelledTransition(loaded, 48000));
+    await record('Cancelling A → B restores full A at 44.1 kHz', () => restoreCancelledTransition(loaded, 44100));
+    await runProceduralChecks(loaded, record);
   } catch (error) {
     results.push({check: 'Load/check harness', status: 'FAIL', evidence: String(error)});
   }

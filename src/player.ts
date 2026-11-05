@@ -1,6 +1,9 @@
 import {decodeRecordings, type LoadedBrowserPack} from './browser-pack.js';
 import {quartersToFrames} from './pack.js';
-import type {SourceStart} from './playable-source.js';
+import type {ClockStamp, SourceStart} from './playable-source.js';
+import type {VersionRef} from './pack-types.js';
+import type {ProceduralPlan} from './phrase-plan.js';
+import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   type CheckedRoute, type DecodedRecording, type TransitionPlan} from './web-audio.js';
 
@@ -12,6 +15,9 @@ export interface PlayerSnapshot {
   readonly next: string | null;
   readonly transition: 'none' | 'scheduled' | 'mixing' | 'complete';
   readonly transitionInSeconds: number | null;
+  readonly voices: readonly {readonly source: VersionRef; readonly start: ClockStamp; readonly endFrame: number}[];
+  readonly transitionAt: ClockStamp | null;
+  readonly transitionEnd: ClockStamp | null;
   readonly elapsedSeconds: number;
   readonly durationSeconds: number;
   readonly currentFrame: number;
@@ -22,7 +28,8 @@ export interface PlayerSnapshot {
   readonly volume: number;
 }
 
-interface Voice { source: RecordedSource; start: SourceStart; }
+interface Voice { source: RecordedSource | ProceduralSource; start: SourceStart; }
+type Selection = 'a' | 'b' | ProceduralPlan;
 
 /** Thin A/B transport owner. S03 supplies the DJ/control-contract integration. */
 export class SmallPlayer {
@@ -30,12 +37,15 @@ export class SmallPlayer {
   readonly pair: CheckedRoute;
   private readonly output: GainNode;
   private decoded: Promise<DecodedRecording[]> | null = null;
+  private decodedPalette: Promise<DecodedRecording[]> | null = null;
+  private paletteBinding: string | null = null;
   private voices: Voice[] = [];
   private plan: TransitionPlan | null = null;
   private state: PlayerState = 'idle';
   private operation = 0;
+  private transitionOperation = 0;
   private wantsRunning = false;
-  private selected: 'a' | 'b' | null = null;
+  private selected: Selection | null = null;
   private volume = 0.65;
   private muted = false;
   private readonly stateChanged = () => this.onContextState();
@@ -51,7 +61,16 @@ export class SmallPlayer {
   }
 
   /** Call directly from a user gesture: resume is issued before the first await. */
-  async play(selection: 'a' | 'b', ownership: Promise<void> = Promise.resolve()): Promise<void> {
+  play(selection: 'a' | 'b', ownership: Promise<void> = Promise.resolve()): Promise<void> {
+    return this.playSelection(selection, ownership);
+  }
+
+  /** S04 source audition through this same transport; DJ routes remain S05 work. */
+  playProcedural(plan: ProceduralPlan, ownership: Promise<void> = Promise.resolve()): Promise<void> {
+    return this.playSelection(plan, ownership);
+  }
+
+  private async playSelection(selection: Selection, ownership: Promise<void>): Promise<void> {
     requireAudio(this.state !== 'closed' && this.context.state !== 'closed', 'Player is closed. Reload the page.');
     this.cancelVoices();
     const operation = ++this.operation;
@@ -60,25 +79,51 @@ export class SmallPlayer {
     this.wantsRunning = true;
     this.setOutput(false);
     try {
-      const resume = this.context.resume();
-      this.decoded ??= decodeRecordings(this.loaded, this.context).catch(error => {
-        this.decoded = null;
-        throw error;
-      });
-      const [recordings] = await Promise.all([this.decoded, resume, ownership]);
+      const readiness = Promise.all([this.context.resume(), ownership]);
+      // A synchronous plan refusal must still observe late resume/ownership failures.
+      void readiness.catch(() => undefined);
+      let decoding: Promise<DecodedRecording[]>;
+      if (typeof selection === 'object') {
+        checkProceduralPlan(this.loaded, selection);
+        const binding = JSON.stringify(selection.samples);
+        requireAudio(this.paletteBinding === null || this.paletteBinding === binding,
+          'The sampler palette changed. Reload before preparing a different palette.');
+        this.paletteBinding = binding;
+        this.decodedPalette ??= decodeProceduralSamples(this.loaded, this.context, selection).catch(error => {
+          this.decodedPalette = null;
+          throw error;
+        });
+        decoding = this.decodedPalette;
+      } else {
+        this.decoded ??= decodeRecordings(this.loaded, this.context).catch(error => {
+          this.decoded = null;
+          throw error;
+        });
+        decoding = this.decoded;
+      }
+      const [recordings] = await Promise.all([decoding, readiness]);
       if (operation !== this.operation) return;
       requireAudio(this.context.state === 'running' && this.wantsRunning, 'Audio could not start. Press Play again.');
-      const asset = selection === 'a' ? this.pair.from : this.pair.to;
-      const recording = recordings.find(r => r.asset.id === asset.id && r.asset.revision === asset.revision);
-      requireAudio(recording, 'The requested recording is not prepared.');
-      const fadeOutFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
-      const source = new RecordedSource(this.context, recording, this.output,
-        {allowFixtures: this.loaded.allowFixtures, fadeOutFrames});
+      let source: RecordedSource | ProceduralSource;
+      let entryCueId: string;
+      if (typeof selection === 'object') {
+        source = new ProceduralSource(this.context, selection, recordings, this.output,
+          {allowFixtures: this.loaded.allowFixtures});
+        entryCueId = 'entry';
+      } else {
+        const asset = selection === 'a' ? this.pair.from : this.pair.to;
+        const recording = recordings.find(r => r.asset.id === asset.id && r.asset.revision === asset.revision);
+        requireAudio(recording, 'The requested recording is not prepared.');
+        const fadeOutFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
+        source = new RecordedSource(this.context, recording, this.output,
+          {allowFixtures: this.loaded.allowFixtures, fadeOutFrames});
+        const entry = asset.cues.find(c => c.kind === 'entry');
+        requireAudio(entry, 'Recording has no entry cue.');
+        entryCueId = entry.id;
+      }
       await source.prepare(this.clock);
       if (operation !== this.operation) { source.release(); return; }
-      const entry = asset.cues.find(c => c.kind === 'entry');
-      requireAudio(entry, 'Recording has no entry cue.');
-      const start: SourceStart = {at: this.clock.stamp(this.clock.currentFrame + this.leadFrames), entryCueId: entry.id};
+      const start: SourceStart = {at: this.clock.stamp(this.clock.currentFrame + this.leadFrames), entryCueId};
       try { source.scheduleStart(start); }
       catch (error) { source.release(); throw error; }
       this.voices = [{source, start}];
@@ -96,16 +141,17 @@ export class SmallPlayer {
       'Play A first. Only one A → B transition can be scheduled.');
     const from = this.voices[0]!;
     const operation = this.operation;
+    const transitionOperation = this.transitionOperation;
     // Check before preparation, then check again immediately before committing.
     planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock, this.loaded.allowFixtures, this.leadFrames);
     const recordings = await this.decoded!;
-    if (operation !== this.operation) return;
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) return;
     const recording = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision)!;
     const overlapFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
     const incoming = new RecordedSource(this.context, recording, this.output,
       {allowFixtures: this.loaded.allowFixtures, fadeInFrames: overlapFrames});
     await incoming.prepare(this.clock);
-    if (operation !== this.operation) { incoming.release(); return; }
+    if (operation !== this.operation || transitionOperation !== this.transitionOperation) { incoming.release(); return; }
     if (this.plan) { incoming.release(); throw new Error('The A → B transition is already scheduled.'); }
     try {
       const plan = planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock,
@@ -124,6 +170,22 @@ export class SmallPlayer {
     }
   }
 
+  /** Invalidate only an in-flight transition preparation; retain committed audio. */
+  cancelTransitionPreparation(): void { ++this.transitionOperation; }
+
+  /** Cancel preparation or a future A → B, without changing playback ownership. */
+  cancelPendingTransition(): boolean {
+    if (this.plan && this.clock.currentFrame >= this.plan.at.frame) return false;
+    if (this.plan && !this.voices[0]!.source.cancelTransition()) return false;
+    ++this.transitionOperation;
+    if (this.plan) {
+      for (const voice of this.voices.slice(1)) voice.source.release();
+      this.voices = this.voices.slice(0, 1);
+      this.plan = null;
+    }
+    return true;
+  }
+
   async pause(): Promise<void> {
     if (this.state === 'closed') return;
     ++this.operation; // invalidates an in-flight decode/start or transition preparation
@@ -135,7 +197,7 @@ export class SmallPlayer {
 
   async resume(ownership: Promise<void> = Promise.resolve()): Promise<void> {
     requireAudio(this.state !== 'closed', 'Player is closed. Reload the page.');
-    if (!this.voices.length) { await this.play(this.selected ?? 'a', ownership); return; }
+    if (!this.voices.length) { await this.playSelection(this.selected ?? 'a', ownership); return; }
     const operation = ++this.operation;
     this.wantsRunning = true;
     this.state = 'loading';
@@ -197,9 +259,12 @@ export class SmallPlayer {
     const transition = !this.plan ? 'none' : frame < this.plan.at.frame ? 'scheduled' :
       frame < this.plan.end.frame ? 'mixing' : 'complete';
     const duration = first && last ? (last.source.endFrame - first.start.at.frame) / this.clock.sampleRate : 0;
-    return {state: this.state, requested: this.selected === 'a' ? this.pair.from.id : this.selected === 'b' ? this.pair.to.id : null,
+    return {state: this.state, requested: this.selected === 'a' ? this.pair.from.id : this.selected === 'b' ? this.pair.to.id : this.selected?.recipe.id ?? null,
       now, next: pending?.source.reference.id ?? null, transition,
       transitionInSeconds: this.plan ? Math.max(0, (this.plan.at.frame - frame) / this.clock.sampleRate) : null,
+      voices: this.voices.map(voice => ({source: {...voice.source.reference}, start: {...voice.start.at}, endFrame: voice.source.endFrame})),
+      transitionAt: this.plan ? {...this.plan.at} : null,
+      transitionEnd: this.plan ? {...this.plan.end} : null,
       elapsedSeconds: first ? Math.max(0, Math.min(duration, (frame - first.start.at.frame) / this.clock.sampleRate)) : 0,
       durationSeconds: duration, currentFrame: frame, sampleRate: this.clock.sampleRate,
       engineGeneration: this.clock.engineGeneration, contextState: this.context.state,
@@ -212,11 +277,14 @@ export class SmallPlayer {
     this.state = 'closed';
     this.context.removeEventListener('statechange', this.stateChanged);
     this.output.disconnect();
+    this.decodedPalette = null;
+    this.decoded = null;
     if (this.context.state !== 'closed') await this.context.close();
   }
 
   private get leadFrames(): number { return Math.ceil(0.1 * this.clock.sampleRate); }
   private cancelVoices(): void {
+    ++this.transitionOperation;
     for (const voice of this.voices) voice.source.release();
     this.voices = [];
     this.plan = null;

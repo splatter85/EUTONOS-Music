@@ -9,6 +9,14 @@ Status: proposed qualification plan, revised 2026-11-03. Documentation checks ar
 
 ## Evidence categories
 
+**S03 verification adds** deterministic DJ/request integration and boundary/race tests, plus native sample comparisons proving that cancelling a future A→B restores full A at 48 kHz and 44.1 kHz. The browser runner exercises the actual DJ controls and manual queue. [S03 policy and commands](S03_DJ.md) and [source-pinned results](handoffs/EMF-S03-HANDOFF.md) distinguish local doubles, hosted native browser evidence and untested physical/listening outcomes.
+
+**S04 COMPLETE — CLOUD on the published branch:** [CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed **130 Node tests, 15 native offline checks and 11 browser report groups** on Windows, macOS and Linux for corrected source [`73c456a147dcf24161ce22187e5e62320c5141b5`](https://github.com/splatter85/EUTONOS-Music/commit/73c456a147dcf24161ce22187e5e62320c5141b5). The browser report comprises the native summary and ten UI groups. The full local check also passed 130 tests with unchanged fixture/media checks. Source/review tests cover deterministic phrase plans, bounds over 560 seed/state combinations, sample eligibility, stale work, shared decode residency and source lifecycle.
+
+The original 127-test result remains historical evidence for the earlier candidate. The original [three-platform run](https://github.com/splatter85/EUTONOS-Music/actions/runs/41959790896) failed strict replay. The corrected source uses two fixed mix buses and checks one active note per role after output-frame rounding. Its strict zero-error replay gate passed at 44.1 and 48 kHz; the `0.000003` independent sample-comparison tolerance remains unchanged. [Source provenance, original failure and corrected CI evidence](handoffs/EMF-S04-HANDOFF.md) preserve the separate checkpoints. Prior S03 native evidence remains historical.
+
+S04 was published on `work/emf-s04-procedural-20261104`, verified there, and then integrated into main on the PC. **Physical output and human listening are NOT TESTED.** S05 is next as a separately assigned CLOUD slice from main.
+
 Separate documented upstream capability, inspection-based inference, measured implementation behavior and actual human listening judgment. Name the code/content/recipe versions, renderer, hardware/OS, sample rate/buffer, settings, event sequence and evidence location. A timing check does not establish taste; a listener preference does not establish a general productivity effect.
 
 Use READY / REVISE / BLOCKED / NOT VERIFIED for required musical outcomes with a short observation and next action. Engineering checks can retain their test-specific pass/fail result. Do not average a required failure into a passing taste score. Never claim an agent listened based on MIDI, screenshots or signal statistics.

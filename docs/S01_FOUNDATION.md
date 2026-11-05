@@ -89,6 +89,8 @@ The checked-in recordings and samples were synthesized specifically for this rep
 
 ## Source and request boundaries
 
+S01 describes the original foundation below. [S03](S03_DJ.md) now integrates this local contract with the real renderer and adds cancellation, explicit genre clearing and generation-aware evidence; its guide owns those extensions.
+
 The common source lifecycle covers preparation, scheduling a start, exposing valid exits, stopping/transitioning out and releasing resources. The caller owns time and engine generation. A source must not create another audio context/clock, use a wall clock for musical scheduling or execute a stale-generation plan. The S01 lifecycle implementation used by tests is a **test double**, not a renderer, and its state is not evidence of sound on an output device.
 
 `ClockStamp.frame` is an absolute frame on the caller's clock. `SourceExit.offsetFrames` is measured from source timeline frame zero at the caller clock's sample rate after preparation. A recording implementation converts file-native cue frames to that rate; the scheduled absolute exit accounts for the selected entry offset. This prevents file frames, output frames and wall-clock time from being silently mixed.

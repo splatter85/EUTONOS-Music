@@ -2,9 +2,11 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status:** S02 adds a small standalone Web Audio player to S01's portable foundation: Play/Pause A/B, Now/Next and one cue-checked A→B crossfade. The full DJ, live procedural performer and FL bridge remain later slices. Listening is not reviewed. [Current evidence and next slice](docs/CURRENT_TASKS.md).
+**Status: EMF-S04 CLOUD is COMPLETE** on [`work/emf-s04-procedural-20261104`](https://github.com/splatter85/EUTONOS-Music/tree/work/emf-s04-procedural-20261104), using corrected source [`73c456a147dcf24161ce22187e5e62320c5141b5`](https://github.com/splatter85/EUTONOS-Music/commit/73c456a147dcf24161ce22187e5e62320c5141b5). The finite, seeded sampler and audition page share the existing player. [CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed **130 Node tests, 15 native offline checks and 11 browser report groups** on Windows, macOS and Linux. The 11 browser groups comprise the native-check summary and ten UI groups.
 
-**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S02 handoff](docs/handoffs/EMF-S02-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
+S04 is integrated into main. **Physical output and human listening are NOT TESTED.** The next slice is **S05 — CLOUD**, separately assigned from main. S08 separately proves the bounded FL authoring path on Windows. [Current evidence](docs/CURRENT_TASKS.md).
+
+**Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. CI checks code, fixture bytes and a headless browser on all three targets; exact executed results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
 ## Run the player
 
@@ -16,11 +18,13 @@ npm run check
 npm run demo
 ```
 
-Open **http://127.0.0.1:4173/**. Press **Play A**, then **Schedule A → B** before A reaches eight seconds. B enters at 8 seconds, the four-second overlap finishes at 12 seconds, and B ends at 24 seconds. Pause freezes that timeline; Stop cancels it. Play B also works independently. Playback starts only after a user gesture. Hidden tabs pause until an explicit Resume.
+Open **http://127.0.0.1:4173/**. Press **Play**, then **Next Song** before A reaches eight seconds. B enters at 8 seconds, the four-second overlap finishes at 12 seconds, and B ends at about 24 seconds. Queue A or B before Play to choose explicitly. Pause freezes the timeline; Cancel next restores A before the handoff starts; Stop cancels audio and retains unstarted queue entries. State/genre requests select only supported material, and Hold freezes those targets. Playback starts only after an explicit Play. Hidden tabs pause until an explicit Resume.
 
 `check` compiles TypeScript, runs Node tests, checks deterministic fixture regeneration, and validates all six committed WAV files. `demo` starts a small loopback-only development server. No runtime npm package, DAW, model or paid service is needed. TypeScript and Playwright are development dependencies.
 
-The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S02 setup, architecture and lifecycle limits](docs/S02_PLAYER.md).
+The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S03 controls, selection and limits](docs/S03_DJ.md).
+
+The published S04 branch also serves **http://127.0.0.1:4173/procedural.html**. Press **Play variation** to audition seed 1, then Stop and try seed 2 or Drive. The source uses the four original sample inputs for one eight-bar performance, with exact plan replay and bounded notes/sample residency. Its native checks passed on Windows, macOS and Linux with strict replay and the original sample-error tolerance unchanged. [S04 guide and limits](docs/S04_PROCEDURAL.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
@@ -30,7 +34,7 @@ See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture prov
 2. **Procedural generator:** uses those FL-exported sounds and authored musical rules to create developing, coherent variations. Playback does not require FL Studio or an agent to remain open.
 3. **DJ:** receives requests for state, genre or next song, chooses eligible recorded/procedural material and schedules a smooth, musically sensible transition.
 
-A **tiny standalone app** provides Play/Pause, Volume/Mute, State, Genre, Next Song, Hold and Transition length. The DJ—not the app—decides the next audible change.
+A **tiny standalone app** exposes requests to the DJ. The current S03 demo provides Play/Pause, Volume/Mute, State, Genre, Next Song, Hold and a cancellable manual queue, with a fixed four-second A→B overlap. Adjustable transition length belongs to the later app scope. The DJ decides the next audible change.
 
 **MVP demonstration:** Codex or Claude uses MCP to make a real editable FL sound/loop → procedural generator plays variations → DJ transitions from recorded A through procedural music into different recorded B under test-app control. **Only after that works and has been heard** should Mission Control send requests to the same DJ interface.
 
@@ -41,6 +45,8 @@ A **tiny standalone app** provides Play/Pause, Volume/Mute, State, Genre, Next S
 - [EMF campaign](docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Executable S01 foundation](docs/S01_FOUNDATION.md)
+- [S03 deterministic DJ and controls](docs/S03_DJ.md)
+- [S04 procedural sampler and audition](docs/S04_PROCEDURAL.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
 - [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)

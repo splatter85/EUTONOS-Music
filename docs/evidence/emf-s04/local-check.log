@@ -1,0 +1,261 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 check
+> npm test && npm run fixtures:check && npm run validate
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 test
+> npm run build && node --test dist/tests/*.test.js
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 build
+> tsc -p tsconfig.json
+
+✔ FLP codec round-trips bytes and exposes channels, patterns and playlist (17.920009ms)
+✔ note replacement preserves other channels and inserts a missing pattern block before channels (2.354646ms)
+✔ song notes clip to playlist items; SMF reader handles running status and note-on velocity 0 (1.564978ms)
+✔ full flow: create, prepare, lease, apply, FL-side verify, save, render, verify export, pack (556.660029ms)
+✔ two clients: lease conflict, stale revision, wrong target, duplicate operation ids (567.107421ms)
+✔ uncertain outcome is reconciled by operation id, then replays; restore recovers a backup (67.20742ms)
+✔ host failures: FL running, no output, silent/short/tampered/missing WAV, readback mismatch, no host (155.210334ms)
+✔ failed save is journaled as failed, never left uncertain (8.555914ms)
+✔ unverified FL layouts are inspectable but never written (10.220982ms)
+✔ MCP session: negotiation, notifications, tool listing and error mapping (9.163281ms)
+✔ review fixes: reserved ids, damaged journal tail, stale locks, interrupted create/save, fail-closed FL check (578.349897ms)
+✔ MCP arguments are schema-checked and local paths never reach the agent (51.526143ms)
+✔ browser pack loader validates all bytes and requires explicit fixture eligibility (262.744649ms)
+✔ browser loader refuses corrupted bytes and missing media or rights evidence (599.047234ms)
+✔ browser loader refuses oversized streamed responses, resident packs and file URLs (7.476726ms)
+✔ exact canonical replay precedes stale checks; conflicts never enqueue twice (8.116828ms)
+✔ manual queue has FIFO precedence over a supplied automated candidate (1.204618ms)
+✔ missing and unavailable track/genre errors are distinct and leave intent unchanged (2.08829ms)
+✔ Hold freezes target changes, preserves manual queue/next, and release does not restore rejected intent (17.721747ms)
+✔ accepted transport is immediate intent; requested, prepared and audible state remain distinct (48.614393ms)
+✔ queue is bounded; session replay history never blocks fresh manual Stop or Mute (13.1867ms)
+✔ invalid control values and duplicate catalog IDs fail clearly (1.013804ms)
+✔ cancellation is revisioned, manual-only and replayable; genre can be cleared explicitly (7.577074ms)
+✔ renderer generation changes clear evidence without losing queue or receipt identity (5.712516ms)
+✔ DJ adopts a native transition whose entry crossed before its promise was observed (91.559941ms)
+✔ future native transitions remain cancellable before delayed promise observation (70.601928ms)
+✔ new targets cannot supersede the receipt of a native handoff already mixing (21.815623ms)
+✔ Stop consumes a native initial entry before its Play promise is observed (41.424684ms)
+✔ Pause preserves a committed initial voice while Play observation is delayed (16.41824ms)
+✔ Cancel next cannot stop an already started source because its Play promise is delayed (18.348566ms)
+✔ concurrent exact retry shares the in-flight initial effect during decode (10.194942ms)
+✔ stopped DJ selects deterministically but target/queue/Next do not start audio (154.885103ms)
+✔ receipt replay also deduplicates audio effects, queue edits and failures across generations (28.955381ms)
+✔ state selection exposes requested, scheduled and renderer-confirmed states separately (28.234527ms)
+✔ manual FIFO blocks automatic overtaking and consumes only at renderer entry (72.422986ms)
+✔ queue append preserves an existing manual plan and its FIFO outcome (118.381303ms)
+✔ future cancellation retains queue, restores current audio, and permits explicit rescheduling (23.628798ms)
+✔ removing a scheduled queue head cancels its native future voice and preserves tail (12.784032ms)
+✔ Hold refuses both target sources, permits manual queue/Next, and release replays nothing (28.528024ms)
+✔ unmet new target cancels only an automatic future plan and keeps truthful audible state (27.126661ms)
+✔ manual queued track retains priority over an unmet state and missing genres do not mutate intent (20.10585ms)
+✔ rapid targets supersede in-flight transition work; mute never undoes a valid plan (18.358054ms)
+✔ Stop or Pause preempts pending decode and preserves unstarted queue for a fresh Play (37.697103ms)
+✔ two queued entries may reserve initial start and transition without consuming either early (28.812496ms)
+✔ new requests during an active handoff retain intent without a third voice or cancellation (12.75873ms)
+✔ a late cue is a visible no-match and keeps the reserved queue entry (25.87611ms)
+✔ Stop reconciles a crossed start before teardown even without a UI poll (9.143435ms)
+✔ paused selection does not resume the clock and consumes a muted entry on time (13.009191ms)
+✔ removing the initial reservation during decode prevents that cancelled track from starting (32.782944ms)
+✔ a compatible new target rebinds the future plan without restarting its source (438.864791ms)
+✔ Cancel next removes B while preserving an initial A whose start lead has not elapsed (15.059623ms)
+✔ coalesced supported targets retain the native plan but supersede the older target receipt (10.048297ms)
+✔ queued tail receipts keep their own identity while stopped or blocked behind the head (23.654523ms)
+✔ a cue crossed during native cancellation reports started, never a falsely cancelled handoff (58.821554ms)
+✔ automatic tie-breaking is independent of manifest order, and concurrent Next retries share one plan (30.98814ms)
+✔ original fixture generation is deterministic and matches every committed byte (2043.554705ms)
+✔ PCM fixtures contain distinct finite arrangements and bounded non-silent sample inputs (707.219453ms)
+✔ generator CLI accepts portable output paths and check mode never repairs changed bytes (10654.491551ms)
+✔ real fixture pack has checked bytes, two recordings, four sample roles and a directed route (93.567965ms)
+✔ schema version, duplicate global IDs, file paths and cue IDs fail explicitly (7.164775ms)
+✔ untrusted values and undeclared recipe code are rejected rather than interpreted (1.944524ms)
+✔ portable paths reject traversal, URLs, Windows drives, reserved names and ambiguous separators (1.435706ms)
+✔ cues require phrase boundaries, valid entry positions and enough overlap audio (4.560358ms)
+✔ incompatible or unknown harmony/tempo/meter cannot acquire a fixture route (2.593593ms)
+✔ versioned recipe/palette/source references cannot silently resolve to a different revision (3.561718ms)
+✔ rights and review eligibility stay distinct from valid JSON and fixture opt-in (0.534584ms)
+✔ actual missing bytes, byte lengths and content hash mismatch fail (25.996643ms)
+✔ WAV sample rate, frame count and channels are measured from bytes (185.719409ms)
+✔ WAV parser honors byte offsets, optional chunks and RIFF padding; rejects corrupt headers (14.0151ms)
+✔ filesystem reader detects case mismatch and directory symlink escape on every OS (14.556844ms)
+✔ S04 performer binds unchanged S01 descriptors and all four original sample snapshots (13.52184ms)
+✔ explicit seed zero and a large seed replay the pinned version-one event sequences (23.390511ms)
+✔ selected and held-out seeds vary event timing and role structure beyond velocity (62.908819ms)
+✔ selected, held-out and 256 additional seeds stay finite, in bounds and within four voices (1019.230346ms)
+✔ statement and answer develop rhythms and motifs with four-bar cadences (52.904204ms)
+✔ drive increases arrangement density while preserving seed-selected motifs and unchanged pitch (84.91778ms)
+✔ seed must be an explicit uint32 and state must be implemented (29.883461ms)
+✔ valid but unsupported recipe, palette and sample metadata fail closed (10.372974ms)
+✔ every sample requires both reuse and playback rights and explicit fixture opt-in (7.716228ms)
+✔ plan and provenance are deep immutable snapshots, isolated from mutable caller input (2.895689ms)
+✔ Now/Next follows the audio clock through scheduled, mixing and complete playback (54.193137ms)
+✔ Pause freezes the context while keeping the pending handoff and Resume preserves its schedule (11.34331ms)
+✔ denied ownership during Resume keeps an existing paused voice silent and freezes its clock (24.236584ms)
+✔ Stop or Pause during a pending decode cannot be undone by its eventual completion (426.43592ms)
+✔ Stop or a second Pause during pending Resume keeps output silent when Resume resolves late (52.269948ms)
+✔ replacing playback cancels both voices and their queued handoff before starting the requested track (12.724351ms)
+✔ concurrent A to B requests commit only one incoming voice and repeated scheduling is rejected (33.542354ms)
+✔ future handoff cancellation restores A, cancels preparation, and refuses an overlap already started (29.500481ms)
+✔ a missed exit leaves A unchanged while Mute and Volume remain immediate listener controls (33.118968ms)
+✔ unexpected context suspension requires an explicit Resume and cannot automatically restart output (7.844681ms)
+✔ failed decoding stops cleanly and a later explicit Play can retry preparation (28.798471ms)
+✔ review: repeated cancelled procedural starts share bounded pending sample decoding (57.949353ms)
+✔ review: cached procedural samples do not bypass current pack and reuse eligibility checks (445.756945ms)
+✔ review: late denied ownership for a procedural request cannot stop its recording replacement (45.478246ms)
+✔ review: Pause during procedural preparation retains the seed when Resume restarts preparation (39.122133ms)
+✔ review: procedural construction owns sample metadata and scheduled start stamps (16.721015ms)
+✔ review: note allocation failure disconnects the entire partial procedural graph (19.755514ms)
+✔ native sampler decodes exactly the original palette without detaching verified bytes (43.927327ms)
+✔ sampler schedules every event and tail on the retained clock at both output rates (54.670358ms)
+✔ sampler refuses stale clocks, wrong ownership, altered samples and missing reuse rights before note allocation (17.880175ms)
+✔ phrase exit is checked before effects; cancelling restores every future note and the entry envelope (13.498446ms)
+✔ stop mutes immediately at its stamp and release cancels future notes even after invalidation (3.441374ms)
+✔ a partial native schedule failure leaves no connected output or later notes (4.590573ms)
+✔ a clock crossing during scheduling fails silent rather than accepting a late phrase (10.25605ms)
+✔ natural note completion disconnects each note and the finite source output (18.773118ms)
+✔ procedural audition reuses the player clock, Pause, Mute, Resume, Stop and finite end (20.043417ms)
+✔ Stop during procedural decode wins, and a rejected ownership gate never starts notes (7.205959ms)
+✔ demo server serves only mapped assets with correct MIME, query and HEAD behavior (838.529687ms)
+✔ demo server keeps repo files, node adapters, directories and absent assets private (231.980225ms)
+✔ demo server rejects raw and encoded traversal before URL normalization (229.766515ms)
+✔ demo server rejects symlink escapes and aliases to private repository files (12.149877ms)
+✔ demo server restricts methods and accepts only loopback Host headers (10.317555ms)
+✔ demo CLI resolves its default assets independently of cwd and reports an ephemeral port (544.294969ms)
+✔ demo CLI refuses malformed and out-of-range ports (2669.475033ms)
+✔ recorded: common prepare/start/exit/release lifecycle (7.47259ms)
+✔ recorded: invalid order, stale generation and late scheduling are rejected (1.154222ms)
+✔ procedural: common prepare/start/exit/release lifecycle (0.487963ms)
+✔ procedural: invalid order, stale generation and late scheduling are rejected (0.666882ms)
+✔ recorded and procedural sources share one clock; stop and cancellation release resources (0.305619ms)
+✔ release cancels a scheduled source before its future start (0.371492ms)
+✔ Web Audio clock reads the owner context and invalidates old generations (2.788884ms)
+✔ cue mapping converts native 24 kHz pickups and subtracts a nonzero selected entry (24.766016ms)
+✔ directed routes reject missing permission, stale revisions and late or stale plans (34.771743ms)
+✔ recording lifecycle schedules source and complementary fades on the same absolute clock (1.89374ms)
+✔ release cancels a future start after generation invalidation and is idempotent (0.632867ms)
+✔ cancelling a future source exit restores its original finish and coincident fade-in endpoint (1.697795ms)
+✔ recordings reject another context, ineligible media, wrong decoded format and obsolete starts (2.680029ms)
+ℹ tests 127
+ℹ suites 0
+ℹ pass 127
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16747.756274
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 fixtures:check
+> npm run build && node dist/scripts/generate-fixtures.js --check
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 build
+> tsc -p tsconfig.json
+
+Verified 7 deterministic fixture files (generator v1, seed 0x454d4601).
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 validate
+> npm run build && node dist/scripts/validate-pack.js fixtures/s01
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> eutonos-music@0.0.1 build
+> tsc -p tsconfig.json
+
+{
+  "pack": "s01-foundation",
+  "revision": 1,
+  "schema": "em.audio-pack.v0",
+  "result": "PASS",
+  "recordings": 2,
+  "samples": 4,
+  "routes": 1,
+  "audio": [
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 384000,
+      "data_offset": 44,
+      "data_bytes": 768000,
+      "peak": 0.45697021484375,
+      "id": "s01-recording-a",
+      "path": "audio/s01-recording-a.wav",
+      "sha256": "69274658d0cf0b13d31cadfdef5267399b4f96c5b8574358309273306bfdafdb",
+      "bytes": 768044,
+      "duration_seconds": 16
+    },
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 384000,
+      "data_offset": 44,
+      "data_bytes": 768000,
+      "peak": 0.35504150390625,
+      "id": "s01-recording-b",
+      "path": "audio/s01-recording-b.wav",
+      "sha256": "4d0309c0e0bf2de2a74ea57a0e2915dd0ed951363c7f44a324433dc9990a3ee4",
+      "bytes": 768044,
+      "duration_seconds": 16
+    },
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 6000,
+      "data_offset": 44,
+      "data_bytes": 12000,
+      "peak": 0.27215576171875,
+      "id": "s01-kick",
+      "path": "audio/s01-kick.wav",
+      "sha256": "19d69c96a284f64a1079f3bf5febe599ac288556e1d14e77f711831367d7da5d",
+      "bytes": 12044,
+      "duration_seconds": 0.25
+    },
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 1800,
+      "data_offset": 44,
+      "data_bytes": 3600,
+      "peak": 0.065277099609375,
+      "id": "s01-percussion",
+      "path": "audio/s01-percussion.wav",
+      "sha256": "78615392ad936771715fa506165f9deb6ed432693ae55cee162268fc1054d75c",
+      "bytes": 3644,
+      "duration_seconds": 0.075
+    },
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 9000,
+      "data_offset": 44,
+      "data_bytes": 18000,
+      "peak": 0.120819091796875,
+      "id": "s01-bass-a2",
+      "path": "audio/s01-bass-a2.wav",
+      "sha256": "9e770ee7e19e1115fa6d25c73f824b3ede1cf2d13284d5cf7d6d6274f3b857ab",
+      "bytes": 18044,
+      "duration_seconds": 0.375
+    },
+    {
+      "sample_rate": 24000,
+      "channels": 1,
+      "frames": 24000,
+      "data_offset": 44,
+      "data_bytes": 48000,
+      "peak": 0.11083984375,
+      "id": "s01-harmony-am",
+      "path": "audio/s01-harmony-am.wav",
+      "sha256": "dac81e41d55f91fa1ab466890bfc98f975d5f9b2d8549f0c49d9f68c755fb09b",
+      "bytes": 48044,
+      "duration_seconds": 1
+    }
+  ],
+  "listening": "NOT TESTED; metadata and PCM integrity do not establish musical quality"
+}

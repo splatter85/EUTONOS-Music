@@ -199,6 +199,50 @@ test('concurrent A to B requests commit only one incoming voice and repeated sch
   await player.dispose();
 });
 
+test('future handoff cancellation restores A, cancels preparation, and refuses an overlap already started', async () => {
+  const {context, player} = setup();
+  const playing = player.play('a');
+  player.cancelTransitionPreparation();
+  assert.equal(player.cancelPendingTransition(), true);
+  await playing;
+  assert.equal(context.sources.length, 1, 'transition cancellation does not cancel initial Play');
+  const original = player.snapshot().voices[0]!;
+  const preparing = player.scheduleAB();
+  player.cancelTransitionPreparation();
+  await preparing;
+  assert.equal(context.sources.length, 1, 'cancelled preparation cannot start B');
+  await player.scheduleAB();
+  player.cancelTransitionPreparation();
+  assert.equal(player.snapshot().voices.length, 2, 'preparation-only cancellation retains committed audio');
+  context.advance(1);
+  assert.equal(player.cancelPendingTransition(), true);
+  const cancelled = player.snapshot();
+  assert.deepEqual(cancelled.voices, [original], 'A retains its original source, clock stamp and natural finish');
+  assert.equal(cancelled.transitionAt, null);
+  assert.equal(cancelled.transitionEnd, null);
+  assert.equal(cancelled.transition, 'none');
+  assert.deepEqual(cancelled.now, [a]);
+  assert.deepEqual(context.sources[0]!.stops, [12.1, 16.1]);
+  assert.deepEqual(context.gains[1]!.gain.calls.at(-1), {kind: 'cancel', time: 8.1});
+  assert.deepEqual(context.sources[1]!.stops, [1]);
+  assert.equal(context.sources[1]!.connections.length, 0);
+  await player.scheduleAB();
+  const scheduled = player.snapshot();
+  assert.equal(scheduled.voices.length, 2);
+  assert.deepEqual(scheduled.voices[1]!.source, {id: b, revision: loaded.pack.assets[1]!.revision});
+  assert.equal(scheduled.transitionAt!.frame, 388_800);
+  assert.equal(scheduled.transitionEnd!.frame, 580_800);
+  assert.deepEqual(context.sources[0]!.stops, [12.1, 16.1, 12.1]);
+  context.currentTime = 8.1;
+  const stops = context.sources.map(source => [...source.stops]);
+  const gains = context.gains.map(gain => [...gain.gain.calls]);
+  assert.equal(player.cancelPendingTransition(), false, 'the audio clock refuses cancellation before any snapshot refresh');
+  assert.deepEqual(context.sources.map(source => source.stops), stops);
+  assert.deepEqual(context.gains.map(gain => gain.gain.calls), gains);
+  assert.deepEqual(player.snapshot().now, [a, b]);
+  await player.dispose();
+});
+
 test('a missed exit leaves A unchanged while Mute and Volume remain immediate listener controls', async () => {
   const {context, player} = setup();
   await player.play('a');
