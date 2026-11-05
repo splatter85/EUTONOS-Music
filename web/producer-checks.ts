@@ -3,12 +3,16 @@
  * generated before the checks run (scripts/mock-fl-producer.ts); no FL Studio is involved.
  * Each output channel is compared with an independent per-channel sum of decoded samples.
  */
+import {readPcm16Wav} from '../src/audio.js';
 import {decodeRecordings, loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {compilePhrase, compileS01Phrase} from '../src/phrase-plan.js';
 import {decodeProceduralSamples, ProceduralSource} from '../src/procedural-source.js';
 import {planTransition, RecordedSource, requireAudio, WebAudioClock} from '../src/web-audio.js';
 
 const tolerance = 0.000003;
+/** Two PCM16-to-float conventions: symmetric (/32768) and Chromium's (negative /32768, positive /32767). */
+const SCALINGS = {symmetric: (v: number) => v / 32768, chromium: (v: number) => v < 0 ? v / 32768 : v / 32767} as const;
+type Scaling = keyof typeof SCALINGS;
 const RECIPE = {id: 's06-mock-recipe', revision: 1};
 export const MOCK_PACK_PATH = '/generated/s06-mock-fl/pack/manifest.json';
 
@@ -43,26 +47,43 @@ async function renderPhrase(mock: LoadedBrowserPack, s01: LoadedBrowserPack, rat
   requireAudio(source.endFrame === end, 'Finite phrase end differs from 32 quarters.');
   const rendered = await context.startRendering();
   const channels = [];
-  for (let channel = 0; channel < 2; channel++) {
+  for (let channel = 0; channel < 2; channel++) for (const scaling of Object.keys(SCALINGS) as Scaling[]) {
+    const toFloat = SCALINGS[scaling], nativeOnly = plan.samples.every(s => s.asset.file.sample_rate === rate);
+    if (!nativeOnly && scaling !== 'symmetric') continue;
     const expected = new Float64Array(rendered.length);
     for (const event of plan.events) {
       const sample = samples.find(s => s.asset.id === event.sample.id && s.asset.revision === event.sample.revision);
       requireAudio(sample, 'Oracle cannot resolve the bound sample.');
       const native = sample.asset.file.sample_rate;
       const first = start + Math.round(event.atQuarters * rate / 2);
-      // The authored grid places the onset on a whole native frame, then the sample's own frames follow.
+      if (native === rate) {
+        // No resampling at the native rate: compare with the delivered PCM16 bytes themselves.
+        const bytes = mock.files.get(sample.asset.file.path)!, info = readPcm16Wav(bytes);
+        const pcm = new DataView(bytes.buffer, bytes.byteOffset + info.data_offset, info.data_bytes);
+        const last = Math.min(first + info.frames, end);
+        for (let frame = first; frame < last; frame++) {
+          expected[frame] = expected[frame]! + toFloat(pcm.getInt16(((frame - first) * info.channels + channel) * 2, true)) * event.gain;
+        }
+        continue;
+      }
+      // Resampled: the authored grid places the onset on a whole native frame, then the sample's own frames follow.
       const nativeEnd = Math.round(event.atQuarters * native / 2) + sample.asset.file.frames;
       const last = Math.min(start + Math.round(nativeEnd * rate / native), first + sample.buffer.length, end);
       const data = sample.buffer.getChannelData(channel);
       for (let frame = first; frame < last; frame++) expected[frame] = expected[frame]! + data[frame - first]! * event.gain;
     }
     const actual = rendered.getChannelData(channel), result = measure(actual, expected);
+    // At the native rate the decoder's PCM16 scaling is the only conversion; accept either convention, reporting which.
+    if (nativeOnly && scaling === 'symmetric' && result.maxError >= tolerance) continue;
     requireAudio(result.maxError < tolerance, `Channel ${channel} differs from the independent sample sum: ${result.maxError}`);
     requireAudio(result.peak > 0.01 && result.peak < 1 && result.nonzero > rate, `Channel ${channel} is silent or clipped.`);
     requireAudio(actual.subarray(0, start).every(v => v === 0) && actual.subarray(end).every(v => v === 0),
       'Audio escaped the declared head/tail boundaries.');
-    channels.push({channel, comparedSamples: actual.length, maxAbsoluteSampleError: result.maxError, peak: result.peak, nonzeroSamples: result.nonzero});
+    channels.push({channel, comparedSamples: actual.length, maxAbsoluteSampleError: result.maxError, peak: result.peak,
+      nonzeroSamples: result.nonzero, pcm16Scaling: nativeOnly ? scaling : null});
+    break;
   }
+  requireAudio(channels.length === 2, 'Both channels must match the independent sum.');
   const left = rendered.getChannelData(0), right = rendered.getChannelData(1);
   let channelsDiffer = 0;
   for (let frame = 0; frame < left.length; frame++) if (left[frame] !== right[frame]) channelsDiffer++;
@@ -70,6 +91,7 @@ async function renderPhrase(mock: LoadedBrowserPack, s01: LoadedBrowserPack, rat
   source.release();
   return {sampleRate: rate, pack: mock.pack.id, recipe: RECIPE, seed: plan.seed, state: plan.state,
     eventCount: plan.events.length, eventsMatchS01Performer: true, startFrame: start, endFrame: end, channels,
+    oracle: plan.samples.every(s => s.asset.file.sample_rate === rate) ? 'delivered PCM16 bytes (no resampling)' : 'decoded sample buffers (resampled)',
     framesWhereChannelsDiffer: channelsDiffer, tolerance, producer: 'MOCK FL (no FL Studio)', output: 'OfflineAudioContext; no device output'};
 }
 

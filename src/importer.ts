@@ -11,6 +11,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {basename, dirname, join, resolve} from 'node:path';
 import {readPcm16Wav} from './audio.js';
+import {loadBrowserPack} from './browser-pack.js';
 import {loadPack, packReader} from './node.js';
 import {fail, portablePath, validatePackManifest} from './pack.js';
 import {PACK_VERSION, type AudioPack} from './pack-types.js';
@@ -22,6 +23,10 @@ export const IMPORTER = Object.freeze({id: 'eutonos-music-importer', revision: 1
 /** A dropped tail may hold only residue at or below -60 dBFS. */
 export const MAX_DROPPED_TAIL_PEAK = 0.001;
 const MAX_JSON_BYTES = 1024 * 1024;
+/** Everything one delivery may make the importer read, counting repeated sources each time. */
+export const MAX_DELIVERY_BYTES = 256 * 1024 * 1024;
+/** Ids that name this repository's own S01 fixtures, recipe and route; an import cannot claim them. */
+const RESERVED_ID = /^s01-/;
 const RESERVED = new Set(['manifest.json', 'import.json']);
 const ASSET_KEYS = ['id', 'revision', 'title', 'source_kind', 'source', 'expected_sha256', 'keep_frames', 'rights',
   'eligibility', 'genres', 'states', 'key', 'harmony_pitch_classes', 'timing', 'cues'];
@@ -53,6 +58,13 @@ export interface GeneratorCheck {
   readonly detail: string | null;
 }
 
+/** Whether the S02 browser loader (the only player path today) accepts the pack in fixture mode. */
+export interface BrowserPlayerCheck {
+  readonly loader: 'loadBrowserPack (fixture mode)';
+  readonly result: 'loadable' | 'refused';
+  readonly detail: string | null;
+}
+
 export interface ImportReceipt {
   readonly schema_version: typeof IMPORT_RECEIPT_VERSION;
   readonly importer: typeof IMPORTER;
@@ -64,6 +76,7 @@ export interface ImportReceipt {
   /** Fixture-mode check of each recipe against the S04 performer's palette contract. */
   readonly generator: {readonly performer: typeof S01_PERFORMER; readonly contract: typeof PERFORMER_PALETTE_CONTRACT;
     readonly checks: readonly GeneratorCheck[]};
+  readonly browser_player: BrowserPlayerCheck;
   readonly limits: readonly string[];
 }
 
@@ -96,8 +109,8 @@ function integer(value: unknown, at: string, min: number, max: number): number {
 }
 
 function deliveryPath(value: unknown, at: string): string {
-  const path = portablePath(value, at);
-  if (RESERVED.has(path.toLowerCase()) || path.toLowerCase().startsWith('audio/')) {
+  const path = portablePath(value, at), lower = path.toLowerCase();
+  if (RESERVED.has(lower) || lower === 'audio' || lower.startsWith('audio/')) {
     fail('UNSAFE_PATH', at, 'manifest.json, IMPORT.json and audio/ are written by the importer');
   }
   return path;
@@ -190,7 +203,14 @@ function generatorChecks(pack: AudioPack): GeneratorCheck[] {
 export async function importDelivery(deliveryDir: string, outputDir: string): Promise<{pack: AudioPack; receipt: ImportReceipt}> {
   const output = resolve(outputDir);
   if (await stat(output).then(() => true, () => false)) fail('OUTPUT_EXISTS', basename(output), 'choose a new output directory');
-  const read = await packReader(deliveryDir);
+  const readFile = await packReader(deliveryDir);
+  let total = 0;
+  const read = async (path: string) => {
+    const bytes = await readFile(path);
+    total += bytes.length;
+    if (total > MAX_DELIVERY_BYTES) fail('INVALID_DELIVERY', path, 'the delivery exceeds 256 MiB in total');
+    return bytes;
+  };
   const raw = await read('delivery.json');
   if (raw.length > MAX_JSON_BYTES) fail('INVALID_DELIVERY', 'delivery.json', 'exceeds 1 MiB');
   let parsed: unknown;
@@ -208,25 +228,44 @@ export async function importDelivery(deliveryDir: string, outputDir: string): Pr
   const manifest = {schema_version: PACK_VERSION, id: identity.id, revision: identity.revision,
     assets: prepared.map(a => a.entry), palettes: d.palettes, recipes: d.recipes, routes: d.routes};
   const pack = validatePackManifest(manifest);
+  const ids: [string, string][] = [['delivery.pack.id', pack.id],
+    ...pack.assets.map((a, i): [string, string] => [`delivery.assets[${i}].id`, a.id]),
+    ...pack.palettes.map((p, i): [string, string] => [`delivery.palettes[${i}].id`, p.id]),
+    ...pack.recipes.map((r, i): [string, string] => [`delivery.recipes[${i}].id`, r.id]),
+    ...pack.routes.map((r, i): [string, string] => [`delivery.routes[${i}].id`, r.id])];
+  for (const [at, id] of ids) {
+    if (RESERVED_ID.test(id)) fail('RESERVED_ID', at, 'the s01- prefix names the repository fixtures; an import cannot claim it');
+  }
 
-  const evidence = new Map<string, Uint8Array>();
+  const evidence = new Map<string, Uint8Array>(), folded = new Map<string, string>();
   for (const asset of pack.assets) {
-    const path = deliveryPath(asset.rights.evidence, `${asset.id}.rights.evidence`);
+    const path = deliveryPath(asset.rights.evidence, `${asset.id}.rights.evidence`), lower = path.toLowerCase();
     if (evidence.has(path)) continue;
+    const other = folded.get(lower) ?? [...folded].find(([l]) => l.startsWith(`${lower}/`) || lower.startsWith(`${l}/`))?.[1];
+    if (other !== undefined) {
+      fail('UNSAFE_PATH', `${asset.id}.rights.evidence`, `${path} clashes with ${other} on case-insensitive or folder-structured file systems`);
+    }
     const bytes = await read(path);
-    if (bytes.length > MAX_JSON_BYTES || !decode(bytes).trim()) fail('MISSING_PROVENANCE', path, 'rights evidence must be nonempty UTF-8 text up to 1 MiB');
+    let readable = false;
+    try { readable = bytes.length <= MAX_JSON_BYTES && decode(bytes).trim().length > 0; } catch { readable = false; }
+    if (!readable) fail('MISSING_PROVENANCE', path, 'rights evidence must be nonempty UTF-8 text up to 1 MiB');
     evidence.set(path, bytes);
+    folded.set(lower, path);
   }
 
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2) + '\n');
+  const files = new Map<string, Uint8Array>([['manifest.json', manifestBytes], ...evidence,
+    ...prepared.map((a): [string, Uint8Array] => [a.report.path, a.bytes])]);
   const receipt: ImportReceipt = {schema_version: IMPORT_RECEIPT_VERSION, importer: IMPORTER, producer,
     pack: {id: pack.id, revision: pack.revision}, manifest_sha256: hex(manifestBytes),
     assets: prepared.map(a => a.report),
     generator: {performer: S01_PERFORMER, contract: PERFORMER_PALETTE_CONTRACT, checks: generatorChecks(pack)},
+    browser_player: await browserPlayerCheck(files),
     limits: [
       'Technical import only: PCM16 parse, not silent, not full scale, dropped tails at or below -60 dBFS, pack schema, rights evidence present, hashes and PCM metadata re-read by loadPack.',
       'Producer identity, rights and musical labels are recorded as delivered; they are not verified.',
       'Generator checks run in fixture mode at seed 0 and say nothing about how the result sounds.',
+      'Sound reaches the generator in the current player only when browser_player is loadable: the S02 loader also needs one or two eligible recordings, at most 16 MiB of audio, a manifest up to 256 KiB and evidence files up to 64 KiB.',
       'Listening: NOT TESTED.',
     ]};
 
@@ -248,6 +287,22 @@ export async function importDelivery(deliveryDir: string, outputDir: string): Pr
     throw error;
   }
   return {pack, receipt};
+}
+
+/** Runs the unchanged browser loader over the finished bytes; a refusal is reported, not raised. */
+async function browserPlayerCheck(files: ReadonlyMap<string, Uint8Array>): Promise<BrowserPlayerCheck> {
+  const base = 'http://import.invalid/';
+  const fetcher = (async (input: URL | RequestInfo) => {
+    const url = String(input);
+    const bytes = url.startsWith(base) ? files.get(decodeURIComponent(url.slice(base.length))) : undefined;
+    return bytes ? new Response(new Uint8Array(bytes)) : new Response(null, {status: 404});
+  }) as typeof fetch;
+  try {
+    await loadBrowserPack(new URL('manifest.json', base), true, fetcher);
+    return {loader: 'loadBrowserPack (fixture mode)', result: 'loadable', detail: null};
+  } catch (error) {
+    return {loader: 'loadBrowserPack (fixture mode)', result: 'refused', detail: error instanceof Error ? error.message : String(error)};
+  }
 }
 
 /** Windows antivirus or sync clients can hold a just-written folder briefly; retry, never overwrite. */

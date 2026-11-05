@@ -30,6 +30,7 @@ test('mock FL producer -> S08 MCP broker -> delivery -> importer -> loader -> un
     assert.equal(receipt.producer.verified, false);
     assert.ok(receipt.assets.every(a => a.producer_sha256 === a.source_sha256), 'the importer checked every producer receipt');
     assert.deepEqual(receipt.generator.checks.map(c => c.result), ['compatible', 'compatible']);
+    assert.equal(receipt.browser_player.result, 'loadable', 'the current browser player accepts the imported pack');
 
     const loaded = await loadPack(join(root, 'pack'));
     for (const a of loaded.audio) assert.deepEqual([a.sample_rate, a.channels], [MOCK_RATE, 2], 'FL CLI defaults: stereo 44.1 kHz');

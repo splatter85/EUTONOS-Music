@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {readPcm16Wav} from '../src/audio.js';
-import {importDelivery, MAX_DROPPED_TAIL_PEAK, type ImportReceipt} from '../src/importer.js';
+import {importDelivery, MAX_DELIVERY_BYTES, MAX_DROPPED_TAIL_PEAK, type ImportReceipt} from '../src/importer.js';
 import {loadPack} from '../src/node.js';
 import {PackError} from '../src/pack.js';
 
@@ -203,5 +203,53 @@ test('generator checks report contract mismatches without blocking a technically
   try {
     const {receipt} = await importDelivery(second.delivery, second.out);
     assert.deepEqual(receipt.generator.checks.map(c => c.result), ['eligibility', 'eligibility']);
+    assert.equal(receipt.browser_player.result, 'refused');
+    assert.match(receipt.browser_player.detail!, /Recording is not eligible/);
   } finally { await rm(second.root, {recursive: true, force: true}); }
+});
+
+test('the receipt says whether the current browser player can load the pack', async () => {
+  const whole = await fixture();
+  try {
+    const {receipt} = await importDelivery(whole.delivery, whole.out);
+    assert.deepEqual(receipt.browser_player, {loader: 'loadBrowserPack (fixture mode)', result: 'loadable', detail: null});
+  } finally { await rm(whole.root, {recursive: true, force: true}); }
+  // One-shots alone are a valid pack and a compatible palette, but the S02 loader needs a recording.
+  const palette = await fixture(d => { d.assets = d.assets.filter(a => a.id !== 'take'); });
+  try {
+    const {receipt} = await importDelivery(palette.delivery, palette.out);
+    assert.deepEqual(receipt.generator.checks.map(c => c.result), ['compatible', 'compatible']);
+    assert.equal(receipt.browser_player.result, 'refused');
+    assert.match(receipt.browser_player.detail!, /one or two recordings/);
+    assert.ok(receipt.limits.some(l => /browser_player is loadable/.test(l)));
+  } finally { await rm(palette.root, {recursive: true, force: true}); }
+});
+
+test('reserved ids, clashing evidence paths and unreadable evidence are refused', async () => {
+  await refused(d => { d.recipes[0]!.id = 's01-recipe'; }, 'RESERVED_ID');
+  await refused(d => { d.pack.id = 's01-foundation'; }, 'RESERVED_ID');
+  await refused(d => { asset(d, 'take').rights = {...RIGHTS, evidence: 'audio'}; }, 'UNSAFE_PATH');
+  await refused(d => { asset(d, 'kick').rights = {...RIGHTS, evidence: 'provenance.md'}; }, 'UNSAFE_PATH');
+  await refused((d, files) => {
+    files['notes'] = new TextEncoder().encode('notes\n');
+    asset(d, 'take').rights = {...RIGHTS, evidence: 'notes'};
+    asset(d, 'kick').rights = {...RIGHTS, evidence: 'notes/more.md'};
+  }, 'UNSAFE_PATH');
+  await refused((d, files) => {
+    files['latin1.md'] = new Uint8Array([0x52, 0xe9, 0x73, 0x75, 0x6d, 0xe9]);
+    asset(d, 'take').rights = {...RIGHTS, evidence: 'latin1.md'};
+  }, 'MISSING_PROVENANCE');
+});
+
+test('a delivery may make the importer read at most 256 MiB in total', async () => {
+  // One maximum-size WAV named by four assets: each read counts, so with delivery.json and the
+  // recording already read, the fourth copy exceeds the cap.
+  const big = new Uint8Array(64 * 1024 * 1024), v = new DataView(big.buffer), data = big.length - 44;
+  big.set(wav([]).subarray(0, 44));
+  v.setUint32(4, 36 + data, true); v.setUint32(40, data, true); v.setInt16(44, 1000, true);
+  assert.ok(4 * big.length >= MAX_DELIVERY_BYTES && 3 * big.length < MAX_DELIVERY_BYTES);
+  await refused((d, files) => {
+    files['renders/big.wav'] = big;
+    for (const id of ['kick', 'hat', 'bass', 'chord']) asset(d, id).source = 'renders/big.wav';
+  }, 'INVALID_DELIVERY');
 });
