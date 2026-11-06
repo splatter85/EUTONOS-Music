@@ -67,7 +67,9 @@ function getPlayer(): SmallPlayer {
   if (!loaded) throw new Error('The sample palette is still loading.');
   const route = loaded.pack.routes[0];
   if (!route) throw new Error('The selected pack has no playable route.');
-  player = new SmallPlayer(new AudioContext(), loaded, route.id);
+  const context = new AudioContext();
+  try { player = new SmallPlayer(context, loaded, route.id); }
+  catch (error) { void context.close().catch(() => undefined); throw error; }
   player.setVolume(Number(volume.value)); player.setMuted(muted);
   return player;
 }
@@ -122,7 +124,7 @@ function render(): void {
   setText('selection-detail', plan ? `${packs[selectedPack].label} · rhythm plan ready · ${plan.events.length} sample events · 120 BPM · A minor` : 'No plan prepared. Choose an available palette and valid seed.');
   setText('now-title', snapshot?.now.length && activePlan ? `Seed ${activePlan.seed} · ${activePlan.state}` : 'Nothing playing');
   setText('now-detail', `${status}${muted ? ' · muted' : ''} · ${(snapshot?.elapsedSeconds ?? 0).toFixed(1)}s / ${(snapshot?.durationSeconds ?? 0).toFixed(1)}s`);
-  setText('status', status === 'loading' ? 'Preparing playback…' : status === 'closed' ? 'Player closed — reload to start a new session.' : status === 'ended' ? 'Performance ended — replay or choose another seed.' : status === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : status === 'playing' ? 'Playing the prepared phrase plan' : status === 'scheduled' ? 'Scheduled — waiting for the audio clock' : loaded ? 'Ready — press Play variation to start' : 'Loading palette…');
+  setText('status', status === 'loading' ? 'Preparing playback…' : status === 'closed' ? 'Player closed — reload to start a new session.' : status === 'ended' ? 'Performance ended — replay or choose another seed.' : status === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : status === 'playing' ? 'Playing the prepared phrase plan' : status === 'scheduled' ? 'Scheduled — waiting for the audio clock' : loaded ? `Ready — ${packs[selectedPack].label} — press Play variation to start` : loadingPack ? 'Loading palette…' : 'Palette unavailable — choose a palette.');
   progress.value = snapshot?.durationSeconds ? snapshot.elapsedSeconds / snapshot.durationSeconds : 0;
   setText('clock-detail', snapshot ? `${snapshot.contextState} · ${snapshot.sampleRate} Hz · frame ${snapshot.currentFrame} · generation ${snapshot.engineGeneration}` : 'The audio context starts on your first Play.');
   setText('plan-detail', plan ? `Recipe ${plan.recipe.id}@${plan.recipe.revision} · palette ${plan.palette.id}@${plan.palette.revision} · performer ${plan.performer.id}@${plan.performer.revision}. One finite 32-quarter plan; each sample keeps its original pitch. No model or DAW is involved in playback.` : 'No plan prepared.');
@@ -160,6 +162,7 @@ async function selectPack(choice: string): Promise<void> {
   setText('error', ''); setText('loading', 'Loading and validating the selected palette…'); render();
   try {
     await disposed;
+    if (epoch !== loadEpoch) return;
     if (choice !== 's01' && choice !== 'mock-fl') throw new Error('Unknown palette. Choose S01 original or S06 imported mock.');
     selectedPack = choice; packInput.value = choice;
     const url = new URL(location.href); url.searchParams.set('pack', choice);
@@ -171,7 +174,13 @@ async function selectPack(choice: string): Promise<void> {
     prepareSelection();
   } catch (error) {
     if (epoch === loadEpoch) {
-      setText('loading', 'Palette unavailable — choose another palette or reload.');
+      // Clear the picker so choosing any palette, including the same one, retries.
+      packInput.selectedIndex = -1;
+      if (choice !== 's01' && choice !== 'mock-fl') {
+        const url = new URL(location.href); url.searchParams.delete('pack');
+        history.replaceState(null, '', url);
+      }
+      setText('loading', 'Palette unavailable — choose a palette to retry.');
       setText('error', message(error));
     }
   } finally {

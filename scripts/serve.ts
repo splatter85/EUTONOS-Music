@@ -1,4 +1,4 @@
-/** Local, loopback-only S02 demo server. This is not a production host. */
+/** Local, loopback-only demo server. This is not a production host. */
 import { createServer, type Server } from 'node:http';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
@@ -106,7 +106,7 @@ function startDemo(args: string[]): void {
   }
   const server = createDemoServer();
   server.on('error', error => {
-    console.error(`Cannot start S02 demo: ${error.message}`);
+    console.error(`Cannot start the demo: ${error.message}`);
     process.exitCode = 1;
   });
   server.listen(port, '127.0.0.1', () => {

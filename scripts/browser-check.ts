@@ -411,11 +411,15 @@ try {
   await waitText(page, '#plan-detail', /palette s06-mock/);
   assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
   assert.equal(await page.evaluate(() => (window as unknown as {testAudioContexts: AudioContext[]}).testAudioContexts.length), 0);
+  await waitText(page, '#status', /^Ready — S06 imported mock palette — press Play variation to start$/);
+  assert.match(await page.locator('#selection-detail').innerText(), /^S06 imported mock palette · /);
   const importedEvents = (await page.locator('#selection-detail').innerText()).match(/\d+ sample events/)?.[0];
   assert.ok(importedEvents);
   await page.locator('#pack').selectOption('s01');
   await ready(page);
   await waitText(page, '#plan-detail', /palette s01-palette/);
+  await waitText(page, '#status', /^Ready — S01 original palette — press Play variation to start$/);
+  assert.match(await page.locator('#selection-detail').innerText(), /^S01 original palette · /);
   assert.match(await page.locator('#selection-detail').innerText(), new RegExp(importedEvents));
   assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
   await page.locator('#pack').selectOption('mock-fl');
@@ -471,6 +475,8 @@ try {
   await page.route(mockManifest, route => route.fulfill({status: 404, body: 'Missing fixture'}));
   await page.locator('#imported-sampler').click();
   await waitText(page, '#loading', /^Palette unavailable/);
+  await waitText(page, '#status', /^Palette unavailable/);
+  assert.equal(await page.locator('#pack').inputValue(), '');
   assert.equal(await page.locator('#play').isDisabled(), true);
   assert.equal(await page.locator('#now-title').innerText(), 'Nothing playing');
   assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
@@ -483,6 +489,9 @@ try {
   await waitText(page, '#loading', /^Palette unavailable/);
   assert.equal(await page.locator('#play').isDisabled(), true);
   await page.unroute(mockManifest);
+  // Retrying the same palette after a failure works without switching away first.
+  await page.locator('#pack').selectOption('mock-fl');
+  await ready(page);
   await page.locator('#pack').selectOption('s01');
   await ready(page);
   await page.locator('#pack').selectOption('mock-fl');
@@ -494,6 +503,8 @@ try {
   await page.goto(origin + '/procedural.html?pack=unknown');
   await waitText(page, '#error', /^Unknown palette/);
   assert.equal(await page.locator('#play').isDisabled(), true);
+  assert.equal(await page.locator('#pack').inputValue(), '');
+  assert.doesNotMatch(page.url(), /pack=/);
   await page.locator('#pack').selectOption('mock-fl');
   await ready(page);
   await page.setViewportSize({width: 390, height: 844});
