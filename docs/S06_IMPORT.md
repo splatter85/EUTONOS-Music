@@ -21,7 +21,7 @@ npm run mock:fl
 npm run import -- path/to/delivery path/to/new-pack
 ```
 
-The import refuses if the new folder already exists. `npm run demo` also regenerates the mock pack, so the checks page (`/checks.html`) can run the four S06 groups. The main player page still plays the S01 fixtures only.
+The import refuses if the new folder already exists. `npm run demo` also regenerates the mock pack, so the checks page (`/checks.html`) can run the four S06 groups. The DJ page still plays the S01 fixtures only. [S07](S07_APP.md), built on its branch pending coordinator integration, adds ordinary sampler playback of the imported mock palette.
 
 ## What a producer delivers
 
@@ -78,7 +78,7 @@ It makes six original stereo 44.1 kHz renders: two 8-bar recordings (A and B, on
 ## What S06 does not change
 
 - The S05 hybrid policy and the DJ still name the S01 route and recipe. Driving them with imported content is **S09**.
-- The player page plays S01 only. Imported packs are reached through the API, the checks page and the CLI.
+- The DJ page plays S01 only. S06 exposed imported packs through the API, checks and CLI; [S07](S07_APP.md) adds the imported mock-palette sampler to the ordinary demo path, pending coordinator integration.
 - The pack schema, the S01 fixtures and WAVs, the S04 performer's notes and the S08 broker are unchanged. No audio file was added to the repository.
 
 ## Limits

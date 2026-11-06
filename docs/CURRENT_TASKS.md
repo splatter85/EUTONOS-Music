@@ -2,17 +2,16 @@
 
 Document ID: `EM-D010`
 
-**S07 active pickup, 2026-11-06:** owner-selected Windows worker on `work/emf-s07-app-20261106`, from main `7f86dbb2aa19016348b082c4f9058f237aed17e4`. Integrate the existing DJ/hybrid and sampler demo surfaces and expose the S06 mock palette in normal playback; retain the S01-only DJ policy. Next: implement the bounded palette selection, then run the Node and native/browser gates and self-review. Coordinator owns integration and EUTONOS records.
+Updated 2026-11-06. **S07 is built on `work/emf-s07-app-20261106`, pending coordinator review/integration into main.** The owner chose Windows PC execution. The linked DJ/bridge and sampler demo now plays the S06 imported mock palette through normal controls; the DJ/hybrid remains S01-only. [S07 guide](S07_APP.md), [detailed handoff](handoffs/EMF-S07-HANDOFF.md).
 
-Updated 2026-11-05. **S06 is complete and in main.** It was built on the owner's PC: any producer's data-only delivery can be imported into a pack, and the S04 performer plays any palette that meets the written contract. A mock FL producer exercises the path; **no FL Studio ran** ([S06 guide](S06_IMPORT.md), [handoff](handoffs/EMF-S06-HANDOFF.md)).
+**Current action: coordinator review, independent check and integration of S07.** Tested source: `0cec058b8f8b4d9b5f6a8ddf5c1a5fd01139fd11`. The worker does not merge main. Coordinator owns board, NAV, RAM and acceptance updates; none were run by the worker.
 
-**Next pickup: EMF-S07 (CLOUD, or PC if the owner chooses), when separately assigned.** Read the [S06 handoff](handoffs/EMF-S06-HANDOFF.md) and the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint), then start from current main.
-
-**One campaign:** [EMF — Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Update the board on the PC through the EUTONOS boards CLI, never by hand. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
+**One campaign:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
-| 1 | **EMF-S07**: integrated app/demo and scaffold review, when assigned | Cloud or PC | One integrated demo over S02–S06, repeatable test commands, offline/browser audio checks, review findings and the exact tested commit. It reports **cloud playable proof**, not an accepted MVP. Checks run on each reachable OS, and the change is merged into main with its handoff. |
+| 1 | **EMF-S07 integration** | PC coordinator | Review branch and handoff, independently check, merge main and push; refresh native records. |
+| 2 | **EMF-S09**, when separately assigned after integration | BOTH - PC audio | Import eligible real FL material through the existing contract, generalize the bounded DJ/hybrid route and qualify the joined path. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.
 
@@ -31,24 +30,20 @@ EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this d
 }
 ```
 
-The tested S06 source is `8708c7806bb1ffc1d68c3ed8c2f34d29af0d9f4d`. On **Windows only** (Node 26.12.1 against the declared Node 24; headless Chromium 151) it passed:
-- **161 Node tests** (18 new);
-- unchanged fixture and media checks;
-- **23 native audio groups** (4 new, on the imported mock pack);
-- **12 browser report groups** (unchanged).
+The tested S07 source passed on **Windows only**, Node 26.12.1 against declared Node 24, headless Chromium 151.0.7922.34 / Playwright 1.62.1:
 
-macOS and Linux were not run for S05 or S06; S04's three-platform evidence keeps its own scope. There is no automatic CI (EM-DEC030): run `npm run check` and `npm run check:browser` on each OS you can reach and say which ran.
+- `npm.cmd run check`: **161 Node tests**, zero failures, seven deterministic fixture files and six WAV metadata/hash checks passed.
+- `npm.cmd run check:browser`: **23 native offline groups** and **15 browser report groups**, including three S07 UI groups, all passed. Reports/screenshots are local under ignored `artifacts/s07-browser/`.
 
-**First action for S07:** inspect current main and the S06 handoff before changing code. Setup is Node 24.x with `npm ci --ignore-scripts` and `npm run check`. `npm run mock:fl` regenerates the mock FL pack under `dist/`. Optional audition: `npm run demo`, then open http://127.0.0.1:4173/ and set **Handoff** to **Procedural bridge**.
+macOS/Linux were not run for S07. There is no automatic CI (EM-DEC030). Physical output and human listening are **NOT TESTED**. This is a playable engineering proof, not an accepted MVP. Overall campaign effort percentage is unknown.
 
-**EUTONOS files:** cloud sessions leave `docs/WORK_ITEMS.md`, `NAV/`, `RAM/` and `eutonos.*.json` alone. Keep the single `tokenslang-ram-links` block at the end of this page; never copy or delete it. `tools/eutonos_project.py` stops with "EUTONOS runtime missing" where EUTONOS is not installed, which is expected; continue without it.
+**Run:** `npm run demo`, then open http://127.0.0.1:4173/. Try Play -> Next Song with Handoff set to Procedural bridge, then follow **Play the S06 imported mock palette**. On the sampler, Stop before choosing a different palette, seed or arrangement. No FL Studio, downloads, credentials or proprietary audio are needed.
 
-**Remaining cloud sequence:** S07 integrated app, tests and scaffold review. No slice starts automatically.
+**Coordinator boundary:** leave `docs/WORK_ITEMS.md`, `NAV/`, `RAM/`, `eutonos.*.json` and agent configuration untouched in this worker handback. Keep the single RAM links block below intact. S07 is not integrated or accepted until the coordinator verifies the target.
 
-**PC lane:** **S08 is complete** ([handoff](handoffs/EMF-S08-HANDOFF.md), [guide](S08_FL_AUTHORING.md)). The owner still has to approve the project MCP server once in an interactive Claude Code session. Next, S09 joins the checked build and real FL audio on PC, and S10 is owner listening acceptance. **Only after that does S12 connect Mission Control.** Windows leads real FL/MCP integration; the shared system targets Windows, macOS and Linux. See the [authoritative slice table](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#execution-slices--authoritative-order-and-environment).
+**One next implementation slice: S09 - BOTH, PC audio**, after coordinator integration and separate assignment. Read the [S07 handoff](handoffs/EMF-S07-HANDOFF.md) and the [S08 handoff](handoffs/EMF-S08-HANDOFF.md); inspect actual eligible FL exports and their intended-use rights before import. S08 remains complete for its bounded Windows authoring scope; its separate one-time interactive project MCP approval remains an owner step. S10 is owner listening acceptance; S12 Mission Control integration waits for it. S07 starts neither slice nor any FL operation.
 
-Still unverified: physical output, human listening, S05 and S06 on macOS/Linux, importing real FL output (S09), the joined FL/cloud path and full MVP acceptance. Historical S03, S04 and S08 evidence keeps its original scope. Overall effort percentage is unknown.
-
+Still unverified: S07 on macOS/Linux and Node 24, physical output/listening, real FL import and joined DJ/hybrid playback, broader device/browser lifecycle, and full MVP acceptance. Historical platform evidence retains its original scope.
 
 ```tokenslang-ram-links
 {"links":[{"memories":["RAM/record-9358f1df11ab8a840eaa4fe313f7c9a30f057e5f5dad8a4ac6599dabd11a2618.json","RAM/record-b165e3e2039ede2282f1d89db15339710351d4b45ee9a1114e0b6eee41063aa2.json","RAM/record-5e8820539647b94c6ded139ebfa68646d5c3dc4466de2f95316e26ec7eb6e3ad.json","RAM/record-109dc875af359f8f9e370db2005bf476694a629f67a8eb7a380913ab7922d845.json"],"work_id":"eutonos-music-development-entry"}],"profile":"eutonos.tokenslang.ram-links.v2"}

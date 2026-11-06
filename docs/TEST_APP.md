@@ -1,13 +1,13 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: S03 connects DJ requests to the small recording player; the separate S04 sampler audition is COMPLETE as a CLOUD slice. The full three-layer MVP remains staged work.
+Status: S01–S06 are in main; [S07](S07_APP.md) is built on `work/emf-s07-app-20261106`, pending coordinator integration. The linked DJ/bridge and original/imported mock sampler form the engineering demo. Windows-only checks pass; physical output/listening and full three-layer MVP acceptance remain open.
 
 ## Implemented S03 subset
 
 [S03 setup and policy](S03_DJ.md) provides Play/Pause/Stop, Volume/Mute, State, Genre, Next Song, manual FIFO queue/cancellation and Hold state & genre. The app sends revisioned commands to one DJ, which schedules the existing A→B route through S02's one-clock renderer. Requested targets, scheduled sources, Now and queued entries are displayed separately. The [S03 handoff](handoffs/EMF-S03-HANDOFF.md) records actual evidence and limits.
 
-The recording fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. The [S04 sampler page](S04_PROCEDURAL.md) auditions a finite seeded source through the same player, without adding it to DJ selection or routes. S04 is COMPLETE on `work/emf-s04-procedural-20261104` after Node, native and browser checks passed on Windows, macOS and Linux. Main remains intentionally unchanged. S04 requires no PC action; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch. Mission Control integration remains later work.
+The recording fixtures support Explore/Drive and synthetic-test only. They do not supply every displayed target, a reverse B→A route, continuous playlist playback or adjustable transition lengths. The page retains the hidden-tab explicit-resume policy and same-origin playback lock. The [S07 sampler surface](S07_APP.md) plays the S01 or S06 imported mock palette with the same performer and player. The DJ page supplies the checked S05 S01 bridge; imported-content DJ/hybrid generalization remains S09. Physical output/listening are NOT TESTED; Mission Control integration waits for standalone acceptance.
 
 ## Later full MVP
 

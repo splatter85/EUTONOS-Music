@@ -3,7 +3,7 @@
 Document ID: `EM-D022`  
 Scope: one finite seeded sampler/phrase source and its audition path. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current delivery status; the [handoff](handoffs/EMF-S04-HANDOFF.md) records source-pinned execution evidence and limits.
 
-**EMF-S04 — CLOUD is COMPLETE** on [`work/emf-s04-procedural-20261104`](https://github.com/splatter85/EUTONOS-Music/tree/work/emf-s04-procedural-20261104), using corrected source [`73c456a147dcf24161ce22187e5e62320c5141b5`](https://github.com/splatter85/EUTONOS-Music/commit/73c456a147dcf24161ce22187e5e62320c5141b5). [CI run 41961109555](https://github.com/splatter85/EUTONOS-Music/actions/runs/41961109555) passed on Windows, macOS and Linux. Main remains intentionally unchanged at [`66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb`](https://github.com/splatter85/EUTONOS-Music/commit/66e974c9abbebc6ea9e3aaa6bf55dbd053d8a5bb), as requested by the owner. No PC action is required for S04. **Physical output and human listening are NOT TESTED.**
+**EMF-S04 — CLOUD is COMPLETE and integrated into main.** Corrected source `73c456a147dcf24161ce22187e5e62320c5141b5` passed Node/native/browser checks on Windows, macOS and Linux; the [S04 handoff](handoffs/EMF-S04-HANDOFF.md) retains original source and publication evidence. S05 and S06 are also in main. [S07](S07_APP.md) adds linked demo surfaces and imported mock-palette playback on its branch, pending coordinator integration. Physical output and human listening are NOT TESTED.
 
 ## Try a variation
 
@@ -21,7 +21,7 @@ Pause suspends the existing audio clock; Resume preserves its note schedule. Mut
 
 The seed and arrangement controls are disabled during preparation, scheduled playback, playback and pause. Requested selection, actual clock-active performance and clock diagnostics are shown separately. An invalid seed cannot start a performance. Natural completion releases ownership; replay is explicit.
 
-This page is a bounded source audition. The [recording DJ](S03_DJ.md) still has its two recordings and one A→B route. **S05 — CLOUD** is the next separately assigned slice, starting from the published S04 branch. It adds DJ selection and the recorded A → procedural → recorded B sequence; S04 does not invent those routes. (Since then [S05](S05_HYBRID.md) and [S06](S06_IMPORT.md) are complete.)
+This page is a bounded source audition. The [recording DJ](S03_DJ.md) has two S01 recordings and one A→B route, with the [S05](S05_HYBRID.md) procedural bridge. [S06](S06_IMPORT.md) generalized the performer palette contract; [S07](S07_APP.md) exposes original/imported palette comparison in this sampler, pending coordinator integration. Generalizing the DJ/hybrid for imported recordings remains S09.
 
 ## Musical boundary and replay identity
 
