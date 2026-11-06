@@ -3,7 +3,7 @@
 Document ID: `EM-D022`  
 Scope: one finite seeded sampler/phrase source and its audition path. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current delivery status; the [handoff](handoffs/EMF-S04-HANDOFF.md) records source-pinned execution evidence and limits.
 
-**EMF-S04 — CLOUD is COMPLETE and integrated into main.** Corrected source `73c456a147dcf24161ce22187e5e62320c5141b5` passed Node/native/browser checks on Windows, macOS and Linux; the [S04 handoff](handoffs/EMF-S04-HANDOFF.md) retains original source and publication evidence. S05 and S06 are also in main. [S07](S07_APP.md) adds linked demo surfaces and imported mock-palette playback on its branch, pending coordinator integration. Physical output and human listening are NOT TESTED.
+**EMF-S04 — CLOUD is COMPLETE and integrated into main.** Corrected source `73c456a147dcf24161ce22187e5e62320c5141b5` passed Node/native/browser checks on Windows, macOS and Linux; the [S04 handoff](handoffs/EMF-S04-HANDOFF.md) retains original source and publication evidence. S05 and S06 are also in main. [S07](S07_APP.md) adds linked demo surfaces and imported mock-palette playback. Physical output and human listening are NOT TESTED.
 
 ## Try a variation
 
@@ -21,7 +21,7 @@ Pause suspends the existing audio clock; Resume preserves its note schedule. Mut
 
 The seed and arrangement controls are disabled during preparation, scheduled playback, playback and pause. Requested selection, actual clock-active performance and clock diagnostics are shown separately. An invalid seed cannot start a performance. Natural completion releases ownership; replay is explicit.
 
-This page is a bounded source audition. The [recording DJ](S03_DJ.md) has two S01 recordings and one A→B route, with the [S05](S05_HYBRID.md) procedural bridge. [S06](S06_IMPORT.md) generalized the performer palette contract; [S07](S07_APP.md) exposes original/imported palette comparison in this sampler, pending coordinator integration. Generalizing the DJ/hybrid for imported recordings remains S09.
+This page is a bounded source audition. The [recording DJ](S03_DJ.md) has two S01 recordings and one A→B route, with the [S05](S05_HYBRID.md) procedural bridge. [S06](S06_IMPORT.md) generalized the performer palette contract; [S07](S07_APP.md) exposes original/imported palette comparison in this sampler. Generalizing the DJ/hybrid for imported recordings remains S09.
 
 ## Musical boundary and replay identity
 

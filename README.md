@@ -2,7 +2,7 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status: EMF-S07 is built on `work/emf-s07-app-20261106`, pending coordinator integration.** The linked DJ/bridge and sampler demo exposes the S06 imported mock palette in ordinary playback. Windows checks pass: **161 Node tests, 23 native offline groups and 15 browser report groups**. This is a playable engineering proof, not an accepted MVP. [S07 guide](docs/S07_APP.md), [handoff](docs/handoffs/EMF-S07-HANDOFF.md). S01-S06 and S08 remain in main.
+**Status: EMF-S07 is COMPLETE and integrated into main.** The linked DJ/bridge and sampler demo exposes the S06 imported mock palette in ordinary playback. Windows checks pass: **161 Node tests, 23 native offline groups and 15 browser report groups**. This is a playable engineering proof, not an accepted MVP. [S07 guide](docs/S07_APP.md), [review](docs/reviews/EMF_S07_APP_REVIEW.md), [handoff](docs/handoffs/EMF-S07-HANDOFF.md). S01-S08 are in main; S09 (PC) is next.
 
 **Physical output and human listening are NOT TESTED. No FL Studio ran for S07.** macOS/Linux and the declared Node 24 runtime were not run; Windows used Node 26.12.1 and headless Chromium 151. Next after coordinator integration: **S09 - PC**, importing eligible real FL output. [Current evidence](docs/CURRENT_TASKS.md).
 

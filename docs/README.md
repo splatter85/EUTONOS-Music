@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: S01–S06 and S08 are in main. **S07 integrated engineering demo is built on `work/emf-s07-app-20261106`, pending coordinator integration** ([handoff](handoffs/EMF-S07-HANDOFF.md)). It links DJ/bridge and sampler playback, including the S06 imported mock palette. Windows only: 161 Node tests, 23 native offline groups and 15 browser report groups passed; macOS/Linux were not run. No FL Studio ran. Physical output and listening are NOT TESTED. Next after integration is S09 PC; MVP acceptance remains open.
+Status: S01–S08 are in main. **S07 integrated engineering demo is complete** ([review](reviews/EMF_S07_APP_REVIEW.md), [handoff](handoffs/EMF-S07-HANDOFF.md)). It links DJ/bridge and sampler playback, including the S06 imported mock palette. Windows only: 161 Node tests, 23 native offline groups and 15 browser report groups passed; macOS/Linux were not run. No FL Studio ran. Physical output and listening are NOT TESTED. Next is S09 PC; MVP acceptance remains open.
 
 ## Start with the next audible result
 

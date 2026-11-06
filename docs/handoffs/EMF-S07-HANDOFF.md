@@ -1,12 +1,12 @@
-# EMF-S07 — integrated demo and scaffold self-review
+# EMF-S07 — integrated demo, review and handoff
 
 **Campaign:** EMF / `campaign-emf-001`  
 **Slice:** EMF-S07  
-**Disposition:** BUILT / IN_REVIEW on the work branch; **pending coordinator integration into main**  
+**Disposition:** **COMPLETE** for the bounded demo scope; reviewed and integrated into main by the coordinator  
 **Environment:** owner-selected PC execution, Windows 11 only  
 **Base:** main `7f86dbb2aa19016348b082c4f9058f237aed17e4`, clean at pickup  
 **Branch:** `work/emf-s07-app-20261106`  
-**Tested source:** `0cec058b8f8b4d9b5f6a8ddf5c1a5fd01139fd11`  
+**Tested source:** worker `0cec058b8f8b4d9b5f6a8ddf5c1a5fd01139fd11`; corrected after coordinator review **`9cc24e74d74ef9e2a3022e5dd5ca02737a42df4d`**  
 **Recorded:** 2026-11-06
 
 ## Assignment and bounded result
@@ -65,19 +65,33 @@ This is a **self-review**, not an independent review or EMF05 listening approval
 
 An intermediate corrected candidate passed the browser gate before final context-disposal assertions and restored-page handling were committed. Both full gates were then rerun on the exact tested source above. The earlier failed candidate is not delivery evidence. No unresolved source defect was found within the selected scope; independent review and platform/device limits remain open.
 
+## Coordinator review and corrections
+
+A separate read-only agent reviewed `7f86dbb..e4bfbfb` and probed the phrase compiler against both bundled manifests; the full record is the [S07 review](../reviews/EMF_S07_APP_REVIEW.md). Disposition: **KEEP for the bounded demo scope after corrections.** No high finding.
+
+| Finding | Correction |
+| --- | --- |
+| **Low–medium:** a stale palette selection could resume after a newer one following a back/forward-cache restore during a pending close. | Epoch rechecked right after the old player closes. |
+| **Low:** a failed load left an option selected, so the same palette could not be retried; `?pack=unknown` persisted. | The picker clears after a failure and an unknown value leaves the URL. |
+| **Low (accessibility):** the status line kept "Loading palette…" after a failure and did not name the ready palette. | Failure and palette-specific ready text; intro text is a polite live region. |
+| **Low:** an AudioContext would leak per Play if the route check threw. | The context is closed on constructor failure. |
+| **Low (tests/wording):** palette comparison asserted only the event count; restore handling was stated as fact; the demo link said "Play". | Palette-specific assertions added; restore marked "by inspection only"; link and server wording corrected. |
+
+At the corrected source **`9cc24e74d74ef9e2a3022e5dd5ca02737a42df4d`**, Windows 11, Node 26.12.1, Chromium 151.0.7922.34, Playwright 1.62.1: `npm.cmd run check` passed **161/161 Node tests**, fixture regeneration and six media validations; `npm.cmd run check:browser` passed **23/23 native offline groups and 15/15 browser report groups** with no page script errors (44.6 s). macOS/Linux and Node 24 were not run. **Physical output and listening are NOT TESTED. No FL Studio ran.**
+
 ## Git delivery, controls and recovery
 
-- All changes are on **`work/emf-s07-app-20261106`**. Main was neither committed nor merged; the coordinator owns final integration and target verification. Commits end with the worker's own co-author line.
-- **Remote publication was not performed.** Automatic approval review rejected the optional `git push -u origin work/emf-s07-app-20261106`, stating that authorization to export source to that GitHub destination was not established. No workaround or retry was attempted. The owner's assignment permits a local branch handback, so the coordinator can review/merge the branch in this same folder and perform its authorized publication. This handoff is committed locally; it is not represented as a GitHub-published artifact.
+- The worker built on **`work/emf-s07-app-20261106`** and did not merge main. The coordinator reviewed the branch, committed the review corrections there and fast-forwarded main to it; the integrated main SHA is given in the coordinator's mini handoff and the RAM record. Worker commits end with the worker's own co-author line.
+- The worker's optional `git push -u origin work/emf-s07-app-20261106` was rejected by its automatic approval review; it did not retry. The coordinator published main by a plain fast-forward push; the work branch itself was not pushed.
 - The tested source pin above identifies the executable source; the worker handback supplies the containing final docs SHA. A file cannot name its own containing SHA. Compare source paths against that pin before relying on the evidence.
-- `docs/WORK_ITEMS.md`, `NAV/`, `RAM/`, `eutonos.*.json`, `.claude/`, `.codex/` and external configuration were not changed. The single Current Tasks `tokenslang-ram-links` fence is preserved. No EUTONOS CLI, installer, main merge, PR, release or deployment ran.
-- Campaign/Current Tasks and related readable docs record **built on branch, pending coordinator integration**. Native board/NAV/RAM/acceptance reconciliation is explicitly deferred to the coordinator.
-- Recovery: inspect the local branch and this handoff; independently run the two gates with available runtime/browser, review the diff, then integrate/publish through the coordinator's authority. If using a fresh checkout, this local branch must first be published or transferred through an authorized route.
+- The worker changed none of `docs/WORK_ITEMS.md`, `NAV/`, `RAM/`, `eutonos.*.json`, `.claude/`, `.codex/` or external configuration. The coordinator then updated the board, NAV, RAM and acceptance through the EUTONOS CLIs. The single Current Tasks `tokenslang-ram-links` fence is preserved.
+- Campaign, Current Tasks and related readable docs record **S07 COMPLETE, integrated into main**.
+- Recovery: check out main, rerun the two gates with the available runtime/browser and compare source paths against the corrected tested source above.
 
 ## One next slice
 
-**Exactly one next implementation slice:** **EMF-S09 — BOTH, PC audio**, only after coordinator integration and separate assignment.  
+**Exactly one next implementation slice:** **EMF-S09 — BOTH, PC audio**, when separately assigned.  
 **Prerequisites:** the reviewed S07 revision; [S08 handoff](EMF-S08-HANDOFF.md), including its separate one-time interactive project MCP approval; eligible real FL exports with measured metadata, provenance and operation-specific rights; existing Node/browser setup. S08 factory-sound renders are playback-only and cannot become reusable palette samples without suitable sample-reuse rights.  
 **First action:** read S07/S08 handoffs and the [campaign checkpoint](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint), verify the integrated SHA, rerun `npm run check` / `npm run check:browser` as appropriate, and inspect actual exports before importing through the existing S06 contract. Generalize the one bounded DJ/hybrid route only with those facts.  
-**Owner/coordinator action now:** independently review/check the local S07 branch, merge into main and publish; refresh native records/acceptance. No listening result or FL operation is requested by this handback.  
+**Owner action now:** none required. No listening result or FL operation is requested by this handoff.  
 **Still not done:** macOS/Linux/Node 24 for S07, real device output, human listening, real FL import/joined playback, broader lifecycle/continuous listening and accepted standalone MVP. Overall campaign effort percentage is **unknown**; test counts do not estimate it. S10 acceptance remains separate and precedes S12 Mission Control integration.

@@ -2,9 +2,9 @@
 
 Document ID: `EM-D010`
 
-Updated 2026-11-06. **S07 is built on `work/emf-s07-app-20261106`, pending coordinator review/integration into main.** The owner chose Windows PC execution. The linked DJ/bridge and sampler demo now plays the S06 imported mock palette through normal controls; the DJ/hybrid remains S01-only. [S07 guide](S07_APP.md), [detailed handoff](handoffs/EMF-S07-HANDOFF.md).
+Updated 2026-11-06. **S07 is COMPLETE and integrated into main.** The owner chose Windows PC execution. The linked DJ/bridge and sampler demo now plays the S06 imported mock palette through normal controls; the DJ/hybrid remains S01-only. [S07 guide](S07_APP.md), [review](reviews/EMF_S07_APP_REVIEW.md), [detailed handoff](handoffs/EMF-S07-HANDOFF.md).
 
-**Current action: coordinator review, independent check and integration of S07.** Tested source: `0cec058b8f8b4d9b5f6a8ddf5c1a5fd01139fd11`. The worker does not merge main. Coordinator owns board, NAV, RAM and acceptance updates; none were run by the worker.
+**Current action: none assigned.** Corrected tested source: `9cc24e74d74ef9e2a3022e5dd5ca02737a42df4d` (Windows only: 161 Node tests, 23 native groups, 15 browser report groups). **Next slice: S09 - BOTH, PC audio**, when separately assigned: inspect eligible real FL exports and join them through the existing S06 contract. Physical output and listening are NOT TESTED.
 
 **One campaign:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 

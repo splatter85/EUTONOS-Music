@@ -1,7 +1,7 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: S01–S06 are in main; [S07](S07_APP.md) is built on `work/emf-s07-app-20261106`, pending coordinator integration. The linked DJ/bridge and original/imported mock sampler form the engineering demo. Windows-only checks pass; physical output/listening and full three-layer MVP acceptance remain open.
+Status: S01–S07 are in main; [S07](S07_APP.md) is complete. The linked DJ/bridge and original/imported mock sampler form the engineering demo. Windows-only checks pass; physical output/listening and full three-layer MVP acceptance remain open.
 
 ## Implemented S03 subset
 

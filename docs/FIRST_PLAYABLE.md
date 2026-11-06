@@ -1,7 +1,7 @@
 # First playable — standalone three-layer MVP
 
 Document ID: `EM-D016`  
-Status: **S01–S06 and S08 are in main. S07 is built on `work/emf-s07-app-20261106`, pending coordinator integration.** The [S07 demo](S07_APP.md) connects the S01 DJ/hybrid and original/imported mock-palette sampler. Its Node/native/browser gates pass on Windows only; this is a playable engineering proof. Physical output and listening are NOT TESTED. S09 joins eligible real FL output; S10 is owner listening acceptance. The full three-layer MVP remains incomplete. [Detailed S07 evidence](handoffs/EMF-S07-HANDOFF.md).
+Status: **S01–S08 are in main.** The [S07 demo](S07_APP.md) connects the S01 DJ/hybrid and original/imported mock-palette sampler. Its Node/native/browser gates pass on Windows only; this is a playable engineering proof. Physical output and listening are NOT TESTED. S09 joins eligible real FL output; S10 is owner listening acceptance. The full three-layer MVP remains incomplete. [Detailed S07 evidence](handoffs/EMF-S07-HANDOFF.md).
 
 **Platforms:** Windows first for real FL/MCP integration, with Windows, macOS and Linux required for the shared music system. Each host-specific authoring adapter and browser/audio-device path needs its own verification; portable fixture/test execution alone does not establish it.
 
