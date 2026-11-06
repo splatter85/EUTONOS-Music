@@ -2,6 +2,8 @@
 
 Document ID: `EM-D010`
 
+**S07 active pickup, 2026-11-06:** owner-selected Windows worker on `work/emf-s07-app-20261106`, from main `7f86dbb2aa19016348b082c4f9058f237aed17e4`. Integrate the existing DJ/hybrid and sampler demo surfaces and expose the S06 mock palette in normal playback; retain the S01-only DJ policy. Next: implement the bounded palette selection, then run the Node and native/browser gates and self-review. Coordinator owns integration and EUTONOS records.
+
 Updated 2026-11-05. **S06 is complete and in main.** It was built on the owner's PC: any producer's data-only delivery can be imported into a pack, and the S04 performer plays any palette that meets the written contract. A mock FL producer exercises the path; **no FL Studio ran** ([S06 guide](S06_IMPORT.md), [handoff](handoffs/EMF-S06-HANDOFF.md)).
 
 **Next pickup: EMF-S07 (CLOUD, or PC if the owner chooses), when separately assigned.** Read the [S06 handoff](handoffs/EMF-S06-HANDOFF.md) and the [campaign checkpoint](campaigns/EMF_INITIAL_INFRASTRUCTURE.md#current-checkpoint), then start from current main.

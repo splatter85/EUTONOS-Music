@@ -112,7 +112,7 @@ function startDemo(args: string[]): void {
   server.listen(port, '127.0.0.1', () => {
     const address = server.address();
     if (address && typeof address !== 'string') {
-      console.log(`EUTONOS Music S02 demo: http://127.0.0.1:${address.port}/`);
+      console.log(`EUTONOS Music demo: http://127.0.0.1:${address.port}/`);
       console.log('Local development server. Press Ctrl+C to stop.');
     }
   });

@@ -1,5 +1,5 @@
 /**
- * Isolated S03/S04/S05/S06 browser checks. Audio/queue behavior is observed through the real
+ * Isolated S03–S07 browser checks. Audio/queue behavior is observed through the real
  * UI; native offline comparisons remain distinct from physical output/listening. S06 first
  * regenerates the MOCK FL pack under dist/ (no FL Studio runs).
  */
@@ -23,7 +23,7 @@ const modulePath = options.get('--playwright-module');
 const moduleName = modulePath ? pathToFileURL(resolve(modulePath)).href : 'playwright';
 const {chromium} = await import(moduleName);
 const playwrightVersion = JSON.parse(await readFile(new URL('./package.json', import.meta.resolve(moduleName)), 'utf8')).version as string;
-const directory = resolve(options.get('--output') ?? 'artifacts/s04-browser');
+const directory = resolve(options.get('--output') ?? 'artifacts/s07-browser');
 await mkdir(directory, {recursive: true});
 await generateMockPack(DEFAULT_MOCK_OUT);
 const server = createDemoServer();
@@ -389,6 +389,116 @@ try {
   await sampler.setViewportSize({width: 390, height: 844});
   assert.ok(await sampler.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Sampler mobile layout overflows');
   await sampler.screenshot({path: resolve(directory, 'sampler-mobile.png'), fullPage: true});
+  assert.deepEqual(errors, []);
+  checks.push({name: stage, status: 'PASS'});
+  stage = 'S07 main-page entry to imported sampler, silent preparation and stopped palette comparison';
+  await sampler.close();
+  currentPage = page;
+  await page.bringToFront();
+  await page.addInitScript(() => {
+    const NativeContext = window.AudioContext;
+    const contexts: AudioContext[] = [];
+    (window as unknown as {testAudioContexts: AudioContext[]}).testAudioContexts = contexts;
+    window.AudioContext = class extends NativeContext {
+      constructor(options?: AudioContextOptions) { super(options); contexts.push(this); }
+    };
+  });
+  await page.locator('#imported-sampler').click();
+  await ready(page);
+  assert.match(page.url(), /\/procedural\.html\?pack=mock-fl$/);
+  assert.equal(await page.locator('#pack').inputValue(), 'mock-fl');
+  await waitText(page, '#loading', /^S06 imported mock palette/);
+  await waitText(page, '#plan-detail', /palette s06-mock/);
+  assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  assert.equal(await page.evaluate(() => (window as unknown as {testAudioContexts: AudioContext[]}).testAudioContexts.length), 0);
+  const importedEvents = (await page.locator('#selection-detail').innerText()).match(/\d+ sample events/)?.[0];
+  assert.ok(importedEvents);
+  await page.locator('#pack').selectOption('s01');
+  await ready(page);
+  await waitText(page, '#plan-detail', /palette s01-palette/);
+  assert.match(await page.locator('#selection-detail').innerText(), new RegExp(importedEvents));
+  assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  await page.locator('#pack').selectOption('mock-fl');
+  await ready(page);
+  await waitText(page, '#plan-detail', /palette s06-mock/);
+  await page.screenshot({path: resolve(directory, 'imported-sampler-ready.png'), fullPage: true});
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'S07 imported sampler transport, paused selection guard, ownership and navigation cleanup';
+  await page.locator('#play').click();
+  await waitText(page, '#status', /^Playing the prepared phrase plan$/);
+  assert.equal(await page.locator('#pack').isDisabled(), true);
+  await page.locator('#pause').click();
+  await waitText(page, '#clock-detail', /^suspended ·/);
+  assert.equal(await page.locator('#pack').isDisabled(), true);
+  await page.locator('#mute').click();
+  await pressed(page, 'mute', true);
+  await page.locator('#pause').click();
+  await waitText(page, '#now-detail', /^playing · muted ·/);
+  const djPage = await context.newPage();
+  currentPage = djPage;
+  observeErrors(djPage, 'imported-ownership');
+  await djPage.goto(origin);
+  await ready(djPage);
+  await djPage.locator('#play').click();
+  await waitText(djPage, '#error', /Another tab owns playback/);
+  assert.equal(await djPage.locator('#now-title').innerText(), 'Nothing playing');
+  await page.bringToFront();
+  await page.locator('#stop').click();
+  await ready(page);
+  await page.locator('#pack').selectOption('s01');
+  await ready(page);
+  assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  assert.deepEqual(await page.evaluate(() => (window as unknown as {testAudioContexts: AudioContext[]}).testAudioContexts.map(context => context.state)), ['closed']);
+  await page.locator('#pack').selectOption('mock-fl');
+  await ready(page);
+  await page.locator('#play').click();
+  await waitText(page, '#status', /^Playing the prepared phrase plan$/);
+  // Navigation must close the old owner; the DJ requires a fresh explicit Play.
+  await page.getByRole('navigation', {name: 'Demo'}).getByRole('link', {name: 'DJ & bridge'}).click();
+  await ready(page);
+  await djPage.bringToFront();
+  await djPage.locator('#play').click();
+  await waitText(djPage, '#now-title', /^S01 A/);
+  await stop(djPage);
+  await djPage.close();
+  currentPage = page;
+  await page.bringToFront();
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'S07 missing, corrupt and unknown imported palettes fail silent and recover through the selector';
+  const mockManifest = '**/generated/s06-mock-fl/pack/manifest.json';
+  await page.route(mockManifest, route => route.fulfill({status: 404, body: 'Missing fixture'}));
+  await page.locator('#imported-sampler').click();
+  await waitText(page, '#loading', /^Palette unavailable/);
+  assert.equal(await page.locator('#play').isDisabled(), true);
+  assert.equal(await page.locator('#now-title').innerText(), 'Nothing playing');
+  assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  assert.ok(await page.locator('#error').innerText());
+  await page.locator('#pack').selectOption('s01');
+  await ready(page);
+  await page.unroute(mockManifest);
+  await page.route(mockManifest, route => route.fulfill({status: 200, contentType: 'application/json', body: '{}'}));
+  await page.locator('#pack').selectOption('mock-fl');
+  await waitText(page, '#loading', /^Palette unavailable/);
+  assert.equal(await page.locator('#play').isDisabled(), true);
+  await page.unroute(mockManifest);
+  await page.locator('#pack').selectOption('s01');
+  await ready(page);
+  await page.locator('#pack').selectOption('mock-fl');
+  await ready(page);
+  await page.reload();
+  await ready(page);
+  assert.equal(await page.locator('#pack').inputValue(), 'mock-fl');
+  assert.equal(await page.locator('#clock-detail').textContent(), 'The audio context starts on your first Play.');
+  await page.goto(origin + '/procedural.html?pack=unknown');
+  await waitText(page, '#error', /^Unknown palette/);
+  assert.equal(await page.locator('#play').isDisabled(), true);
+  await page.locator('#pack').selectOption('mock-fl');
+  await ready(page);
+  await page.setViewportSize({width: 390, height: 844});
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Imported sampler mobile layout overflows');
+  await page.screenshot({path: resolve(directory, 'imported-sampler-mobile.png'), fullPage: true});
   assert.deepEqual(errors, []);
   checks.push({name: stage, status: 'PASS'});
   const report = {browser: await runningBrowser.version(), platform: process.platform, node: process.version,

@@ -1,5 +1,5 @@
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
-import {compileS01Phrase, type ProceduralPlan} from '../src/phrase-plan.js';
+import {compilePhrase, type ProceduralPlan} from '../src/phrase-plan.js';
 import {SmallPlayer} from '../src/player.js';
 
 const element = <T extends HTMLElement>(id: string): T => {
@@ -8,6 +8,15 @@ const element = <T extends HTMLElement>(id: string): T => {
   return found as T;
 };
 const seed = element<HTMLInputElement>('seed'), state = element<HTMLSelectElement>('state');
+const packInput = element<HTMLSelectElement>('pack');
+// Only bundled, eligible engineering fixtures are selectable. No URL import or DJ policy change.
+const packs = {
+  s01: {manifest: '/fixtures/s01/manifest.json', label: 'S01 original palette'},
+  'mock-fl': {manifest: '/generated/s06-mock-fl/pack/manifest.json', label: 'S06 imported mock palette'},
+} as const;
+type PackChoice = keyof typeof packs;
+let selectedPack: PackChoice = 's01';
+let loadingPack = false, loadEpoch = 0;
 const play = element<HTMLButtonElement>('play'), pause = element<HTMLButtonElement>('pause');
 const stop = element<HTMLButtonElement>('stop'), mute = element<HTMLButtonElement>('mute');
 const volume = element<HTMLInputElement>('volume'), progress = element<HTMLProgressElement>('progress');
@@ -46,14 +55,19 @@ function prepareSelection(): void {
     if (!/^\d{1,10}$/.test(seed.value)) throw new Error('Enter a whole-number seed from 0 through 4294967295.');
     const selectedState = state.value;
     if (selectedState !== 'explore' && selectedState !== 'drive') throw new Error('Choose Explore or Drive.');
-    plan = compileS01Phrase(loaded.pack, {seed: Number(seed.value), state: selectedState, allowFixtures: true});
+    const recipe = loaded.pack.recipes[0];
+    if (!recipe) throw new Error('The selected pack has no performer recipe.');
+    plan = compilePhrase(loaded.pack, {recipe: {id: recipe.id, revision: recipe.revision},
+      seed: Number(seed.value), state: selectedState, allowFixtures: true});
   } catch (error) { setText('error', message(error)); }
   render();
 }
 function getPlayer(): SmallPlayer {
   if (player) return player;
   if (!loaded) throw new Error('The sample palette is still loading.');
-  player = new SmallPlayer(new AudioContext(), loaded, 's01-a-to-b');
+  const route = loaded.pack.routes[0];
+  if (!route) throw new Error('The selected pack has no playable route.');
+  player = new SmallPlayer(new AudioContext(), loaded, route.id);
   player.setVolume(Number(volume.value)); player.setMuted(muted);
   return player;
 }
@@ -93,17 +107,19 @@ stop.addEventListener('click', () => {
 mute.addEventListener('click', () => { muted = !muted; player?.setMuted(muted); render(); });
 volume.addEventListener('input', () => { player?.setVolume(Number(volume.value)); });
 seed.addEventListener('input', prepareSelection); state.addEventListener('change', prepareSelection);
+packInput.addEventListener('change', () => { void selectPack(packInput.value); });
 
 function render(): void {
   const snapshot = player?.snapshot(), status = snapshot?.state ?? 'idle';
   const running = ['loading', 'scheduled', 'playing', 'paused'].includes(status);
   seed.disabled = state.disabled = running;
+  packInput.disabled = loadingPack || running;
   play.disabled = !plan || running || status === 'closed';
   pause.disabled = !running; pause.textContent = status === 'paused' ? 'Resume' : 'Pause';
   stop.disabled = !loaded || status === 'closed'; mute.disabled = !loaded;
   mute.textContent = muted ? 'Unmute' : 'Mute'; mute.setAttribute('aria-pressed', String(muted));
   setText('selection-title', plan ? `Seed ${plan.seed} · ${plan.state}` : 'No valid selection');
-  setText('selection-detail', plan ? `Rhythm plan ready · ${plan.events.length} sample events · 120 BPM · A minor` : 'Enter a valid seed to prepare a plan.');
+  setText('selection-detail', plan ? `${packs[selectedPack].label} · rhythm plan ready · ${plan.events.length} sample events · 120 BPM · A minor` : 'No plan prepared. Choose an available palette and valid seed.');
   setText('now-title', snapshot?.now.length && activePlan ? `Seed ${activePlan.seed} · ${activePlan.state}` : 'Nothing playing');
   setText('now-detail', `${status}${muted ? ' · muted' : ''} · ${(snapshot?.elapsedSeconds ?? 0).toFixed(1)}s / ${(snapshot?.durationSeconds ?? 0).toFixed(1)}s`);
   setText('status', status === 'loading' ? 'Preparing playback…' : status === 'closed' ? 'Player closed — reload to start a new session.' : status === 'ended' ? 'Performance ended — replay or choose another seed.' : status === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : status === 'playing' ? 'Playing the prepared phrase plan' : status === 'scheduled' ? 'Scheduled — waiting for the audio clock' : loaded ? 'Ready — press Play variation to start' : 'Loading palette…');
@@ -116,18 +132,51 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && player && ['loading', 'scheduled', 'playing'].includes(player.snapshot().state)) void pauseOrResume(true);
 });
 window.addEventListener('pagehide', () => {
-  ++operation; const previous = player; player = null; activePlan = null;
+  ++operation; ++loadEpoch; const previous = player; player = null; activePlan = null;
   void previous?.dispose().catch(() => undefined); releaseOwnership();
 });
-window.addEventListener('pageshow', render);
+window.addEventListener('pageshow', event => {
+  // A restored page may have left while a pack read was pending. Revalidate it;
+  // a stale read must neither strand the picker nor prepare playback on return.
+  if (event.persisted) void initialize();
+  else render();
+});
 async function initialize(): Promise<void> {
   try {
     if (!window.isSecureContext || !window.AudioContext || !navigator.locks || !crypto.subtle) throw new Error('Use a current browser on http://127.0.0.1 or HTTPS with Web Audio and Web Locks support.');
-    loaded = await loadBrowserPack(new URL('/fixtures/s01/manifest.json', location.href), true);
-    setText('loading', 'Four original samples · eight bars · repeatable rhythm and phrase choices');
-    prepareSelection();
+    await selectPack(new URL(location.href).searchParams.get('pack') ?? 's01');
   } catch (error) { setText('loading', 'Palette unavailable — fix the error and reload.'); setText('error', message(error)); }
   render();
+}
+async function selectPack(choice: string): Promise<void> {
+  const epoch = ++loadEpoch;
+  ++operation;
+  const previous = player;
+  player = null; loaded = null; plan = null; activePlan = null; pauseReason = '';
+  loadingPack = true;
+  // dispose gates output synchronously; no new context is made until explicit Play.
+  const disposed = previous?.dispose();
+  releaseOwnership();
+  setText('error', ''); setText('loading', 'Loading and validating the selected palette…'); render();
+  try {
+    await disposed;
+    if (choice !== 's01' && choice !== 'mock-fl') throw new Error('Unknown palette. Choose S01 original or S06 imported mock.');
+    selectedPack = choice; packInput.value = choice;
+    const url = new URL(location.href); url.searchParams.set('pack', choice);
+    history.replaceState(null, '', url);
+    const candidate = await loadBrowserPack(new URL(packs[choice].manifest, location.href), true);
+    if (epoch !== loadEpoch) return;
+    loaded = candidate;
+    setText('loading', `${packs[choice].label} · four original samples · eight bars · no FL Studio required`);
+    prepareSelection();
+  } catch (error) {
+    if (epoch === loadEpoch) {
+      setText('loading', 'Palette unavailable — choose another palette or reload.');
+      setText('error', message(error));
+    }
+  } finally {
+    if (epoch === loadEpoch) { loadingPack = false; render(); }
+  }
 }
 function frame(): void { render(); requestAnimationFrame(frame); }
 void initialize(); requestAnimationFrame(frame);
