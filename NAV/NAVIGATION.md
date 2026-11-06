@@ -35,12 +35,12 @@ IDs, then inspect current source before editing.
 
 ### `AREA-pack-ab-playback-demo` Pack loading and A/B transition playback demo
 - Kind: area
-- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge
-- Summary: Capability: a loopback demo loads the S01 fixture pack in the browser (fixture mode on), plays recordings through SmallPlayer, takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge) and auditions seeded procedural phrases. The pages and scripts live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html and the browser modules, and scripts/browser-check.ts runs native offline and Chromium checks for player, bridge and sampler. Fixture-only; production hosting and arbitrary packs are out of scope.
+- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge; S06 imported pack checks
+- Summary: Capability: a loopback demo loads the S01 fixture pack in the browser (fixture mode on), plays recordings through SmallPlayer, takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge) and auditions seeded procedural phrases. The pages and scripts live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html, the browser modules and, for S06, only the JSON, Markdown and WAV files of the mock FL pack generated under dist/generated/s06-mock-fl/pack/. scripts/browser-check.ts regenerates that MOCK pack (no FL Studio) and runs 23 native offline groups plus the Chromium checks. The player page itself still plays S01 only; production hosting and arbitrary packs are out of scope.
 - Evidence: `src/browser-pack.ts`; `src/player.ts`; `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-playback`; `SRC-dev-scripts`; `GAP-web-demo-outside-source-roots`; `SURF-demo-http-server`; `JRN-load-pack-play-ab-transition`; `GAP-authored-pack-not-playable-in-demo`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SYS-pack-validation` Audio pack manifest and media validation
 - Kind: system
@@ -117,11 +117,11 @@ IDs, then inspect current source before editing.
 ### `SYS-demo-server` Loopback demo server and browser check runner
 - Kind: system
 - Aliases: serve.ts; browser-check.ts
-- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner drives it with an injected Playwright module, runs native offline checks plus player (crossfade and procedural bridge) and sampler page stages, and writes evidence.
+- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures, and the JSON, Markdown and WAV files of the generated S06 MOCK pack under /generated/s06-mock-fl/pack/), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner first regenerates the MOCK FL pack (no FL Studio), drives the server with an injected Playwright module, runs 23 native offline checks (including four on the imported mock pack) plus player (crossfade and procedural bridge) and sampler page stages, and writes evidence.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-dev-scripts`; `AREA-pack-ab-playback-demo`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `GAP-control-contract-unwired` Control contract reaches only the session-local DJ
 - Kind: gap
@@ -144,11 +144,12 @@ IDs, then inspect current source before editing.
 ### `GAP-authored-pack-not-playable-in-demo` Authored packs have no route and are not demo-playable
 - Kind: gap
 - Aliases: fl_build_pack output to player
-- Summary: fl_build_pack writes a pack with one recording, empty palettes, recipes and routes, eligibility unreviewed and playback-only owner-local rights. SmallPlayer needs a directed A to B route over two distinct recordings and fixture mode, and the S04 sampler compiles only the exact s01-foundation@1 recipe and palette, so an authored pack is playable by neither path, and the DJ catalog would exclude its ineligible recording. No source here shows a review step that makes it eligible; unchanged by S03 and S04.
+- Summary: fl_build_pack writes a pack with one recording, empty palettes, recipes and routes, eligibility unreviewed and playback-only owner-local rights. SmallPlayer needs a directed A to B route over two distinct recordings and fixture mode, so an authored pack is not demo-playable, and the DJ catalog would exclude its ineligible recording. Since S06 the sampler accepts any palette meeting the s06-performer-palette@1 contract (src/phrase-plan.ts), but an authored pack has no palette and its playback-only rights forbid sample reuse. The S06 importer (src/importer.ts) is the path for producer deliveries; no source here shows a review step that makes material eligible.
 - Evidence: `src/authoring/broker.ts`; `src/web-audio.ts`; `src/pack.ts`; `src/player.ts`
 - Related: `JRN-author-sketch-to-pack`; `JRN-load-pack-play-ab-transition`; `INT-fl-build-pack`; `SYS-web-audio-transition-player`
 - Review: gap
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+
 ### `SYS-deterministic-dj` Deterministic DJ coordinator
 - Kind: system
 - Aliases: DeterministicDj; S03 DJ; request executor
@@ -160,12 +161,12 @@ IDs, then inspect current source before editing.
 
 ### `SYS-procedural-sampler` Seeded phrase compiler and finite sampler source
 - Kind: system
-- Aliases: compileS01Phrase; ProceduralSource; s04-s01-performer
-- Summary: compileS01Phrase turns an explicit uint32 seed and a state (explore or drive) into an immutable eight-bar, 120 bpm plan of at most 256 note events, accepted only for the exact s01-foundation@1 pack, s01-recipe@1 and four-sample s01-palette@1, and only for assets with playback and sample-reuse rights and eligible review (or fixture opt-in). ProceduralSource is a finite PlayableSource that schedules every note on the owner's WebAudioClock in one pass, with at most four voices and one per role, exits at the 16-quarter phrase and the 32-quarter end, and fails silent on a stale clock or partial schedule. For S05 it also takes an optional role-limited lead-in window and a role-handoff transitionOut that cancels non-retained attacks at the exit and lets retained roles sound only inside a bounded tail. decodeProceduralSamples rechecks hashes and a decoded-memory budget. Any other pack or recipe fails closed.
+- Aliases: compilePhrase; compileS01Phrase; ProceduralSource; s04-s01-performer; s06-performer-palette@1
+- Summary: compilePhrase(pack, {recipe, seed, state}) turns an explicit uint32 seed and a state (explore or drive) into an immutable eight-bar, 120 bpm plan of at most 256 note events for any recipe whose palette meets the written S06 contract s06-performer-palette@1: 120 BPM 4/4 four-bar phrases with a harmony and the requested state; exactly one drum, percussion, bass and harmony sample; pitched roles with a root and pitch classes inside the recipe harmony, unpitched roles with neither; each sample within its role's gap (maxRoleFrames at its own rate, exact because onsets sit on the sixteenth grid); playback and sample-reuse rights and eligible review (or fixture opt-in). Refusals name the rule; keys, ids, rates and hashes are labels. compileS01Phrase is compilePhrase over s01-recipe@1. ProceduralSource is a finite PlayableSource that schedules every note on the owner's WebAudioClock in one pass, with at most four voices and one per role, exits at the 16-quarter phrase and the 32-quarter end, and fails silent on a stale clock or partial schedule; for S05 it also takes a role-limited lead-in and a role-handoff transitionOut. decodeProceduralSamples rechecks hashes and a decoded-memory budget, and checkProceduralPlan recompiles with the plan's own recipe.
 - Evidence: `src/dj.ts`; `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/pack.ts`
-- Related: `SRC-dj-procedural`; `SYS-web-audio-transition-player`; `SYS-pack-validation`; `JRN-procedural-audition`; `GAP-authored-pack-not-playable-in-demo`; `SYS-hybrid-handoff`
+- Related: `SRC-dj-procedural`; `SYS-web-audio-transition-player`; `SYS-pack-validation`; `JRN-procedural-audition`; `GAP-authored-pack-not-playable-in-demo`; `SYS-hybrid-handoff`; `SYS-producer-importer`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SYS-hybrid-handoff` Checked recording to procedural bridge to recording handoff
 - Kind: system
@@ -175,3 +176,11 @@ IDs, then inspect current source before editing.
 - Related: `SYS-web-audio-transition-player`; `SYS-procedural-sampler`; `SYS-deterministic-dj`; `SRC-dj-procedural`; `INT-schedule-hybrid`; `JRN-hybrid-handoff`
 - Review: candidate
 - Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+### `SYS-producer-importer` Producer delivery importer and import receipt
+- Kind: system
+- Aliases: importDelivery; IMPORT.json; em.import-receipt.v0; eutonos-music-importer@1
+- Summary: importDelivery(delivery, newPack) reads em.producer-delivery.v0 (strict fields, 1 MiB JSON, at most 64 assets, at most 256 MiB read per delivery) through the bounded pack reader, checks optional producer hashes, measures each PCM16 WAV itself, trims a keep_frames tail only at or below 0.001 peak, refuses silent or full-scale audio, listening-review claims and s01- ids, writes canonical 44-byte WAV headers around unchanged PCM, validates with the unchanged pack validator, copies UTF-8 rights evidence (refusing case or folder clashes), and writes a timestamp-free IMPORT.json with per-recipe generator checks and a browser_player check (the unchanged loadBrowserPack in fixture mode over the finished bytes). It runs loadPack and only then renames the folder into place, never over an existing one. Refusals carry a code and location. Producer identity, rights and musical labels are recorded, not verified.
+- Evidence: `src/importer.ts`
+- Related: `SRC-producer-import`; `SYS-pack-validation`; `SYS-procedural-sampler`; `INT-cli-import-delivery`; `INT-cli-mock-fl-producer`
+- Review: candidate
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be

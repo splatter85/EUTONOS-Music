@@ -64,12 +64,13 @@ state, persistence, failure paths, and terminal conditions.
 
 ### `JRN-procedural-audition` Compile and audition a seeded procedural phrase
 - Kind: journey
-- Aliases: sampler audition; seed replay
-- Summary: A caller loads the S01 fixture pack with fixtures allowed, calls compileS01Phrase with a seed and state, then SmallPlayer.playProcedural. The player resumes the context, decodes the four-sample palette once with hash and memory checks, builds a ProceduralSource, schedules all notes at a lead frame on the shared clock and unmutes only after the whole schedule commits. The phrase ends at 32 quarters unless an exit at 16 is used for a handoff; stop, release and a stale generation silence it. The same seed and state replay the same events; other packs are refused.
+- Aliases: sampler audition; seed replay; imported palette
+- Summary: A caller loads a pack (fixtures allowed for fixture-only material), calls compilePhrase with a recipe ref, seed and state (or compileS01Phrase for the S01 recipe), then SmallPlayer.playProcedural. Since S06 the plan binds any palette meeting the written s06-performer-palette@1 contract (120 BPM 4/4, one drum, percussion, bass and harmony sample, pitch classes inside the recipe harmony, role length limits, eligibility and sample-reuse rights) instead of only the S01 identity; a refusal names the rule. The player resumes the context, decodes the four-sample palette once with hash and memory checks, builds a ProceduralSource, schedules all notes at a lead frame on the shared clock and unmutes only after the whole schedule commits. The phrase ends at 32 quarters unless an exit at 16 is used for a handoff; stop, release and a stale generation silence it. The same seed and state replay the same events for any contract palette.
 - Evidence: `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/player.ts`; `src/browser-pack.ts`
 - Related: `SYS-procedural-sampler`; `INT-play-procedural`; `SYS-web-audio-transition-player`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+
 ### `JRN-hybrid-handoff` DJ Next song through a procedural bridge
 - Kind: journey
 - Aliases: hybrid Next; A to bridge to B

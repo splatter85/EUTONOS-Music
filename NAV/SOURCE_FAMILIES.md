@@ -48,12 +48,12 @@ a claim that every file in a directory shares one owner.
 
 ### `SRC-dev-scripts` Fixture generation, demo server and checks
 - Kind: source-family
-- Aliases: npm scripts; fixtures generator; demo server
-- Summary: Offline deterministic fixture generator, loopback-only demo server (serving the DJ and sampler pages and their modules, including the S05 hybrid checks), browser check runner (native offline groups, player, sampler and S05 live bridge stages) and the pack validation CLI used by `npm run check`.
+- Aliases: npm scripts; fixtures generator; demo server; mock FL producer; import CLI
+- Summary: Offline deterministic fixture generator, loopback-only demo server (serving the DJ and sampler pages and their modules, the S05 hybrid checks and the generated S06 mock pack), browser check runner (native offline groups including the S06 imported-pack groups, player, sampler and S05 live bridge stages), the pack validation CLI used by `npm run check`, the S06 `npm run import` CLI and the S06 MOCK FL producer that drives the S08 broker against a synthetic host (no FL Studio) and writes dist/generated/s06-mock-fl.
 - Evidence: `scripts/browser-check.ts`; `scripts/generate-fixtures.ts`; `scripts/serve.ts`; `scripts/validate-pack.ts`
 - Related: `SYS-fixture-pipeline`; `SYS-demo-server`; `SURF-dev-cli-scripts`; `SURF-demo-http-server`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SRC-tests` Node test suites
 - Kind: source-family
@@ -66,18 +66,34 @@ a claim that every file in a directory shares one owner.
 
 ### `SRC-dj-procedural` Deterministic DJ, procedural sampler and hybrid handoff
 - Kind: source-family
-- Aliases: S03 DJ; S04 sampler; S05 hybrid; DeterministicDj; ProceduralSource
-- Summary: Session-local deterministic DJ over the two-recording SmallPlayer, a seeded phrase compiler, a finite native sampler source and the S05 recording to procedural bridge to recording handoff policy, all browser-safe and exported from src/index.ts. Covered by dj, dj-review, phrase-plan, procedural-source, procedural-review and hybrid-handoff test suites.
+- Aliases: S03 DJ; S04 sampler; S05 hybrid; S06 palette contract; DeterministicDj; ProceduralSource
+- Summary: Session-local deterministic DJ over the two-recording SmallPlayer, a seeded phrase compiler that since S06 binds any palette meeting the written s06-performer-palette@1 contract (compilePhrase, maxRoleFrames), a finite native sampler source and the S05 recording to procedural bridge to recording handoff policy (still bound to the S01 route and recipe), all browser-safe and exported from src/index.ts. Covered by dj, dj-review, phrase-plan, palette-contract, procedural-source, procedural-review and hybrid-handoff test suites.
 - Evidence: `src/dj.ts`; `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/hybrid-handoff.ts`
 - Related: `SYS-deterministic-dj`; `SYS-procedural-sampler`; `SYS-hybrid-handoff`; `SRC-playback`; `SRC-control-contract`; `SRC-tests`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SRC-dj-procedural-tests` DJ, sampler and hybrid handoff test suites
 - Kind: source-family
 - Aliases: dj tests; phrase-plan tests; procedural-source tests; hybrid-handoff tests
-- Summary: The node:test suites added with S03 to S05, a bounded subset of SRC-tests: dj and dj-review drive DeterministicDj over SmallPlayer with the shared audio double (queue, Hold, cancellation, native-handoff races); phrase-plan covers the seeded compiler, replay and fail-closed metadata; procedural-source and procedural-review cover sampler scheduling, decode, and partial-failure cleanup; hybrid-handoff covers the S05 policy frames, refusals, role lead-in and tail, player commit, cancellation and the DJ hybrid option. Read at headers and titles, not audited.
+- Summary: The node:test suites added with S03 to S05, a bounded subset of SRC-tests: dj and dj-review drive DeterministicDj over SmallPlayer with the shared audio double (queue, Hold, cancellation, native-handoff races); phrase-plan covers the seeded compiler, replay and fail-closed metadata (since S06 refusals name the palette contract rule rather than S01 identity); procedural-source and procedural-review cover sampler scheduling, decode, and partial-failure cleanup; hybrid-handoff covers the S05 policy frames, refusals, role lead-in and tail, player commit, cancellation and the DJ hybrid option. The S06 contract, importer and mock-producer suites are new S06 tests. Read at headers and titles, not audited.
 - Evidence: `tests/dj.test.ts`; `tests/dj-review.test.ts`; `tests/phrase-plan.test.ts`; `tests/procedural-source.test.ts`; `tests/procedural-review.test.ts`; `tests/hybrid-handoff.test.ts`
 - Related: `SRC-tests`; `SRC-dj-procedural`; `SYS-deterministic-dj`; `SYS-procedural-sampler`; `SYS-hybrid-handoff`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+### `SRC-producer-import` Producer delivery import and mock FL producer (S06)
+- Kind: source-family
+- Aliases: importer; em.producer-delivery.v0; import CLI; mock FL producer
+- Summary: Node-only S06 code that turns any producer's data-only delivery into a checked em.audio-pack.v0 pack (src/importer.ts), its command-line wrapper (scripts/import-delivery.ts), and a MOCK FL producer (scripts/mock-fl-producer.ts) that drives the real S08 broker over MCP JSON-RPC against a synthetic host, writes a delivery and imports it. No FL Studio is involved; its tests are tests/importer.test.ts, tests/palette-contract.test.ts and tests/mock-fl-producer.test.ts.
+- Evidence: `src/importer.ts`; `scripts/import-delivery.ts`; `scripts/mock-fl-producer.ts`
+- Related: `SYS-producer-importer`; `INT-cli-import-delivery`; `INT-cli-mock-fl-producer`; `SRC-audio-pack-contract`; `SRC-fl-authoring`
+- Review: candidate
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+### `SRC-producer-import-tests` Producer import, palette contract and mock producer test suites (S06)
+- Kind: source-family
+- Aliases: importer tests; palette-contract tests; mock-fl-producer tests
+- Summary: The node:test suites added with S06: palette-contract covers each contract refusal, label-only changes, the role-gap and maxRoleFrames rounding across native and output rates, identical events from another producer's palette and maximum-length palettes in the unchanged sampler; importer covers byte-identical repeat imports, canonical WAVs, keep_frames trimming, every refusal code, reserved ids, evidence path clashes, the 256 MiB cap, generator checks and the browser_player check; mock-fl-producer runs the full path through the S08 broker to an imported pack with a pinned manifest hash and refuses a render changed after fl_verify_export. Read at titles and assertions, not audited.
+- Evidence: `tests/importer.test.ts`; `tests/palette-contract.test.ts`; `tests/mock-fl-producer.test.ts`
+- Related: `SRC-producer-import`; `SYS-producer-importer`; `SYS-procedural-sampler`; `SRC-tests`
+- Review: candidate
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be

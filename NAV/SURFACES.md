@@ -21,11 +21,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `SURF-demo-http-server` Loopback demo HTTP server
 - Kind: surface
 - Aliases: serve.ts; npm run demo
-- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist covers /procedural.html and the dj, phrase-plan, procedural-source and hybrid-handoff browser modules. Page content comes from web/, outside the source roots.
+- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist covers /procedural.html, the dj, phrase-plan, procedural-source and hybrid-handoff browser modules and, since S06, only the JSON, Markdown and WAV files under /generated/s06-mock-fl/pack/ (and its audio/ folder), mapped to the MOCK pack generated in dist/ and never committed. `npm run demo` regenerates that pack before serving. Page content comes from web/, outside the source roots.
 - Evidence: `scripts/serve.ts`
 - Related: `SYS-demo-server`; `GAP-web-demo-outside-source-roots`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SURF-dev-cli-scripts` Fixture, pack validation and browser check commands
 - Kind: surface
@@ -227,11 +227,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-cli-browser-check` browser-check: run isolated browser checks
 - Kind: interaction
 - Aliases: check browser; Playwright check
-- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s04-browser): starts the demo server on an ephemeral loopback port, runs nineteen native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright, writing offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
+- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s04-browser): first regenerates the MOCK FL pack under dist/generated/s06-mock-fl (generateMockPack; no FL Studio), starts the demo server on an ephemeral loopback port, runs twenty-three native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff, four S06 imported-producer), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright, writing offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
 - Evidence: `scripts/browser-check.ts`
 - Related: `SURF-dev-cli-scripts`; `SYS-demo-server`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
 
 ### `SURF-demo-procedural-page` Demo procedural sampler page route
 - Kind: surface
@@ -253,11 +253,12 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-play-procedural` SmallPlayer.playProcedural: audition a seeded phrase
 - Kind: interaction
 - Aliases: procedural audition; sampler play
-- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compileS01Phrase, rechecks it against the loaded pack, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts.
+- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compilePhrase (any recipe whose palette meets the S06 s06-performer-palette@1 contract) or compileS01Phrase, rechecks it against the loaded pack with the plan's own recipe, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts and still auditions the S01 recipe.
 - Evidence: `src/player.ts`; `src/procedural-source.ts`; `scripts/serve.ts`
 - Related: `SYS-procedural-sampler`; `JRN-procedural-audition`; `SYS-demo-server`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+
 ### `INT-schedule-hybrid` SmallPlayer.scheduleHybrid: schedule A to bridge to B
 - Kind: interaction
 - Aliases: scheduleHybrid; hybrid handoff call
@@ -266,3 +267,20 @@ meaningful interactions belong here. Decorative labels do not.
 - Related: `SYS-hybrid-handoff`; `SYS-web-audio-transition-player`; `JRN-hybrid-handoff`
 - Review: candidate
 - Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+### `INT-cli-import-delivery` import-delivery: import a producer delivery
+- Kind: interaction
+- Aliases: npm run import
+- Summary: Command `node dist/scripts/import-delivery.js <delivery-directory> <new-pack-directory>` (npm run import --): runs importDelivery and prints a JSON IMPORTED report (pack, manifest hash, producer, per-asset frames, kept frames and peak, generator checks and limits); prints the refusal and exits 1 on failure, 2 on bad usage. Refuses an existing output folder.
+- Evidence: `scripts/import-delivery.ts`
+- Related: `SYS-producer-importer`; `SRC-producer-import`
+- Review: candidate
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+
+### `INT-cli-mock-fl-producer` mock-fl-producer: generate and import the MOCK FL pack
+- Kind: interaction
+- Aliases: npm run mock:fl; generateMockPack
+- Summary: Command `node dist/scripts/mock-fl-producer.js [--out <directory>]` (npm run mock:fl; also run by npm run demo and browser-check): drives the S08 broker through McpSession JSON-RPC against MockFlHost, which synthesizes 44.1 kHz stereo renders with exact arithmetic; writes a CC0 fixture-only delivery with a MOCK provenance file to <out>/delivery and imports it to <out>/pack (default dist/generated/s06-mock-fl). It replaces only a folder carrying its own marker file, and prints the pack path, manifest hash and generator checks with the note that no FL Studio ran and listening is NOT TESTED.
+- Evidence: `scripts/mock-fl-producer.ts`
+- Related: `SRC-producer-import`; `SYS-producer-importer`; `SYS-demo-server`
+- Review: candidate
+- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
