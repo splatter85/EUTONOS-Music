@@ -35,12 +35,12 @@ IDs, then inspect current source before editing.
 
 ### `AREA-pack-ab-playback-demo` Pack loading and A/B transition playback demo
 - Kind: area
-- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge; S06 imported pack checks
-- Summary: Capability: a loopback demo loads the S01 fixture pack in the browser (fixture mode on), plays recordings through SmallPlayer, takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge) and auditions seeded procedural phrases. The pages and scripts live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html, the browser modules and, for S06, only the JSON, Markdown and WAV files of the mock FL pack generated under dist/generated/s06-mock-fl/pack/. scripts/browser-check.ts regenerates that MOCK pack (no FL Studio) and runs 23 native offline groups plus the Chromium checks. The player page itself still plays S01 only; production hosting and arbitrary packs are out of scope.
+- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge; S06 imported pack checks; S07 linked demo; palette selector
+- Summary: Capability: a loopback demo with two linked pages. The DJ page loads the S01 fixture pack (fixture mode on), plays recordings through SmallPlayer and takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge); it plays S01 only. Since S07 the sampler page auditions seeded procedural phrases from either the S01 original palette or the S06 imported MOCK palette, chosen by a two-option selector or ?pack=mock-fl, using the selected pack's own recipe and route through the same SmallPlayer; selection is silent and switching requires Stop. The pages live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html, the browser modules and only the JSON, Markdown and WAV files of the mock FL pack under dist/generated/s06-mock-fl/pack/. scripts/browser-check.ts regenerates that MOCK pack (no FL Studio) and runs 23 native offline groups plus 15 Chromium report groups, three of them for S07. Production hosting, arbitrary packs and imported-recording DJ playback are out of scope.
 - Evidence: `src/browser-pack.ts`; `src/player.ts`; `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-playback`; `SRC-dev-scripts`; `GAP-web-demo-outside-source-roots`; `SURF-demo-http-server`; `JRN-load-pack-play-ab-transition`; `GAP-authored-pack-not-playable-in-demo`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `SYS-pack-validation` Audio pack manifest and media validation
 - Kind: system
@@ -117,11 +117,11 @@ IDs, then inspect current source before editing.
 ### `SYS-demo-server` Loopback demo server and browser check runner
 - Kind: system
 - Aliases: serve.ts; browser-check.ts
-- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures, and the JSON, Markdown and WAV files of the generated S06 MOCK pack under /generated/s06-mock-fl/pack/), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner first regenerates the MOCK FL pack (no FL Studio), drives the server with an injected Playwright module, runs 23 native offline checks (including four on the imported mock pack) plus player (crossfade and procedural bridge) and sampler page stages, and writes evidence.
+- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures, and the JSON, Markdown and WAV files of the generated S06 MOCK pack under /generated/s06-mock-fl/pack/), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner first regenerates the MOCK FL pack (no FL Studio), drives the server with an injected Playwright module, runs 23 native offline checks (including four on the imported mock pack) plus player (crossfade and procedural bridge) and sampler page stages, and since S07 the linked-demo palette selection, context disposal, ownership and failure-recovery stages (15 report groups), and writes evidence.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-dev-scripts`; `AREA-pack-ab-playback-demo`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `GAP-control-contract-unwired` Control contract reaches only the session-local DJ
 - Kind: gap
@@ -134,12 +134,12 @@ IDs, then inspect current source before editing.
 
 ### `GAP-web-demo-outside-source-roots` Demo page sources are outside any source family
 - Kind: gap
-- Aliases: web/ unowned; checks page; procedural page
-- Summary: web/ (the player, checks and procedural pages and their scripts, plus style.css) is not under the configured source roots, so no source family owns it. The DJ and sampler UIs are therefore reachable in NAV only through scripts/serve.ts (which routes /procedural.html and the dj, phrase-plan and procedural-source browser modules) and scripts/browser-check.ts (which drives the pages). Page logic cannot be cited. Resolving this needs web added as a source root or an explicit exclusion.
+- Aliases: web/ unowned; checks page; procedural page; palette selector
+- Summary: web/ (the DJ, checks and procedural pages and their scripts, plus style.css) is not under the configured source roots, so no source family owns it. The DJ and sampler UIs, including the S07 palette selector and demo navigation, are therefore reachable in NAV only through scripts/serve.ts (which routes /procedural.html and the dj, phrase-plan and procedural-source browser modules) and scripts/browser-check.ts (which drives the pages, including the S07 palette selection, failure and recovery groups). Page logic cannot be cited. Resolving this needs web added as a source root or an explicit exclusion.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `AREA-pack-ab-playback-demo`; `SYS-demo-server`
 - Review: gap
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `GAP-authored-pack-not-playable-in-demo` Authored packs have no route and are not demo-playable
 - Kind: gap

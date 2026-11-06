@@ -49,11 +49,11 @@ a claim that every file in a directory shares one owner.
 ### `SRC-dev-scripts` Fixture generation, demo server and checks
 - Kind: source-family
 - Aliases: npm scripts; fixtures generator; demo server; mock FL producer; import CLI
-- Summary: Offline deterministic fixture generator, loopback-only demo server (serving the DJ and sampler pages and their modules, the S05 hybrid checks and the generated S06 mock pack), browser check runner (native offline groups including the S06 imported-pack groups, player, sampler and S05 live bridge stages), the pack validation CLI used by `npm run check`, the S06 `npm run import` CLI and the S06 MOCK FL producer that drives the S08 broker against a synthetic host (no FL Studio) and writes dist/generated/s06-mock-fl.
+- Summary: Offline deterministic fixture generator, loopback-only demo server (serving the linked DJ and sampler pages and their modules, the S05 hybrid checks and the generated S06 mock pack), browser check runner (native offline groups including the S06 imported-pack groups, player, sampler and S05 live bridge stages, and since S07 the palette selection, failure and recovery groups), the pack validation CLI used by `npm run check`, the S06 `npm run import` CLI and the S06 MOCK FL producer that drives the S08 broker against a synthetic host (no FL Studio) and writes dist/generated/s06-mock-fl.
 - Evidence: `scripts/browser-check.ts`; `scripts/generate-fixtures.ts`; `scripts/serve.ts`; `scripts/validate-pack.ts`
 - Related: `SYS-fixture-pipeline`; `SYS-demo-server`; `SURF-dev-cli-scripts`; `SURF-demo-http-server`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `SRC-tests` Node test suites
 - Kind: source-family

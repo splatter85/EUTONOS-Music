@@ -30,11 +30,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `SURF-dev-cli-scripts` Fixture, pack validation and browser check commands
 - Kind: surface
 - Aliases: generate-fixtures; validate-pack; browser-check
-- Summary: Parent surface of three Node commands: generate-fixtures.js [--check] [dir], validate-pack.js <pack-directory> (prints a JSON PASS report or exits 1, 2 on bad usage) and browser-check.js [--browser] [--playwright-module] [--output] (default output artifacts/s04-browser; starts the demo server on an ephemeral loopback port, runs offline audio checks and drives the player and sampler pages with Playwright). The npm script names live in package.json, outside the source roots.
+- Summary: Parent surface of three Node commands: generate-fixtures.js [--check] [dir], validate-pack.js <pack-directory> (prints a JSON PASS report or exits 1, 2 on bad usage) and browser-check.js [--browser] [--playwright-module] [--output] (default output artifacts/s07-browser; starts the demo server on an ephemeral loopback port, runs offline audio checks and drives the player and sampler pages with Playwright). The npm script names live in package.json, outside the source roots.
 - Evidence: `scripts/generate-fixtures.ts`; `scripts/validate-pack.ts`; `scripts/browser-check.ts`
 - Related: `SYS-fixture-pipeline`; `SYS-demo-server`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `SURF-library-exports` Package import surfaces
 - Kind: surface
@@ -227,20 +227,21 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-cli-browser-check` browser-check: run isolated browser checks
 - Kind: interaction
 - Aliases: check browser; Playwright check
-- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s04-browser): first regenerates the MOCK FL pack under dist/generated/s06-mock-fl (generateMockPack; no FL Studio), starts the demo server on an ephemeral loopback port, runs twenty-three native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff, four S06 imported-producer), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright, writing offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
+- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s07-browser): first regenerates the MOCK FL pack under dist/generated/s06-mock-fl (generateMockPack; no FL Studio), starts the demo server on an ephemeral loopback port, runs twenty-three native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff, four S06 imported-producer), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright. Since S07 it also checks entry from the DJ page to the imported mock palette, silent selection with no AudioContext, palette-specific status, same-seed palette comparison, closure of the old context on switch, imported transport, ownership and navigation, missing, corrupt and unknown palettes with same-palette retry, refresh and mobile fit (15 report groups). Writes offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
 - Evidence: `scripts/browser-check.ts`
 - Related: `SURF-dev-cli-scripts`; `SYS-demo-server`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `SURF-demo-procedural-page` Demo procedural sampler page route
 - Kind: surface
-- Aliases: procedural.html; sampler page
-- Summary: Child of the demo server: GET or HEAD `/procedural.html` serves `web/procedural.html`, the page for auditioning seeded procedural phrases (S04). The route is in scripts/serve.ts; the page's controls are in web/, not cited, and are not mapped here.
+- Aliases: procedural.html; sampler page; palette selector; ?pack=mock-fl
+- Summary: Child of the demo server: GET or HEAD `/procedural.html` serves `web/procedural.html`, the page for auditioning seeded procedural phrases (S04). Since S07 the optional query `?pack=s01` or `?pack=mock-fl` picks the S01 original or the S06 imported mock palette, and the DJ page links to it. The route is in scripts/serve.ts; the page's controls are in web/, not cited, and are not mapped here.
 - Evidence: `scripts/serve.ts`
 - Related: `SURF-demo-http-server`; `GAP-web-demo-outside-source-roots`; `AREA-pack-ab-playback-demo`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+
 ### `INT-dj-request` DJ request: execute a control request
 - Kind: interaction
 - Aliases: DeterministicDj.request; operation; snapshot
@@ -253,11 +254,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-play-procedural` SmallPlayer.playProcedural: audition a seeded phrase
 - Kind: interaction
 - Aliases: procedural audition; sampler play
-- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compilePhrase (any recipe whose palette meets the S06 s06-performer-palette@1 contract) or compileS01Phrase, rechecks it against the loaded pack with the plan's own recipe, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts and still auditions the S01 recipe.
+- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compilePhrase (any recipe whose palette meets the S06 s06-performer-palette@1 contract) or compileS01Phrase, rechecks it against the loaded pack with the plan's own recipe, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts; since S07 it compiles with the selected pack's own recipe and builds a new SmallPlayer per palette, choosing the S01 original or the S06 imported mock palette.
 - Evidence: `src/player.ts`; `src/procedural-source.ts`; `scripts/serve.ts`
 - Related: `SYS-procedural-sampler`; `JRN-procedural-audition`; `SYS-demo-server`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
 
 ### `INT-schedule-hybrid` SmallPlayer.scheduleHybrid: schedule A to bridge to B
 - Kind: interaction
