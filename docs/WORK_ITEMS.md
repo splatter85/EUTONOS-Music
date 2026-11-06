@@ -105,7 +105,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF01",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Bounded S01 to S06 reviews cover their implemented boundaries; later slices extend them.",
+      "summary": "Bounded S01 to S07 reviews cover their implemented boundaries; later slices extend them.",
       "title": "Contract and adequacy review",
       "type": "stage"
     },
@@ -195,7 +195,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF04",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S02 player, S03 DJ, S04 procedural source, S05 hybrid handoff and S06 importer are in main; S05 and S06 checked on Windows only. S07 remains.",
+      "summary": "S02 player, S03 DJ, S04 procedural source, S05 hybrid handoff, S06 importer and the S07 linked demo are in main; S05 to S07 checked on Windows only. Physical output and listening not tested.",
       "title": "Working standalone cloud scaffold",
       "type": "stage"
     },
@@ -224,8 +224,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF05",
       "parent_id": "campaign-emf-001",
-      "status": "planned",
-      "summary": "S07 reviews the running scaffold; S10 adds FL-backed PC listening and owner acceptance.",
+      "status": "active",
+      "summary": "S07 scaffold self-review and independent review done with Windows checks; S10 real PC listening and owner acceptance remain.",
       "title": "Scaffold review and owner listening",
       "type": "stage"
     },
@@ -910,7 +910,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S07-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -926,13 +926,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "76588e39f698d54a42795bde9b64199ab6f304863e217d7e39af4b09ab22864c",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "9d88cce9-a53a-57d0-ba53-677147c733fc",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-06T09:46:04.951500+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF05"
       },
       "id": "EMF-S07",
-      "status": "planned",
+      "status": "completed",
       "summary": "Integrated app/demo, repeatable tests, offline/browser audio checks and review; cloud playable proof only.",
       "title": "S07 integrated cloud scaffold review",
       "type": "slice"
