@@ -255,7 +255,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF06",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S06 importer: producer deliveries become checked packs with measured PCM, producer-hash checks, silent-tail trimming, rights evidence and coded refusals; S09 imports real FL material through it unchanged (Windows). Library and catalogue remain.",
+      "summary": "S06 importer makes checked packs from any producer delivery; S09 imports real FL material through it (Windows). S11 adds a versioned local library snapshot with an exact-metadata catalogue and file/IndexedDB adapters, not yet used by the pages.",
       "title": "Versioned library and importer",
       "type": "stage"
     },
@@ -375,7 +375,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF10",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "First finite seeded S04 phrase performer cloud-verified; more families, palettes and adaptive development remain.",
+      "summary": "S04 performer cloud-verified; S11 adds three original recipe studies on their own performer with paired native bitwise replay (Windows). More palettes, adaptive development and listening remain.",
       "title": "Procedural recipe performer",
       "type": "stage"
     },
@@ -435,7 +435,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF12",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S03 provides deterministic eligible state/genre selection and manual FIFO priority; persistent history remains.",
+      "summary": "S03 deterministic selection and manual FIFO; S11 adds exact recipe replays and a bounded renderer-observation history in the local library (Windows), not yet written by the pages. Procedural selection and recency remain.",
       "title": "DJ selection and persistent history",
       "type": "stage"
     },
@@ -1069,7 +1069,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S11-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -1090,8 +1090,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
         }
       },
       "id": "EMF-S11",
-      "status": "planned",
-      "summary": "Optional persistence, genres, recipe/history and wider transition coverage after S07.",
+      "status": "active",
+      "summary": "First increment in main: versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies (Windows). Page wiring, gates, genres and transition coverage remain.",
       "title": "S11 optional cloud breadth",
       "type": "slice"
     },
