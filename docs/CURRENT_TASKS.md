@@ -30,20 +30,19 @@ EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this d
 }
 ```
 
-The tested S07 source passed on **Windows only**, Node 26.12.1 against declared Node 24, headless Chromium 151.0.7922.34 / Playwright 1.62.1:
+The tested S09 source passed on **Windows only**, Node 26.12.1 against declared Node 24, headless Chromium 151.0.7922.34 / Playwright 1.62.1:
 
-- `npm.cmd run check`: **161 Node tests**, zero failures, seven deterministic fixture files and six WAV metadata/hash checks passed.
-- `npm.cmd run check:browser`: **23 native offline groups** and **15 browser report groups**, including three S07 UI groups, all passed. Reports/screenshots are local under ignored `artifacts/s07-browser/`.
+- `npm.cmd run check`: **166 Node tests**, zero failures; fixture regeneration and media validation passed.
+- `npm.cmd run check:browser`: **24 native offline groups** and **16 browser groups**, all passed. Reports/screenshots are local under ignored `artifacts/s09-browser/`.
+- `npm.cmd run fl:produce` rendered with real FL Studio 26.1.7.5654 and imported the owner-local pack; `npm.cmd run check:fl` measured its handoff offline and drove it live in headless Chromium (ignored `artifacts/s09-fl/`).
 
-macOS/Linux were not run for S07. There is no automatic CI (EM-DEC030). Physical output and human listening are **NOT TESTED**. This is a playable engineering proof, not an accepted MVP. Overall campaign effort percentage is unknown.
+macOS/Linux were not run for S09. There is no automatic CI (EM-DEC030). Physical output and human listening are **NOT TESTED**. This is engineering proof, not an accepted MVP. Overall campaign effort percentage is unknown.
 
-**Run:** `npm run demo`, then open http://127.0.0.1:4173/. Try Play -> Next Song with Handoff set to Procedural bridge, then follow **Play the S06 imported mock palette**. On the sampler, Stop before choosing a different palette, seed or arrangement. No FL Studio, downloads, credentials or proprietary audio are needed.
+**Run:** on the FL PC, close FL Studio, run `npm run fl:produce`, then `npm run demo` and open http://127.0.0.1:4173/?pack=fl. Set Handoff to Procedural bridge, press Play, then Next Song. The sampler is at /procedural.html?pack=fl. Without FL Studio, the S01 and S06 mock packs still work.
 
-**Coordinator boundary:** leave `docs/WORK_ITEMS.md`, `NAV/`, `RAM/`, `eutonos.*.json` and agent configuration untouched in this worker handback. Keep the single RAM links block below intact. S07 is not integrated or accepted until the coordinator verifies the target.
+**One next slice: S10 - PC + owner**, when separately assigned. Read the [S09 handoff](handoffs/EMF-S09-HANDOFF.md) and [guide](S09_FL_IMPORT.md). The owner listens with FL and agents closed during playback and accepts or revises the flow. S12 Mission Control integration waits for S10. S11 may run in parallel on a disjoint scope.
 
-**One next implementation slice: S09 - BOTH, PC audio**, after coordinator integration and separate assignment. Read the [S07 handoff](handoffs/EMF-S07-HANDOFF.md) and the [S08 handoff](handoffs/EMF-S08-HANDOFF.md); inspect actual eligible FL exports and their intended-use rights before import. S08 remains complete for its bounded Windows authoring scope; its separate one-time interactive project MCP approval remains an owner step. S10 is owner listening acceptance; S12 Mission Control integration waits for it. S07 starts neither slice nor any FL operation.
-
-Still unverified: S07 on macOS/Linux and Node 24, physical output/listening, real FL import and joined DJ/hybrid playback, broader device/browser lifecycle, and full MVP acceptance. Historical platform evidence retains its original scope.
+Still unverified: S09 on macOS/Linux and Node 24, physical output/listening, broader device/browser lifecycle, continuous playback and full MVP acceptance. Historical platform evidence retains its original scope.
 
 ```tokenslang-ram-links
 {"links":[{"memories":["RAM/record-9358f1df11ab8a840eaa4fe313f7c9a30f057e5f5dad8a4ac6599dabd11a2618.json","RAM/record-b165e3e2039ede2282f1d89db15339710351d4b45ee9a1114e0b6eee41063aa2.json","RAM/record-5e8820539647b94c6ded139ebfa68646d5c3dc4466de2f95316e26ec7eb6e3ad.json","RAM/record-109dc875af359f8f9e370db2005bf476694a629f67a8eb7a380913ab7922d845.json","RAM/record-b04cd86d2e9c28061293d3de6628a4e531fb03c04d01a16c0d7bd32ba939f725.json","RAM/record-c896ef95887776395b07f85c66cecfa50e9c95e08d22860e8d634bd8093c91e0.json"],"work_id":"eutonos-music-development-entry"}],"profile":"eutonos.tokenslang.ram-links.v2"}
