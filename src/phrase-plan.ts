@@ -9,6 +9,16 @@ import type { AudioAsset, AudioPack, VersionRef } from './pack-types.js';
 export const S01_PERFORMER = Object.freeze({ id: 's04-s01-performer', revision: 1 });
 /** The S01 recipe identity that the S04 tools, the DJ bridge and the S05 policy compile. */
 export const S01_RECIPE = Object.freeze({ id: 's01-recipe', revision: 1 });
+/** S11 patterns are original engineering studies; none has listening acceptance. */
+export const S11_PERFORMER = Object.freeze({ id: 's11-pattern-performer', revision: 1 });
+export const S11_RECIPE_FAMILIES = freeze([
+  { id: 's11-open-space', revision: 1, title: 'Open space', genre: 'ambient-study',
+    description: 'Sparse alternating bars with a four-bar response.', listening: 'not-tested' },
+  { id: 's11-steady-pulse', revision: 1, title: 'Steady pulse', genre: 'house-study',
+    description: 'Four quarter-note anchors with offbeat bass and percussion.', listening: 'not-tested' },
+  { id: 's11-broken-current', revision: 1, title: 'Broken current', genre: 'broken-beat-study',
+    description: 'Syncopated kick patterns and a changing bass response.', listening: 'not-tested' },
+] as const);
 /** What a producer's palette must satisfy before this performer may play it. */
 export const PERFORMER_PALETTE_CONTRACT = Object.freeze({ id: 's06-performer-palette', revision: 1 });
 export type S01PhraseState = 'explore' | 'drive';
@@ -122,6 +132,25 @@ const bassMotifs = [[0, 2], [0.5, 2, 3], [0, 1.5, 3], [0.5, 1.5, 2.5]] as const;
 const percussionRhythms = [[1, 3], [0.5, 1.5, 2.5, 3.5], [1, 2.5, 3.5], [0.75, 1.75, 2.75, 3.75]] as const;
 const fills = [[2.5, 3, 3.5, 3.75], [2, 2.75, 3.25, 3.75], [2.5, 2.75, 3.5, 3.75], [2, 2.5, 3, 3.5, 3.75]] as const;
 const roleOrder: readonly S01PhraseRole[] = ['drum', 'percussion', 'bass', 'harmony'];
+// Keep these inside the already-served compiler: existing browser imports stay closed.
+// Rhythm onsets, samples, tempo and pitch are bounded by the unchanged palette contract.
+const s11Rhythms = freeze({
+  's11-open-space': {
+    kicks: [[0], [0, 2], [0, 2.5], [0, 3]],
+    bass: [[0, 2], [1, 3], [0.5, 2.5], [1, 2.5]],
+    percussion: [[1, 3], [1.5, 3.5], [0.5, 2.5], [2, 3.5]],
+  },
+  's11-steady-pulse': {
+    kicks: [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]],
+    bass: [[0.5, 2.5], [0.5, 1.5, 2.5], [1, 2, 3], [0, 1.5, 3]],
+    percussion: [[0.5, 1.5, 2.5, 3.5], [0.5, 1.5, 3], [1, 2.5, 3.5], [0.75, 1.75, 2.75, 3.75]],
+  },
+  's11-broken-current': {
+    kicks: [[0, 1.5, 3], [0, 2.5], [0, 1, 2.5], [0.5, 2, 3.5]],
+    bass: [[0.5, 2], [1, 2.5], [0, 1.5, 3], [0.5, 1.5, 3]],
+    percussion: [[1, 3], [0.75, 2, 3.5], [0.5, 2.5, 3.5], [1.25, 2.75, 3.75]],
+  },
+} as const);
 
 /** Compile the S01 recipe identity (`s01-recipe@1`) under the palette contract. */
 export function compileS01Phrase(input: AudioPack, options: CompileS01PhraseOptions): ProceduralPlan {
@@ -146,6 +175,13 @@ export function compilePhrase(input: AudioPack, options: CompilePhraseOptions): 
   compatibility(typeof wanted === 'object' && wanted !== null, 'name the recipe to perform');
   const recipe = pack.recipes.find(item => item.id === wanted.id && item.revision === wanted.revision);
   compatibility(recipe !== undefined, `the pack has no recipe ${String(wanted.id)}@${String(wanted.revision)}`);
+  const family = S11_RECIPE_FAMILIES.find(item => item.id === recipe.id);
+  compatibility(!family || recipe.revision === family.revision, 'unsupported built-in recipe revision');
+  const patterns = family ? s11Rhythms[family.id] : undefined;
+  const kicks: readonly (readonly number[])[] = patterns?.kicks ?? kickRhythms;
+  const bass: readonly (readonly number[])[] = patterns?.bass ?? bassMotifs;
+  const percussionPatterns: readonly (readonly number[])[] = patterns?.percussion ?? percussionRhythms;
+  const spacious = family?.id === 's11-open-space';
   compatibility(recipe.bpm === 120 && equal(recipe.meter, [4, 4]) && recipe.phrase_bars === 4,
     'the performer plays 4/4 at 120 BPM in four-bar phrases');
   const harmony = recipe.harmony_pitch_classes;
@@ -201,19 +237,21 @@ export function compilePhrase(input: AudioPack, options: CompilePhraseOptions): 
     const endOfSection = bar % 4 === 3;
     const currentRhythm = answer ? answerRhythm : rhythm;
     const currentMotif = answer ? answerMotif : motif;
-    for (const [index, position] of kickRhythms[currentRhythm]!.entries()) {
+    for (const [index, position] of kicks[currentRhythm]!.entries()) {
+      if (spacious && options.state === 'explore' && bar % 2 === 1) continue;
       add('drum', base + position, index === 0 ? 0.72 : 0.58);
     }
     // Drive establishes a stronger pulse; skips duplicates and maintains >= .5q separation.
-    if (options.state === 'drive' && !kickRhythms[currentRhythm]!.some(position => Math.abs(position - 2) < 0.5)) {
+    if (options.state === 'drive' && !kicks[currentRhythm]!.some(position => Math.abs(position - 2) < 0.5)) {
       add('drum', base + 2, 0.63);
     }
-    for (const [index, position] of bassMotifs[currentMotif]!.entries()) {
+    for (const [index, position] of bass[currentMotif]!.entries()) {
+      if (spacious && options.state === 'explore' && bar % 2 === 1) continue;
       // Section cadences leave the final quarter clear, so every bass tail stays inside its bar.
       if (!endOfSection || position < 3) add('bass', base + position, index === 0 ? 0.57 : 0.43);
     }
     const percussivePositions: readonly number[] = endOfSection ? fills[(fill + (answer ? 1 : 0)) % 4]! :
-      percussionRhythms[(percussion + (answer ? 1 : 0)) % 4]!;
+      percussionPatterns[(percussion + (answer ? 1 : 0)) % 4]!;
     for (const [index, position] of percussivePositions.entries()) {
       // Explore breathes on alternate bars; the fill still answers the phrase at each exit.
       if (options.state === 'drive' || endOfSection || bar % 2 === 0 || index % 2 === 0) {
@@ -225,7 +263,7 @@ export function compilePhrase(input: AudioPack, options: CompilePhraseOptions): 
   }
   events.sort((a, b) => a.atQuarters - b.atQuarters || roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role));
   const plan = freeze({
-    performer: ref(S01_PERFORMER), pack: ref(pack), recipe: ref(recipe), palette: ref(palette),
+    performer: ref(family ? S11_PERFORMER : S01_PERFORMER), pack: ref(pack), recipe: ref(recipe), palette: ref(palette),
     seed: options.seed, state: options.state, bpm: 120, meter: [4, 4], bars: 8, phraseBars: 4,
     durationQuarters: 32, exitQuarters: [16, 32], samples, events,
     sections: [
