@@ -2,7 +2,7 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status: EMF-S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged pack contract, now play in the DJ: recording A → procedural bridge → recording B, with the bridge played from FL samples. The DJ page can switch between the S01 fixture, the S06 mock and the owner-local real-FL pack. Windows checks pass: **166 Node tests, 24 native offline groups and 16 browser groups**, plus the owner-local `check:fl`. This is engineering proof, not an accepted MVP. [S09 guide](docs/S09_FL_IMPORT.md), [handoff](docs/handoffs/EMF-S09-HANDOFF.md). S01-S09 are in main; S10 (owner listening) is next.
+**Status: EMF-S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged pack contract, now play in the DJ: recording A → procedural bridge → recording B, with the bridge played from FL samples. The DJ page can switch between the S01 fixture, the S06 mock and the owner-local real-FL pack. Windows checks pass: **166 Node tests, 24 native offline groups and 16 browser groups**, plus the owner-local `check:fl`. This is engineering proof, not an accepted MVP. [S09 guide](docs/S09_FL_IMPORT.md), [handoff](docs/handoffs/EMF-S09-HANDOFF.md). S01-S09 are in main; S10 (owner listening) is next. The first S11 increment (local library, saved recipes and three recipe studies, not yet used by the pages) is also in main: [S11 guide](docs/S11_LIBRARY.md).
 
 **Physical output and human listening are NOT TESTED.** macOS/Linux and the declared Node 24 runtime were not run; Windows used Node 26.12.1 and headless Chromium 151. The real-FL pack exists only on the owner's PC and is never published. Next: **S10 - PC + owner**, listening acceptance. [Current evidence](docs/CURRENT_TASKS.md).
 
@@ -53,6 +53,7 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S06 producer import and palette contract](docs/S06_IMPORT.md)
 - [S07 integrated demo](docs/S07_APP.md)
 - [S09 real FL import](docs/S09_FL_IMPORT.md)
+- [S11 library and recipe studies](docs/S11_LIBRARY.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
 - [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)

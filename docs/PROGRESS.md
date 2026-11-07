@@ -193,3 +193,13 @@ Real FL Studio 26.1.7.5654 rendered two eight-bar recordings and four one-shots 
 On **Windows only** (Node 26.12.1, declared 24; Chromium 151.0.7922.34 / Playwright 1.62.1): `npm.cmd run check` passed **166 Node tests**; `npm.cmd run check:browser` passed **24 native offline groups and 16 browser groups**; the owner-local `npm.cmd run check:fl` measured the real-FL handoff offline (exact boundaries, zero signal outside each window, no clipping) and logged a live headless handoff with pause and resume. **Physical output and listening are NOT TESTED.** [Guide](S09_FL_IMPORT.md), [handoff](handoffs/EMF-S09-HANDOFF.md), [EM-DEC033](DECISIONS.md).
 
 **Next: S10 — PC + owner** (listening acceptance), when separately assigned.
+
+## 2026-11-07 — S11 first increment integrated (Windows)
+
+**First increment in main; S11 stays IN PROGRESS.** A worker built `5a00551bb810b08e8b708a97c3393a6f2136f408` from `9c0d142`; the coordinator reviewed it and merged it onto main after S09 as `1880867b6b54412bd6119286c98a513239598df2`.
+
+It adds a versioned local library (exact pack catalogue, saved recipe selections, volume/mute, a bounded history of renderer observations) with revision-checked compare-and-swap writes and file and IndexedDB adapters; exact recipe replay; stopped restore that never starts audio; and three original recipe studies on their own performer. The pages do not use the library yet.
+
+On **Windows only** (Node 26.12.1): `npm.cmd run check` passed **182 Node tests**; `npm.cmd run check:browser` passed 24 native offline and 16 browser groups; the separate S11 browser check passed 4 groups including 24 paired native cases with zero differing bits. **Physical output and listening are NOT TESTED.** [Guide](S11_LIBRARY.md), [handoff](handoffs/EMF-S11-HANDOFF.md), [EM-DEC034](DECISIONS.md).
+
+**Next: S10 — PC + owner** stays the priority; the rest of S11 may run in parallel.

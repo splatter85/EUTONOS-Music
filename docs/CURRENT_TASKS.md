@@ -4,14 +4,16 @@ Document ID: `EM-D010`
 
 Updated 2026-11-07. **S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged S06 contract, play in the DJ's A → procedural bridge → B handoff; the hybrid policy is now chosen by exact route. The owner allowed owner-local sample reuse of the FL factory renders; they stay out of git. [S09 guide](S09_FL_IMPORT.md), [detailed handoff](handoffs/EMF-S09-HANDOFF.md).
 
-**Current action: none assigned.** Tested source: `0cee096a7e2f89ce580365088de1d43aab0f893a` (Windows only: 166 Node tests, 24 native offline groups and 16 browser groups; owner-local `check:fl` passed). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
+**S11 first increment integrated; S11 stays in progress.** A versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies are in main as library code; the DJ and sampler pages do not use them yet. [S11 guide](S11_LIBRARY.md), [handoff](handoffs/EMF-S11-HANDOFF.md).
+
+**Current action: none assigned.** Tested source: `1880867b6b54412bd6119286c98a513239598df2` (S09 plus the S11 increment; Windows only: 182 Node tests, 24 native offline groups, 16 browser groups and the separate S11 browser check; S09 owner-local `check:fl` passed at `0cee096`). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
 
 **One campaign:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
 | 1 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the real-FL DJ handoff and sampler with FL and agents closed, and accepts or revises the flow. Does not complete EMF19. |
-| 2 | **EMF-S11** (optional, parallel) | CLOUD | Post-proof persistence, genres, recipe/history and transition coverage; disjoint from S10. |
+| 2 | **EMF-S11** remaining work (optional, parallel) | CLOUD | First increment in main. Remaining: wire the library into the pages, add the S11 commands to the gates, wider genres and transition coverage; keep the S09 DJ page unchanged while S10 is judged. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.
 
@@ -30,6 +32,8 @@ EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this d
 }
 ```
 
+The S11 increment, merged onto S09 at `1880867`, passed on **Windows only** (Node 26.12.1): `npm.cmd run check` **182 Node tests**; `npm.cmd run check:browser` 24 native offline and 16 browser groups; `node dist/scripts/s11-browser-check.js` 4 groups with 24 paired native cases and zero differing bits; `node dist/scripts/s11-library-demo.js` restored all three studies stopped.
+
 The tested S09 source passed on **Windows only**, Node 26.12.1 against declared Node 24, headless Chromium 151.0.7922.34 / Playwright 1.62.1:
 
 - `npm.cmd run check`: **166 Node tests**, zero failures; fixture regeneration and media validation passed.
@@ -40,7 +44,7 @@ macOS/Linux were not run for S09. There is no automatic CI (EM-DEC030). Physical
 
 **Run:** on the FL PC, close FL Studio, run `npm run fl:produce`, then `npm run demo` and open http://127.0.0.1:4173/?pack=fl. Set Handoff to Procedural bridge, press Play, then Next Song. The sampler is at /procedural.html?pack=fl. Without FL Studio, the S01 and S06 mock packs still work.
 
-**One next slice: S10 - PC + owner**, when separately assigned. Read the [S09 handoff](handoffs/EMF-S09-HANDOFF.md) and [guide](S09_FL_IMPORT.md). The owner listens with FL and agents closed during playback and accepts or revises the flow. S12 Mission Control integration waits for S10. S11 may run in parallel on a disjoint scope.
+**One next slice: S10 - PC + owner**, when separately assigned. Read the [S09 handoff](handoffs/EMF-S09-HANDOFF.md) and [guide](S09_FL_IMPORT.md). The owner listens with FL and agents closed during playback and accepts or revises the flow. S12 Mission Control integration waits for S10. The rest of S11 may run in parallel on a disjoint scope.
 
 Still unverified: S09 on macOS/Linux and Node 24, physical output/listening, broader device/browser lifecycle, continuous playback and full MVP acceptance. Historical platform evidence retains its original scope.
 

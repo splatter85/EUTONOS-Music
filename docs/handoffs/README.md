@@ -29,6 +29,8 @@ The [S07 handoff](EMF-S07-HANDOFF.md) records **S07 COMPLETE**, built on the own
 
 The [S09 handoff](EMF-S09-HANDOFF.md) records **S09 COMPLETE**, built by the coordinator on the owner's PC with real FL Studio and integrated into main: owner-local FL renders imported through the unchanged contract and played in the DJ's hybrid handoff, with per-route policies and Windows-only evidence (166 Node tests, 24 native offline groups and 16 browser groups, plus `check:fl`). Physical output and listening are NOT TESTED. S10 (owner listening) is next.
 
+The [S11 handoff](EMF-S11-HANDOFF.md) records the **first S11 increment**, built by a worker and reviewed and integrated into main by the coordinator: a versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies, with Windows-only evidence on the combined tree (182 Node tests, 24 native offline and 16 browser groups, plus the S11 browser check). S11 stays in progress; page wiring remains. Physical output and listening are NOT TESTED.
+
 The [S08 handoff](EMF-S08-HANDOFF.md) records the PC FL Studio authoring facade, its live Claude Code/Codex evidence and limits. Its renders are owner-local and unauditioned.
 
 **Special PC notices:** at S01 completion, tell the owner the checked pack revision allows **S08 PC** to begin in parallel with cloud S02–S07. At S07 completion, supply the tested cloud build revision/run commands for **S09 PC** after S08 real FL outputs exist. Both notices happen during their respective slice closeouts.
