@@ -48,7 +48,7 @@ Runtime: **Windows 11, Node 26.12.1 (declared Node 24 not installed), Chromium 1
 | `npm.cmd run check:browser` | PASS | **24/24 native offline groups, 16/16 browser groups** (the S09 gates, unchanged). |
 | `node dist/scripts/s11-browser-check.js` | PASS | 4 groups: IndexedDB save → reload → stopped restore without live audio; two connections, exactly one CAS winner; malformed, future and present-undefined records preserved; **24 native cases** (3 studies × 44.1/48 kHz × Explore/Drive × seeds 0 and 104729) rendered twice with **0 differing sample bits**, peaks 0.195–0.253, resources released. `artifacts/s11-browser/report.json` (ignored). |
 | `node dist/scripts/s11-library-demo.js --directory local/s11-library-check` | PASS | Library revision 4; each study restored stopped with `requires_explicit_play`, seed 42 Explore: open space 37 events, steady pulse 82, broken current 69. The scratch folder was deleted afterward. |
-| Relative links / `git diff --check` | PASS at closeout | Counts in the RAM record. |
+| Relative links / `git diff --check` | PASS at closeout | 621 links, 0 broken; `git diff --check` flags only the intentional two-space line breaks in the document header blocks. |
 
 The worker separately reported Windows Node 24.20.0: 177 Node tests on its base, fixture/media validation, 23 native and 15 browser groups, and the same 24 paired native cases. That is the worker's evidence; the coordinator's run above is on Node 26.
 
