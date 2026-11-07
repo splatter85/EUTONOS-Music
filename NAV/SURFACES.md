@@ -303,3 +303,19 @@ meaningful interactions belong here. Decorative labels do not.
 - Related: `SURF-dev-cli-scripts`; `SYS-demo-server`; `INT-cli-fl-producer`
 - Review: candidate
 - Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
+### `INT-cli-s11-browser-check` s11-browser-check: isolated browser gate for the S11 library and recipe studies
+- Kind: interaction
+- Aliases: S11 browser check; IndexedDB library check
+- Summary: Command `node dist/scripts/s11-browser-check.js` after npm run build (not in the npm scripts): wraps the demo server on an ephemeral loopback port with exact test-only module routes for the S11 library modules and a blank /s11-checks page, launches headless Chromium and runs four groups: IndexedDB save, real page reload and stopped restore with AudioContext replaced by a thrower; two connections racing one compare-and-swap with exactly one winner; malformed, future and present-undefined records preserved; and 24 offline renders (three recipe studies x 44.1/48 kHz x explore/drive x seeds 0 and 104729), each rendered twice and compared bit for bit with headroom and resource-release checks. Writes artifacts/s11-browser/report.json with platform, Node, git source and dirty flag. No speaker output, FL Studio or S09 page change.
+- Evidence: `scripts/s11-browser-check.ts`
+- Related: `SURF-dev-cli-scripts`; `SYS-demo-server`; `SYS-procedural-sampler`
+- Review: candidate
+- Revision: 0a01ca5066205254af0a1da0b8feb3ba91d126120667c78b234ff7ca25e3f53d
+### `INT-cli-s11-library-demo` s11-library-demo: save and restore the three recipe studies
+- Kind: interaction
+- Aliases: S11 library demo
+- Summary: Command `node dist/scripts/s11-library-demo.js [--directory LOCAL_DIRECTORY]` after npm run build (not in the npm scripts): loads and verifies the S01 fixture pack, derives the s11-original-studies@1 pack with createRecipeStudyPack, opens FileLibraryStorage in the directory (default local/s11-library, git-ignored), registers the pack, saves one vibe per S11 recipe study at seed 42 explore, then resolves and restores each one and prints recipe, performer, seed, event count and the stopped transport. Creates no audio and adds no playback observation; listening is not tested.
+- Evidence: `scripts/s11-library-demo.ts`
+- Related: `SURF-dev-cli-scripts`; `SYS-music-library`
+- Review: candidate
+- Revision: 0a01ca5066205254af0a1da0b8feb3ba91d126120667c78b234ff7ca25e3f53d

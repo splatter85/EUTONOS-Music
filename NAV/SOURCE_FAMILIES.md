@@ -66,12 +66,12 @@ a claim that every file in a directory shares one owner.
 
 ### `SRC-dj-procedural` Deterministic DJ, procedural sampler and hybrid handoff
 - Kind: source-family
-- Aliases: S03 DJ; S04 sampler; S05 hybrid; S06 palette contract; S09 per-route policies; DeterministicDj; ProceduralSource
-- Summary: Session-local deterministic DJ over the two-recording SmallPlayer, a seeded phrase compiler that since S06 binds any palette meeting the written s06-performer-palette@1 contract (compilePhrase, maxRoleFrames), a finite native sampler source and the recording to procedural bridge to recording handoff. Since S09 the handoff policy is chosen by exact route identity from the frozen HYBRID_POLICIES (S05 for the S01 route, S06 mock, S09 real FL), and the DJ compiles its bridge from that policy's recipe; all browser-safe and exported from src/index.ts. Covered by dj, dj-review, phrase-plan, palette-contract, procedural-source, procedural-review, hybrid-handoff and s09-imported-handoff test suites.
+- Aliases: S03 DJ; S04 sampler; S05 hybrid; S06 palette contract; S09 per-route policies; S11 recipe studies; DeterministicDj; ProceduralSource
+- Summary: Session-local deterministic DJ over the two-recording SmallPlayer, a seeded phrase compiler that since S06 binds any palette meeting the written s06-performer-palette@1 contract (compilePhrase, maxRoleFrames), a finite native sampler source and the recording to procedural bridge to recording handoff. Since S09 the handoff policy is chosen by exact route identity from the frozen HYBRID_POLICIES (S05 for the S01 route, S06 mock, S09 real FL), and the DJ compiles its bridge from that policy's recipe. Since S11 compilePhrase also recognizes the three S11_RECIPE_FAMILIES recipe studies, which use their own rhythm tables and performer s11-pattern-performer@1 (so the hybrid policies, which require s04-s01-performer@1, cannot use them as bridges). All browser-safe and exported from src/index.ts. Covered by dj, dj-review, phrase-plan, palette-contract, procedural-source, procedural-review, hybrid-handoff, s09-imported-handoff and s11-recipes test suites.
 - Evidence: `src/dj.ts`; `src/phrase-plan.ts`; `src/procedural-source.ts`; `src/hybrid-handoff.ts`
 - Related: `SYS-deterministic-dj`; `SYS-procedural-sampler`; `SYS-hybrid-handoff`; `SRC-playback`; `SRC-control-contract`; `SRC-tests`
 - Review: candidate
-- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
+- Revision: 0a01ca5066205254af0a1da0b8feb3ba91d126120667c78b234ff7ca25e3f53d
 
 ### `SRC-dj-procedural-tests` DJ, sampler and hybrid handoff test suites
 - Kind: source-family
