@@ -135,7 +135,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF02",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "Original fixtures validated; S09 must verify eligible FL exports through the same pack schema.",
+      "summary": "Original fixtures validated; S09 imports real FL renders through the same pack schema as an owner-local, never-published pack (Windows).",
       "title": "Portable fixtures, then FL production sources",
       "type": "stage"
     },
@@ -195,7 +195,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF04",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S02 player, S03 DJ, S04 procedural source, S05 hybrid handoff, S06 importer and the S07 linked demo are in main; S05 to S07 checked on Windows only. Physical output and listening not tested.",
+      "summary": "S02 player, S03 DJ, S04 procedural source, S05 hybrid handoff, S06 importer, S07 linked demo and S09 multi-pack DJ are in main; S05 to S09 checked on Windows only. Physical output and listening not tested.",
       "title": "Working standalone cloud scaffold",
       "type": "stage"
     },
@@ -255,7 +255,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF06",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S06 importer: producer deliveries become checked packs with measured PCM, producer-hash checks, silent-tail trimming, rights evidence and coded refusals (Windows). Library, catalogue and real FL material remain.",
+      "summary": "S06 importer: producer deliveries become checked packs with measured PCM, producer-hash checks, silent-tail trimming, rights evidence and coded refusals; S09 imports real FL material through it unchanged (Windows). Library and catalogue remain.",
       "title": "Versioned library and importer",
       "type": "stage"
     },
@@ -405,7 +405,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF11",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S05 proves one A to procedural bridge to B route with percussion-only overlaps and bass ownership across silence (Windows); generalization and listening remain.",
+      "summary": "Hybrid policy chosen by exact route identity (S05, S06 mock, S09 FL); the FL-pack handoff is measured offline and live (Windows). Listening remains.",
       "title": "Hybrid musical handoffs",
       "type": "stage"
     },
@@ -525,7 +525,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "id": "EMF15",
       "parent_id": "campaign-emf-001",
       "status": "active",
-      "summary": "S08 verified a bounded authoring path on Windows; S06 adds mock-producer contract tests with no FL Studio. Live GUI control, mixer/plugins, render settings and non-Windows FL remain open.",
+      "summary": "S08 verified a bounded authoring path on Windows; S09 drives it for real renders that are imported and played. Live GUI control, mixer/plugins, render settings and non-Windows FL remain open.",
       "title": "Unified FL Studio MCP authoring control",
       "type": "stage"
     },
@@ -996,7 +996,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S09-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -1012,13 +1012,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-04T22:42:48.198579+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "e838e0117f1c60449ea6ec3fc30dadf253d86b42b24f3b5285eb70577e7e23cb",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "0ff3c304-c9b9-5a1e-871d-9d5821c729da",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-07T21:20:28.319207+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "stage_id": "EMF02"
       },
       "id": "EMF-S09",
-      "status": "planned",
+      "status": "completed",
       "summary": "Import real FL-produced material with the unchanged pack contract and test A to procedural to B on a Windows audio device.",
       "title": "S09 real FL audio in the cloud build (PC)",
       "type": "slice"
