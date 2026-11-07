@@ -2,16 +2,16 @@
 
 Document ID: `EM-D010`
 
-Updated 2026-11-06. **S07 is COMPLETE and integrated into main.** The owner chose Windows PC execution. The linked DJ/bridge and sampler demo now plays the S06 imported mock palette through normal controls; the DJ/hybrid remains S01-only. [S07 guide](S07_APP.md), [review](reviews/EMF_S07_APP_REVIEW.md), [detailed handoff](handoffs/EMF-S07-HANDOFF.md).
+Updated 2026-11-07. **S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged S06 contract, play in the DJ's A → procedural bridge → B handoff; the hybrid policy is now chosen by exact route. The owner allowed owner-local sample reuse of the FL factory renders; they stay out of git. [S09 guide](S09_FL_IMPORT.md), [detailed handoff](handoffs/EMF-S09-HANDOFF.md).
 
-**Current action: none assigned.** Corrected tested source: `9cc24e74d74ef9e2a3022e5dd5ca02737a42df4d` (Windows only: 161 Node tests, 23 native groups, 15 browser report groups). **Next slice: S09 - BOTH, PC audio**, when separately assigned: inspect eligible real FL exports and join them through the existing S06 contract. Physical output and listening are NOT TESTED.
+**Current action: none assigned.** Tested source: `0cee096a7e2f89ce580365088de1d43aab0f893a` (Windows only: 166 Node tests, 24 native offline groups and 16 browser groups; owner-local `check:fl` passed). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
 
 **One campaign:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
-| 1 | **EMF-S07 integration** | PC coordinator | Review branch and handoff, independently check, merge main and push; refresh native records. |
-| 2 | **EMF-S09**, when separately assigned after integration | BOTH - PC audio | Import eligible real FL material through the existing contract, generalize the bounded DJ/hybrid route and qualify the joined path. |
+| 1 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the real-FL DJ handoff and sampler with FL and agents closed, and accepts or revises the flow. Does not complete EMF19. |
+| 2 | **EMF-S11** (optional, parallel) | CLOUD | Post-proof persistence, genres, recipe/history and transition coverage; disjoint from S10. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.
 

@@ -2,9 +2,9 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status: EMF-S07 is COMPLETE and integrated into main.** The linked DJ/bridge and sampler demo exposes the S06 imported mock palette in ordinary playback. Windows checks pass: **161 Node tests, 23 native offline groups and 15 browser report groups**. This is a playable engineering proof, not an accepted MVP. [S07 guide](docs/S07_APP.md), [review](docs/reviews/EMF_S07_APP_REVIEW.md), [handoff](docs/handoffs/EMF-S07-HANDOFF.md). S01-S08 are in main; S09 (PC) is next.
+**Status: EMF-S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged pack contract, now play in the DJ: recording A → procedural bridge → recording B, with the bridge played from FL samples. The DJ page can switch between the S01 fixture, the S06 mock and the owner-local real-FL pack. Windows checks pass: **166 Node tests, 24 native offline groups and 16 browser groups**, plus the owner-local `check:fl`. This is engineering proof, not an accepted MVP. [S09 guide](docs/S09_FL_IMPORT.md), [handoff](docs/handoffs/EMF-S09-HANDOFF.md). S01-S09 are in main; S10 (owner listening) is next.
 
-**Physical output and human listening are NOT TESTED. No FL Studio ran for S07.** macOS/Linux and the declared Node 24 runtime were not run; Windows used Node 26.12.1 and headless Chromium 151. Next after coordinator integration: **S09 - PC**, importing eligible real FL output. [Current evidence](docs/CURRENT_TASKS.md).
+**Physical output and human listening are NOT TESTED.** macOS/Linux and the declared Node 24 runtime were not run; Windows used Node 26.12.1 and headless Chromium 151. The real-FL pack exists only on the owner's PC and is never published. Next: **S10 - PC + owner**, listening acceptance. [Current evidence](docs/CURRENT_TASKS.md).
 
 **Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. There is no automatic CI: run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. The last three-platform results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
@@ -25,6 +25,8 @@ Open **http://127.0.0.1:4173/**. Press **Play**, then **Next Song** before A rea
 The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S03 controls, selection and limits](docs/S03_DJ.md).
 
 The linked **Sampler & palettes** page at **http://127.0.0.1:4173/procedural.html** plays either S01 original or S06 imported mock samples. Select a palette, seed and arrangement, then press **Play variation**. Stop before changing the palette or variation. Use the same seed and arrangement to compare both palettes. [S07 demo guide and limits](docs/S07_APP.md).
+
+On a Windows PC with FL Studio (closed), `npm run fl:produce` renders and imports the owner-local real-FL pack; then open **http://127.0.0.1:4173/?pack=fl** or choose it in the DJ's **Pack** selector. `npm run check:fl` checks it. [S09 guide](docs/S09_FL_IMPORT.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
@@ -50,6 +52,7 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S05 recording → procedural → recording handoff](docs/S05_HYBRID.md)
 - [S06 producer import and palette contract](docs/S06_IMPORT.md)
 - [S07 integrated demo](docs/S07_APP.md)
+- [S09 real FL import](docs/S09_FL_IMPORT.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)
 - [S08 FL Studio authoring MCP](docs/S08_FL_AUTHORING.md)
 - [Unified FL Studio MCP + operating guide](docs/FL_AGENT_CONTROL.md)

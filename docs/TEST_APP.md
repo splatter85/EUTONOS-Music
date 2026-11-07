@@ -1,7 +1,7 @@
 # Small standalone DJ test app
 
 Document ID: `EM-D007`  
-Status: S01–S07 are in main; [S07](S07_APP.md) is complete. The linked DJ/bridge and original/imported mock sampler form the engineering demo. Windows-only checks pass; physical output/listening and full three-layer MVP acceptance remain open.
+Status: S01–S09 are in main; [S09](S09_FL_IMPORT.md) is complete. The linked DJ/bridge and sampler form the engineering demo; both can play the S01 fixture, the S06 mock or the owner-local real-FL pack. Windows-only checks pass; physical output/listening and full three-layer MVP acceptance remain open.
 
 ## Implemented S03 subset
 

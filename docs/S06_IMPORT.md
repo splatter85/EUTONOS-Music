@@ -77,13 +77,13 @@ It makes six original stereo 44.1 kHz renders: two 8-bar recordings (A and B, on
 
 ## What S06 does not change
 
-- The S05 hybrid policy and the DJ still name the S01 route and recipe. Driving them with imported content is **S09**.
+- At S06 the hybrid policy and the DJ named the S01 route and recipe. [S09](S09_FL_IMPORT.md) chooses the policy by route and drives the DJ with imported content.
 - The DJ page plays S01 only. S06 exposed imported packs through the API, checks and CLI; [S07](S07_APP.md) adds the imported mock-palette sampler to the ordinary demo path.
 - The pack schema, the S01 fixtures and WAVs, the S04 performer's notes and the S08 broker are unchanged. No audio file was added to the repository.
 
 ## Limits
 
-- Real FL Studio output has not been imported. S09 imports real FL material through this same path. S08's FL renders are `playback`-only (FL factory sounds may not be redistributed as samples), so they can enter as recordings but not as palette samples until material with sample-reuse rights exists.
+- S06 imported no real FL Studio output. [S09](S09_FL_IMPORT.md) imports real FL material through this same path, unchanged. S08's FL renders were `playback`-only; for S09 the owner allowed owner-local sample reuse, so S09 renders enter as palette samples on that PC only and are never published ([EM-DEC033](DECISIONS.md)).
 - Imported material stays `fixture-only` or `unreviewed`; an import never makes something listening-reviewed.
 - The importer checks technical facts and the presence of rights evidence. It does not prove who made the audio, whether the rights claim is true, or whether it sounds good.
 - Verified on Windows only, under Node 26.12.1 (the package declares Node 24). Native checks ran at 44.1 and 48 kHz in Chromium 151. macOS, Linux, other browsers and real audio devices are not verified.

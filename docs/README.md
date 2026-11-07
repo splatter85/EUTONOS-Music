@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: S01–S08 are in main. **S07 integrated engineering demo is complete** ([review](reviews/EMF_S07_APP_REVIEW.md), [handoff](handoffs/EMF-S07-HANDOFF.md)). It links DJ/bridge and sampler playback, including the S06 imported mock palette. Windows only: 161 Node tests, 23 native offline groups and 15 browser report groups passed; macOS/Linux were not run. No FL Studio ran. Physical output and listening are NOT TESTED. Next is S09 PC; MVP acceptance remains open.
+Status: S01–S09 are in main. **S09 real FL import is complete** ([guide](S09_FL_IMPORT.md), [handoff](handoffs/EMF-S09-HANDOFF.md)). Real FL Studio renders play in the DJ's hybrid handoff and the sampler through the unchanged pack contract; the pack is owner-local. Windows only: 166 Node tests, 24 native offline groups and 16 browser groups passed; macOS/Linux were not run. Physical output and listening are NOT TESTED. Next is S10 owner listening; MVP acceptance remains open.
 
 ## Start with the next audible result
 
@@ -22,6 +22,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S05 hybrid](S05_HYBRID.md) | The checked A → procedural bridge → B policy, role lead-in and tail, DJ handoff choice, bridge seed/state reporting and Windows native/browser evidence |
 | [S06 import](S06_IMPORT.md) | The producer delivery format, the importer and its refusals and receipt, the performer palette contract and the mock FL producer (no FL Studio) |
 | [S07 app](S07_APP.md) | Integrated demo, original/imported palette comparison, repeatable gates, review and Windows-only proof limits |
+| [S09 FL import](S09_FL_IMPORT.md) | Real FL renders through the unchanged contract, owner-local rights, fade-cut shaping, per-route hybrid policies and handoff measurements |
 | [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |
 | [State/API](STATE_AND_CONTROL_API.md) | Intent, actual playback, command/hold/retry semantics and proposed tools |

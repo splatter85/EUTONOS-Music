@@ -29,7 +29,7 @@ S02/S03 already own transport and DJ requests; S04 already owns finite sampler a
 
 The sampler calls the existing `compilePhrase` with the selected pack's exact recipe reference and constructs `SmallPlayer` with that pack's route. The selection is limited to the two bundled fixtures; it is not a library manager, arbitrary URL importer or imported-recording DJ. The existing loader still checks hashes, eligibility, rights evidence and resource bounds. The only clock is the owning player's AudioContext. UI rendering reads state; it does not schedule musical events. Changing palette disposes the old player before preparing the new pack; restored pages revalidate without autoplay (by inspection only; the browser runner does not exercise a real back/forward-cache restore).
 
-The DJ and S05 hybrid still use S01 recordings and recipe. Generalizing that policy for real FL imports is **S09**. Transition lengths, persistent catalogue/history, continuous playback, background listening and broader genres remain their existing staged work.
+The DJ and S05 hybrid still use S01 recordings and recipe. [S09](S09_FL_IMPORT.md) has since generalized that policy by route and plays real FL imports. Transition lengths, persistent catalogue/history, continuous playback, background listening and broader genres remain their existing staged work.
 
 ## Verification and limits
 
