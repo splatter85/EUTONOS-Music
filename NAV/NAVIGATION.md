@@ -35,12 +35,12 @@ IDs, then inspect current source before editing.
 
 ### `AREA-pack-ab-playback-demo` Pack loading and A/B transition playback demo
 - Kind: area
-- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge; S06 imported pack checks; S07 linked demo; palette selector
-- Summary: Capability: a loopback demo with two linked pages. The DJ page loads the S01 fixture pack (fixture mode on), plays recordings through SmallPlayer and takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge); it plays S01 only. Since S07 the sampler page auditions seeded procedural phrases from either the S01 original palette or the S06 imported MOCK palette, chosen by a two-option selector or ?pack=mock-fl, using the selected pack's own recipe and route through the same SmallPlayer; selection is silent and switching requires Stop. The pages live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html, the browser modules and only the JSON, Markdown and WAV files of the mock FL pack under dist/generated/s06-mock-fl/pack/. scripts/browser-check.ts regenerates that MOCK pack (no FL Studio) and runs 23 native offline groups plus 15 Chromium report groups, three of them for S07. Production hosting, arbitrary packs and imported-recording DJ playback are out of scope.
+- Aliases: S02 demo; small player; S03 DJ demo; S04 sampler page; S05 bridge; S06 imported pack checks; S07 linked demo; palette selector; S09 pack selector; real FL pack
+- Summary: Capability: a loopback demo with two linked pages. Since S09 the DJ page loads one of three packs per page load, chosen by a Pack selector or ?pack= (s01 fixture, mock-fl imported mock, fl owner-local real FL renders), plays its two recordings through SmallPlayer and takes DJ requests (state, genre, Next, queue, Hold, cancel, transport, and a handoff choice between crossfade and a procedural bridge); titles and queue ids come from the loaded pack and the selector locks while playing. The sampler page auditions seeded procedural phrases from the same three palettes using the selected pack's own recipe and route; selection is silent and switching requires Stop. The pages live in web/, outside the NAV source roots and not cited; src/browser-pack.ts, src/player.ts, src/dj.ts, the procedural source and src/hybrid-handoff.ts are the cited code. scripts/serve.ts routes /procedural.html, the browser modules, only the JSON, Markdown and WAV files of the mock FL pack under dist/generated/s06-mock-fl/pack/, and only those of the owner-local pack under local/s09-fl/pack/ (never its delivery or workspace). scripts/browser-check.ts regenerates the MOCK pack (no FL Studio) and runs 24 native offline groups plus 16 Chromium report groups, including the S09 imported-pack DJ stage; the real-FL pack is checked separately and only on the owner's PC. Production hosting and arbitrary packs are out of scope.
 - Evidence: `src/browser-pack.ts`; `src/player.ts`; `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-playback`; `SRC-dev-scripts`; `GAP-web-demo-outside-source-roots`; `SURF-demo-http-server`; `JRN-load-pack-play-ab-transition`; `GAP-authored-pack-not-playable-in-demo`
 - Review: candidate
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `SYS-pack-validation` Audio pack manifest and media validation
 - Kind: system
@@ -117,11 +117,11 @@ IDs, then inspect current source before editing.
 ### `SYS-demo-server` Loopback demo server and browser check runner
 - Kind: system
 - Aliases: serve.ts; browser-check.ts
-- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures, and the JSON, Markdown and WAV files of the generated S06 MOCK pack under /generated/s06-mock-fl/pack/), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner first regenerates the MOCK FL pack (no FL Studio), drives the server with an injected Playwright module, runs 23 native offline checks (including four on the imported mock pack) plus player (crossfade and procedural bridge) and sampler page stages, and since S07 the linked-demo palette selection, context disposal, ownership and failure-recovery stages (15 report groups), and writes evidence.
+- Summary: GET and HEAD only static server bound to 127.0.0.1 with a strict allowlist of routes (web pages including procedural.html, dist browser modules including dj, phrase-plan, procedural-source and hybrid-handoff, S01 fixtures, the JSON, Markdown and WAV files of the generated S06 MOCK pack under /generated/s06-mock-fl/pack/, and since S09 the same file types of the owner-local real-FL pack under /local/s09-fl/pack/, never its delivery or workspace), host-header and path hardening and symlink rejection, exporting createDemoServer; the browser check runner first regenerates the MOCK FL pack (no FL Studio), drives the server with an injected Playwright module, runs 24 native offline checks (including five on the imported mock pack, one of them the S09 handoff through the mock pack's own policy) plus player (crossfade and procedural bridge) and sampler page stages, the S07 linked-demo palette, context disposal, ownership and failure-recovery stages, and the S09 imported-pack DJ stage (16 report groups), and writes evidence.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `SRC-dev-scripts`; `AREA-pack-ab-playback-demo`
 - Review: candidate
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `GAP-control-contract-unwired` Control contract reaches only the session-local DJ
 - Kind: gap
@@ -134,12 +134,12 @@ IDs, then inspect current source before editing.
 
 ### `GAP-web-demo-outside-source-roots` Demo page sources are outside any source family
 - Kind: gap
-- Aliases: web/ unowned; checks page; procedural page; palette selector
-- Summary: web/ (the DJ, checks and procedural pages and their scripts, plus style.css) is not under the configured source roots, so no source family owns it. The DJ and sampler UIs, including the S07 palette selector and demo navigation, are therefore reachable in NAV only through scripts/serve.ts (which routes /procedural.html and the dj, phrase-plan and procedural-source browser modules) and scripts/browser-check.ts (which drives the pages, including the S07 palette selection, failure and recovery groups). Page logic cannot be cited. Resolving this needs web added as a source root or an explicit exclusion.
+- Aliases: web/ unowned; checks page; procedural page; palette selector; pack selector; handoff measurement
+- Summary: web/ (the DJ, checks and procedural pages and their scripts, the S09 handoff-measure module, plus style.css) is not under the configured source roots, so no source family owns it. The DJ and sampler UIs, including the S07 palette selector, the S09 DJ pack selector and demo navigation, are therefore reachable in NAV only through scripts/serve.ts (which routes /procedural.html, the browser modules and the two imported pack folders) and scripts/browser-check.ts (which drives the pages, including the S07 palette groups and the S09 imported-pack DJ stage). Page logic cannot be cited. Resolving this needs web added as a source root or an explicit exclusion.
 - Evidence: `scripts/serve.ts`; `scripts/browser-check.ts`
 - Related: `AREA-pack-ab-playback-demo`; `SYS-demo-server`
 - Review: gap
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `GAP-authored-pack-not-playable-in-demo` Authored packs have no route and are not demo-playable
 - Kind: gap
@@ -153,11 +153,11 @@ IDs, then inspect current source before editing.
 ### `SYS-deterministic-dj` Deterministic DJ coordinator
 - Kind: system
 - Aliases: DeterministicDj; S03 DJ; request executor
-- Summary: DeterministicDj builds a ControlContract from the loaded pack (sorted recordings the renderer pair supports, loaded, and eligibleForPlayback; a genre catalog derived from them) and executes accepted requests: transport stop, pause, mute, unmute, play; hold; cancelNext; cancelQueue; setState; requestGenre; queueTrack; nextSong. select() prefers the manual FIFO head, else a different eligible recording matching state and genre, then schedules A to B either as the S03 crossfade (SmallPlayer.scheduleAB, the default) or, with the hybrid handoff option or setHandoff('hybrid'), through a seeded procedural bridge (scheduleHybrid, seed from the command ID). Exact retries return the stored operation and a reused id with another body is rejected. snapshot() reconciles scheduled clock events (started, completed, applied, cancelled, superseded, no-match, blocked, failed) and reports prepared and audible state back to the contract; there is no timer, network service or persistence, and device output is not measured.
+- Summary: DeterministicDj builds a ControlContract from the loaded pack (sorted recordings the renderer pair supports, loaded, and eligibleForPlayback; a genre catalog derived from them) and executes accepted requests: transport stop, pause, mute, unmute, play; hold; cancelNext; cancelQueue; setState; requestGenre; queueTrack; nextSong. select() prefers the manual FIFO head, else a different eligible recording matching state and genre, then schedules A to B either as the S03 crossfade (SmallPlayer.scheduleAB, the default) or, with the hybrid handoff option or setHandoff('hybrid'), through a seeded procedural bridge (scheduleHybrid, seed from the command ID) compiled since S09 from the recipe of the hybrid policy for the player's route, so any pack with a policy (S01 fixture, S06 mock, S09 real FL) can be handed off. Exact retries return the stored operation and a reused id with another body is rejected. snapshot() reconciles scheduled clock events (started, completed, applied, cancelled, superseded, no-match, blocked, failed) and reports prepared and audible state back to the contract; there is no timer, network service or persistence, and device output is not measured.
 - Evidence: `src/dj.ts`; `src/control.ts`; `src/player.ts`
 - Related: `SYS-control-request-contract`; `SYS-web-audio-transition-player`; `SRC-dj-procedural`; `JRN-dj-request-to-transition`; `INT-dj-request`; `SYS-hybrid-handoff`; `JRN-hybrid-handoff`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `SYS-procedural-sampler` Seeded phrase compiler and finite sampler source
 - Kind: system
@@ -170,12 +170,13 @@ IDs, then inspect current source before editing.
 
 ### `SYS-hybrid-handoff` Checked recording to procedural bridge to recording handoff
 - Kind: system
-- Aliases: S05 hybrid; s05-hybrid-handoff@1; planHybridHandoff; commitHybridHandoff
-- Summary: One code-versioned policy, s05-hybrid-handoff@1, for the S01 pack's A to B route and the S04 performer. planHybridHandoff checks route, performer, recipe, pack revision, tempo, 4/4 meter, key and harmony, bar-aligned cues, A's tail bar, the bridge exit (phrase at 16 quarters or end at 32) and the scheduling lead, and refuses before any audio effect; it returns fromExit, bridgeFull, toStart and end as absolute frames on the one WebAudioClock. commitHybridHandoff schedules the bridge (a ProceduralSource with a percussion-only one-bar lead-in), its role-handoff exit at B's entry (non-percussion attacks cancelled, percussion fading over at most one bar), B at full level, and changes A's exit fade last. bridgeSeed is FNV-1a of a command ID. Timing and fades are engineering choices; nobody has listened.
+- Aliases: S05 hybrid; s05-hybrid-handoff@1; s06-mock-hybrid-handoff@1; s09-hybrid-handoff@1; HybridPolicy; hybridPolicyForRoute; planHybridHandoff; commitHybridHandoff
+- Summary: Code-versioned HybridPolicy records, frozen in HYBRID_POLICIES and found by hybridPolicyForRoute on exact route id and revision: s05-hybrid-handoff@1 for the S01 route and s01-recipe, and since S09 s06-mock-hybrid-handoff@1 for the S06 mock route and recipe and s09-hybrid-handoff@1 for the real-FL route s09-a-to-b and s09-fl-recipe. All share the S04 performer and the one-bar percussion lead-in and tail; a route without a policy is refused. planHybridHandoff checks route, performer, recipe, pack revision, tempo, 4/4 meter, key and harmony, bar-aligned cues, A's tail bar, the bridge exit (phrase at 16 quarters or end at 32) and the scheduling lead, and refuses before any audio effect; it returns fromExit, bridgeFull, toStart and end as absolute frames on the one WebAudioClock. commitHybridHandoff schedules the bridge (a ProceduralSource with a percussion-only one-bar lead-in), its role-handoff exit at B's entry (non-percussion attacks cancelled, percussion fading over at most one bar), B at full level, and changes A's exit fade last. bridgeSeed is FNV-1a of a command ID. Timing and fades are engineering choices; nobody has listened.
 - Evidence: `src/hybrid-handoff.ts`; `src/procedural-source.ts`; `src/web-audio.ts`; `src/player.ts`
 - Related: `SYS-web-audio-transition-player`; `SYS-procedural-sampler`; `SYS-deterministic-dj`; `SRC-dj-procedural`; `INT-schedule-hybrid`; `JRN-hybrid-handoff`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
+
 ### `SYS-producer-importer` Producer delivery importer and import receipt
 - Kind: system
 - Aliases: importDelivery; IMPORT.json; em.import-receipt.v0; eutonos-music-importer@1

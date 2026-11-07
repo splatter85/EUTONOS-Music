@@ -21,20 +21,20 @@ meaningful interactions belong here. Decorative labels do not.
 ### `SURF-demo-http-server` Loopback demo HTTP server
 - Kind: surface
 - Aliases: serve.ts; npm run demo
-- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist covers /procedural.html, the dj, phrase-plan, procedural-source and hybrid-handoff browser modules and, since S06, only the JSON, Markdown and WAV files under /generated/s06-mock-fl/pack/ (and its audio/ folder), mapped to the MOCK pack generated in dist/ and never committed. `npm run demo` regenerates that pack before serving. Page content comes from web/, outside the source roots.
+- Summary: Parent surface: `node dist/scripts/serve.js [--port N]` serves the demo pages and assets on 127.0.0.1 (default port 4173) over GET and HEAD from an allowlist and prints the local URL. The allowlist covers /procedural.html, the dj, phrase-plan, procedural-source and hybrid-handoff browser modules, since S06 only the JSON, Markdown and WAV files under /generated/s06-mock-fl/pack/ (and its audio/ folder), mapped to the MOCK pack generated in dist/ and never committed, and since S09 only the same file types under /local/s09-fl/pack/ (and its audio/ folder), mapped to the owner-local real-FL pack in the git-ignored local/ folder; that pack's delivery and workspace folders and other local/ paths are refused (tests/server.test.ts). `npm run demo` regenerates the mock pack before serving; the real-FL pack exists only where the owner ran npm run fl:produce. Page content comes from web/, outside the source roots.
 - Evidence: `scripts/serve.ts`
 - Related: `SYS-demo-server`; `GAP-web-demo-outside-source-roots`
 - Review: candidate
-- Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `SURF-dev-cli-scripts` Fixture, pack validation and browser check commands
 - Kind: surface
 - Aliases: generate-fixtures; validate-pack; browser-check
-- Summary: Parent surface of three Node commands: generate-fixtures.js [--check] [dir], validate-pack.js <pack-directory> (prints a JSON PASS report or exits 1, 2 on bad usage) and browser-check.js [--browser] [--playwright-module] [--output] (default output artifacts/s07-browser; starts the demo server on an ephemeral loopback port, runs offline audio checks and drives the player and sampler pages with Playwright). The npm script names live in package.json, outside the source roots.
-- Evidence: `scripts/generate-fixtures.ts`; `scripts/validate-pack.ts`; `scripts/browser-check.ts`
+- Summary: Parent surface of three Node commands: generate-fixtures.js [--check] [dir], validate-pack.js <pack-directory> (prints a JSON PASS report or exits 1, 2 on bad usage) and browser-check.js [--browser] [--playwright-module] [--output] (default output artifacts/s09-browser; starts the demo server on an ephemeral loopback port, runs offline audio checks and drives the player and sampler pages with Playwright). The npm script names live in package.json, outside the source roots.
+- Evidence: `scripts/browser-check.ts`; `scripts/generate-fixtures.ts`; `scripts/validate-pack.ts`
 - Related: `SYS-fixture-pipeline`; `SYS-demo-server`
 - Review: candidate
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `SURF-library-exports` Package import surfaces
 - Kind: surface
@@ -227,11 +227,11 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-cli-browser-check` browser-check: run isolated browser checks
 - Kind: interaction
 - Aliases: check browser; Playwright check
-- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s07-browser): first regenerates the MOCK FL pack under dist/generated/s06-mock-fl (generateMockPack; no FL Studio), starts the demo server on an ephemeral loopback port, runs twenty-three native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff, four S06 imported-producer), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright. Since S07 it also checks entry from the DJ page to the imported mock palette, silent selection with no AudioContext, palette-specific status, same-seed palette comparison, closure of the old context on switch, imported transport, ownership and navigation, missing, corrupt and unknown palettes with same-palette retry, refresh and mobile fit (15 report groups). Writes offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
+- Summary: Command `node dist/scripts/browser-check.js [--browser PATH] [--playwright-module PATH] [--output DIR]` (default output artifacts/s09-browser): first regenerates the MOCK FL pack under dist/generated/s06-mock-fl (generateMockPack; no FL Studio), starts the demo server on an ephemeral loopback port, runs twenty-four native offline audio checks (nine recorded, six procedural, four S05 hybrid handoff, four S06 imported-producer, one S09 imported-pack handoff through its own policy), then drives the player page (including a live A to bridge to B stage) and the sampler page with Playwright. It checks the S07 imported-palette flows (silent selection, palette comparison, context closure, transport, ownership, navigation, refusal and recovery, mobile fit) and, since S09, the DJ on the imported mock pack: titles from the pack, queue, hybrid handoff to completion, pack selector locked while playing, unknown pack refused and recovery to S01 (16 report groups). Writes offline.json, browser.json and screenshots, or failure.json on error; reports physical output and listening as NOT TESTED.
 - Evidence: `scripts/browser-check.ts`
 - Related: `SURF-dev-cli-scripts`; `SYS-demo-server`
 - Review: candidate
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `SURF-demo-procedural-page` Demo procedural sampler page route
 - Kind: surface
@@ -254,20 +254,21 @@ meaningful interactions belong here. Decorative labels do not.
 ### `INT-play-procedural` SmallPlayer.playProcedural: audition a seeded phrase
 - Kind: interaction
 - Aliases: procedural audition; sampler play
-- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compilePhrase (any recipe whose palette meets the S06 s06-performer-palette@1 contract) or compileS01Phrase, rechecks it against the loaded pack with the plan's own recipe, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts; since S07 it compiles with the selected pack's own recipe and builds a new SmallPlayer per palette, choosing the S01 original or the S06 imported mock palette.
+- Summary: Library call playProcedural(plan, ownership?) compiles nothing itself: it takes a plan from compilePhrase (any recipe whose palette meets the S06 s06-performer-palette@1 contract) or compileS01Phrase, rechecks it against the loaded pack with the plan's own recipe, decodes the palette once, and plays the finite source through the same transport, clock, pause, mute and stop as recordings. A different palette after the first is refused until reload. The procedural.html page (under web/, not cited) is served by scripts/serve.ts; it compiles with the selected pack's own recipe and builds a new SmallPlayer per palette, choosing the S01 original, the S06 imported mock or, since S09, the owner-local real-FL palette served from local/s09-fl/pack.
 - Evidence: `src/player.ts`; `src/procedural-source.ts`; `scripts/serve.ts`
 - Related: `SYS-procedural-sampler`; `JRN-procedural-audition`; `SYS-demo-server`
 - Review: candidate
-- Revision: 6b0bb70ef27113e98ba16dc567efa9376d476bf3f4ebb23d19ee4684158625b5
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `INT-schedule-hybrid` SmallPlayer.scheduleHybrid: schedule A to bridge to B
 - Kind: interaction
-- Aliases: scheduleHybrid; hybrid handoff call
-- Summary: Library call scheduleHybrid(bridgePlan, exit = 'phrase') while A plays: plans with planHybridHandoff, decodes the palette (shared with playProcedural) and B, prepares both, plans again, then commits; a late or changed clock refuses and releases what was prepared, leaving A unchanged. snapshot().handoff reports the policy, bridge identity (recipe, performer, seed, state, exit), boundaries and a clock-derived phase: scheduled, lead-in, bridge, tail or complete. Cancel works until the bridge enters; Stop stays immediate.
+- Aliases: scheduleHybrid; hybrid handoff call; hybridPolicyForRoute
+- Summary: Library call scheduleHybrid(bridgePlan, exit = 'phrase') while A plays: plans with planHybridHandoff, decodes the palette (shared with playProcedural) and B, prepares both, plans again, then commits; a late or changed clock refuses and releases what was prepared, leaving A unchanged. Since S09 planHybridHandoff takes its policy from hybridPolicyForRoute, which finds one of the frozen HYBRID_POLICIES (s05-hybrid-handoff for s01-a-to-b, s06-mock-hybrid-handoff for s06-a-to-b, s09-hybrid-handoff for s09-a-to-b) by exact route id and revision; a route with no policy is refused, and a bridge whose performer or recipe is not the policy's is refused. All three share the S04 performer and the S05 lead-in and tail. snapshot().handoff reports the policy, bridge identity (recipe, performer, seed, state, exit), boundaries and a clock-derived phase: scheduled, lead-in, bridge, tail or complete. Cancel works until the bridge enters; Stop stays immediate.
 - Evidence: `src/player.ts`; `src/hybrid-handoff.ts`
 - Related: `SYS-hybrid-handoff`; `SYS-web-audio-transition-player`; `JRN-hybrid-handoff`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
+
 ### `INT-cli-import-delivery` import-delivery: import a producer delivery
 - Kind: interaction
 - Aliases: npm run import
@@ -285,3 +286,20 @@ meaningful interactions belong here. Decorative labels do not.
 - Related: `SRC-producer-import`; `SYS-producer-importer`; `SYS-demo-server`
 - Review: candidate
 - Revision: 46ab9be08325ce3a958b203e014b5a12e93ffa9a4e6ff563c19b8ebf807ce8be
+### `INT-cli-fl-producer` fl-producer: render and import the owner-local real-FL pack
+- Kind: interaction
+- Aliases: npm run fl:produce; S09 real FL producer; generateFlPack
+- Summary: Command `node dist/scripts/fl-producer.js [--out <directory>]` (npm run fl:produce; Windows with FL Studio closed): drives the S08 broker through the same McpSession client as the mock producer, against the real Windows host. It refuses when FL is unavailable or running, creates disposable copies of the factory chord template, writes notes, verifies and renders two 8-bar recordings and four one-shots, fade-cuts one-shots longer than their performer role gap (recorded in shaping.json, with no producer hash for a shaped file), labels rights owner-local-only with playback and sample-reuse, and imports the delivery to <out>/pack (default local/s09-fl, git-ignored, replaced only when it carries its own marker). Prints the pack path, manifest hash and generator checks; listening is NOT TESTED.
+- Evidence: `scripts/fl-producer.ts`
+- Related: `SURF-dev-cli-scripts`; `SYS-producer-importer`; `SYS-authoring-broker`; `INT-cli-mock-fl-producer`
+- Review: candidate
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
+
+### `INT-cli-fl-check` fl-check: owner-local check of the real-FL pack
+- Kind: interaction
+- Aliases: npm run check:fl; S09 real FL check
+- Summary: Command `node dist/scripts/fl-check.js` (npm run check:fl): exits 2 when local/s09-fl/pack has no manifest. Otherwise starts the demo server on an ephemeral loopback port and headless Chromium, measures the A to procedural bridge to B handoff offline on that pack through the page's handoff-measure module, drives the DJ page on ?pack=fl through a hybrid handoff with pause and resume inside the bridge and Stop while logging every status change with wall time and clock frame, then plays and stops the sampler on the same palette. Writes artifacts/s09-fl/fl-check.json (and a failure screenshot on error) with physical output and listening NOT TESTED. Not part of the portable gates.
+- Evidence: `scripts/fl-check.ts`
+- Related: `SURF-dev-cli-scripts`; `SYS-demo-server`; `INT-cli-fl-producer`
+- Review: candidate
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff

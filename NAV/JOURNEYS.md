@@ -20,12 +20,12 @@ state, persistence, failure paths, and terminal conditions.
 
 ### `JRN-load-pack-play-ab-transition` Load a pack and play an A/B transition
 - Kind: journey
-- Aliases: demo playback; schedule A to B
-- Summary: Entry: the demo server serves the page, which loads a pack by manifest URL (the page script is in web/, not cited). loadBrowserPack fetches, validates and size-limits the manifest and media; SmallPlayer is built on a checked A to B route; play(a|b) resumes the AudioContext from the user gesture, decodes once and schedules the source at its entry cue; scheduleAB (allowed after Play A) plans the exit cue against the shared clock, schedules B with a fade-in and sets A to transition out. A transition operation counter now also lets a future handoff be cancelled before its cue. Pause, resume, stop, volume and mute are immediate. Failures such as ineligible audio, a passed exit cue or a closed context surface as errors. Physical output is not tested.
-- Evidence: `src/browser-pack.ts`; `src/player.ts`; `src/web-audio.ts`; `scripts/serve.ts`
+- Aliases: demo playback; schedule A to B; ?pack= selection
+- Summary: Entry: the demo server serves the page, which loads a pack by manifest URL (the page script is in web/, not cited; since S09 the DJ page picks the S01 fixture, the S06 mock or the owner-local real-FL pack by ?pack=, and scripts/serve.ts serves the last only from local/s09-fl/pack on loopback). loadBrowserPack fetches, validates and size-limits the manifest and media; SmallPlayer is built on a checked A to B route; play(a|b) resumes the AudioContext from the user gesture, decodes once and schedules the source at its entry cue; scheduleAB (allowed after Play A) plans the exit cue against the shared clock, schedules B with a fade-in and sets A to transition out. A transition operation counter also lets a future handoff be cancelled before its cue. Pause, resume, stop, volume and mute are immediate. Failures such as ineligible audio, a passed exit cue, a missing pack or a closed context surface as errors. Physical output is not tested.
+- Evidence: `scripts/serve.ts`; `src/browser-pack.ts`; `src/player.ts`; `src/web-audio.ts`
 - Related: `SURF-demo-http-server`; `AREA-pack-ab-playback-demo`; `SYS-web-audio-transition-player`; `SYS-pack-validation`; `SYS-demo-server`
 - Review: candidate
-- Revision: e8b9a0ae28ef816f8cdf65792867c0dc64f50d1472d918fbbb26f03205a6454c
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
 
 ### `JRN-control-request-lifecycle` Control request acceptance lifecycle
 - Kind: journey
@@ -73,9 +73,9 @@ state, persistence, failure paths, and terminal conditions.
 
 ### `JRN-hybrid-handoff` DJ Next song through a procedural bridge
 - Kind: journey
-- Aliases: hybrid Next; A to bridge to B
-- Summary: A caller builds DeterministicDj with options {handoff: 'hybrid'} or calls setHandoff('hybrid'). Selection, the FIFO queue, Hold and retries are unchanged, but the DJ compiles a bridge with seed bridgeSeed(commandId) and state drive when Drive is requested, else explore, and calls SmallPlayer.scheduleHybrid instead of scheduleAB. At A's exit cue the bridge enters with percussion while A fades for a bar; bass and harmony start once A is silent; B enters at the bridge's phrase exit while bridge percussion fades. snapshot() reports B planned and started at its own entry (the bridge exit) and consumes a queued B's head only then; once the bridge enters, Cancel next, Next and queue removal are refused while Stop stays immediate and keeps a queued B. It reports bridge seed and state (null when the requested state has no bridge); a bridge that no longer matches a changed request is rescheduled. Physical output is not tested.
-- Evidence: `src/dj.ts`; `src/player.ts`; `src/hybrid-handoff.ts`
+- Aliases: hybrid Next; A to bridge to B; imported-pack handoff
+- Summary: A caller builds DeterministicDj with options {handoff: 'hybrid'} or calls setHandoff('hybrid'). Selection, the FIFO queue, Hold and retries are unchanged, but the DJ looks up the hybrid policy for the player's route (hybridPolicyForRoute; since S09 the S01 fixture, the S06 mock and the real-FL pack each have one), compiles a bridge with compilePhrase from that policy's recipe, seed bridgeSeed(commandId) and state drive when Drive is requested, else explore, and calls SmallPlayer.scheduleHybrid instead of scheduleAB; a route without a policy throws. At A's exit cue the bridge enters with percussion while A fades for a bar; bass and harmony start once A is silent; B enters at the bridge's phrase exit while bridge percussion fades. snapshot() reports B planned and started at its own entry (the bridge exit) and consumes a queued B's head only then; once the bridge enters, Cancel next, Next and queue removal are refused while Stop stays immediate and keeps a queued B. It reports bridge seed and state (null when the requested state has no bridge); a bridge that no longer matches a changed request is rescheduled. Physical output is not tested.
+- Evidence: `src/dj.ts`; `src/hybrid-handoff.ts`; `src/player.ts`
 - Related: `SYS-deterministic-dj`; `SYS-hybrid-handoff`; `INT-schedule-hybrid`; `JRN-dj-request-to-transition`
 - Review: candidate
-- Revision: 1da0cff9cc6ca2af793fa89c05f07e646c2e483c2f2169d734448cb31e989188
+- Revision: 2eff642abf7aae1f76824fc90d8243821b17df208be4dd783732a6fa52eff2ff
