@@ -1,5 +1,5 @@
 /**
- * Isolated S03–S07 browser checks. Audio/queue behavior is observed through the real
+ * Isolated S03–S09 browser checks. Audio/queue behavior is observed through the real
  * UI; native offline comparisons remain distinct from physical output/listening. S06 first
  * regenerates the MOCK FL pack under dist/ (no FL Studio runs).
  */
@@ -23,7 +23,7 @@ const modulePath = options.get('--playwright-module');
 const moduleName = modulePath ? pathToFileURL(resolve(modulePath)).href : 'playwright';
 const {chromium} = await import(moduleName);
 const playwrightVersion = JSON.parse(await readFile(new URL('./package.json', import.meta.resolve(moduleName)), 'utf8')).version as string;
-const directory = resolve(options.get('--output') ?? 'artifacts/s07-browser');
+const directory = resolve(options.get('--output') ?? 'artifacts/s09-browser');
 await mkdir(directory, {recursive: true});
 await generateMockPack(DEFAULT_MOCK_OUT);
 const server = createDemoServer();
@@ -85,14 +85,14 @@ try {
   currentPage = page;
   observeErrors(page, 'primary');
 
-  stage = 'Nine recorded-source, six procedural, four S05 handoff and four S06 imported-producer native offline audio checks';
+  stage = 'Nine recorded-source, six procedural, four S05 handoff, four S06 imported-producer and one S09 imported-handoff native offline audio checks';
   await page.goto(origin + '/checks.html');
   await page.getByRole('button', {name: 'Run offline checks'}).click();
   await page.waitForFunction(() => /checks passed|failed/.test(document.getElementById('check-status')!.textContent!), null,
     {timeout: 120000});
   const offline = JSON.parse(await page.locator('#check-results').innerText());
   await writeFile(resolve(directory, 'offline.json'), JSON.stringify(offline, null, 2) + '\n');
-  assert.equal(offline.results.length, 23);
+  assert.equal(offline.results.length, 24);
   assert.ok(offline.results.every((result: {status: string}) => result.status === 'PASS'), JSON.stringify(offline, null, 2));
   checks.push({name: stage, status: 'PASS'});
 
@@ -295,6 +295,46 @@ try {
   await waitText(page, '#execution', /^accepted · completed ·/);
   await stop(page);
   await page.locator('#handoff').selectOption('direct');
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'S09 DJ on the imported mock pack: titles from the pack, hybrid handoff through its own policy, unknown pack refused';
+  await page.goto(origin + '/?pack=mock-fl');
+  await ready(page);
+  assert.equal(await page.locator('#dj-pack').inputValue(), 'mock-fl');
+  assert.match(await page.locator('#status').innerText(), /^Ready — S06 imported mock — press Play to start$/);
+  assert.equal(await page.locator('#track-a-title').innerText(), 'S06 mock A — keys arpeggio and kit');
+  assert.equal(await page.locator('#genre').inputValue(), 'synthetic-test');
+  await page.locator('#queue-b').click();
+  await queueCount(page, 1);
+  assert.match(await page.locator('#queue li').innerText(), /S06 mock B/);
+  await page.locator('#queue li').first().getByRole('button', {name: /^Cancel queued 1:/}).click();
+  await queueCount(page, 0);
+  await page.locator('#handoff').selectOption('hybrid');
+  await page.locator('#play').click();
+  await waitText(page, '#now-title', /^S06 mock A — keys arpeggio and kit$/);
+  assert.equal(await page.locator('#dj-pack').isDisabled(), true);
+  await page.locator('#next-song').click();
+  await waitText(page, '#execution', /^accepted · scheduled · Scheduled the checked A → procedural bridge → B handoff/);
+  await waitText(page, '#next-title', /^Procedural bridge$/);
+  await waitText(page, '#status', /^Bridge entering — A fades for one bar$/, 12000);
+  await waitText(page, '#status', /^Procedural bridge playing$/, 4000);
+  await waitText(page, '#status', /^B entered — bridge percussion fades$/, 8000);
+  await waitText(page, '#now-title', /^Procedural bridge \+ S06 mock B — held chords and kit$/);
+  await waitText(page, '#status', /^Handoff complete$/, 4000);
+  await waitText(page, '#execution', /^accepted · completed ·/);
+  await page.screenshot({path: resolve(directory, 'player-imported-handoff.png'), fullPage: true});
+  await stop(page);
+  assert.equal(await page.locator('#dj-pack').isDisabled(), false);
+  await page.goto(origin + '/?pack=unknown');
+  await waitText(page, '#error', /^Unknown pack/);
+  await waitText(page, '#status', /^Pack unavailable — choose a pack\.$/);
+  assert.equal(await page.locator('#play').isDisabled(), true);
+  assert.equal(await page.locator('#dj-pack').inputValue(), '');
+  await page.locator('#dj-pack').selectOption('s01');
+  await ready(page);
+  assert.doesNotMatch(page.url(), /pack=/);
+  assert.equal(await page.locator('#track-a-title').innerText(), 'S01 A — slow triangle pulse');
+  assert.deepEqual(errors, []);
   checks.push({name: stage, status: 'PASS'});
 
   stage = 'Mobile controls, viewport fit and no page script errors';

@@ -13,7 +13,9 @@ const packInput = element<HTMLSelectElement>('pack');
 const packs = {
   s01: {manifest: '/fixtures/s01/manifest.json', label: 'S01 original palette'},
   'mock-fl': {manifest: '/generated/s06-mock-fl/pack/manifest.json', label: 'S06 imported mock palette'},
+  fl: {manifest: '/local/s09-fl/pack/manifest.json', label: 'S09 real FL palette (owner-local)'},
 } as const;
+const isPack = (value: string): value is keyof typeof packs => Object.hasOwn(packs, value);
 type PackChoice = keyof typeof packs;
 let selectedPack: PackChoice = 's01';
 let loadingPack = false, loadEpoch = 0;
@@ -163,20 +165,20 @@ async function selectPack(choice: string): Promise<void> {
   try {
     await disposed;
     if (epoch !== loadEpoch) return;
-    if (choice !== 's01' && choice !== 'mock-fl') throw new Error('Unknown palette. Choose S01 original or S06 imported mock.');
+    if (!isPack(choice)) throw new Error('Unknown palette. Choose S01 original, S06 imported mock or S09 real FL.');
     selectedPack = choice; packInput.value = choice;
     const url = new URL(location.href); url.searchParams.set('pack', choice);
     history.replaceState(null, '', url);
     const candidate = await loadBrowserPack(new URL(packs[choice].manifest, location.href), true);
     if (epoch !== loadEpoch) return;
     loaded = candidate;
-    setText('loading', `${packs[choice].label} · four original samples · eight bars · no FL Studio required`);
+    setText('loading', `${packs[choice].label} · four samples · eight bars · ${choice === 'fl' ? 'rendered by FL Studio on this PC' : 'no FL Studio required'}`);
     prepareSelection();
   } catch (error) {
     if (epoch === loadEpoch) {
       // Clear the picker so choosing any palette, including the same one, retries.
       packInput.selectedIndex = -1;
-      if (choice !== 's01' && choice !== 'mock-fl') {
+      if (!isPack(choice)) {
         const url = new URL(location.href); url.searchParams.delete('pack');
         history.replaceState(null, '', url);
       }

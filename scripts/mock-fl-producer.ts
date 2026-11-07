@@ -161,10 +161,10 @@ export class MockFlHost implements HostAdapter {
 }
 
 // ---------- the delivery the mock producer authors ----------
-interface NoteSpec { readonly midi: number; readonly start_quarters: number; readonly duration_quarters: number; readonly velocity: number }
+export interface NoteSpec { readonly midi: number; readonly start_quarters: number; readonly duration_quarters: number; readonly velocity: number }
 const MAIN = {pattern: {index: 1, expected_name: 'Main'}, channel: {index: 0, expected_name: 'Keys'}};
 const BEAT = {pattern: {index: 2, expected_name: 'Beat'}, channel: {index: 1, expected_name: 'Kit'}};
-const range = (n: number) => [...Array(n).keys()];
+export const range = (n: number) => [...Array(n).keys()];
 
 const RECORDING_A = {
   keys: range(32).map(i => ({midi: [57, 60, 64, 69][i % 4]!, start_quarters: i, duration_quarters: 1, velocity: 0.7})),
@@ -201,9 +201,9 @@ is dedicated to the public domain under CC0-1.0. It is regenerated on demand and
 is not committed. Eligibility is fixture-only; listening is NOT TESTED.
 `;
 
-type Call = (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+export type Call = (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
-function mcpClient(workspace: string, host: HostAdapter): {call: Call; init: () => Promise<void>} {
+export function mcpClient(workspace: string, host: HostAdapter): {call: Call; init: () => Promise<void>} {
   const replies: Record<string, unknown>[] = [];
   const session = new McpSession({workspace, host, write: line => replies.push(JSON.parse(line))});
   let id = 0;
@@ -225,7 +225,7 @@ function mcpClient(workspace: string, host: HostAdapter): {call: Call; init: () 
 }
 
 /** Authors, verifies and renders one disposable project; returns the verified render's WAV hash. */
-async function author(call: Call, project: string, bars: number, targets: readonly unknown[]): Promise<{renderId: string; sha256: string}> {
+export async function author(call: Call, project: string, bars: number, targets: readonly unknown[]): Promise<{renderId: string; sha256: string}> {
   await call('fl_create_project', {project_id: project, template: TEMPLATE, operation_id: `op-create-${project}`});
   const {revision} = await call('fl_inspect', {project_id: project}) as {revision: string};
   const {change_id} = await call('fl_prepare_edit', {project_id: project, expected_revision: revision, tempo_bpm: 120, clip_bars: bars, targets}) as {change_id: string};

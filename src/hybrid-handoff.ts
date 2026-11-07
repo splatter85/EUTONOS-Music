@@ -7,13 +7,24 @@ import {checkedRoute, cueFrame, requireAudio, type CheckedRoute, type RecordedSo
 
 export type HybridBridgeExit = 'phrase' | 'end';
 
+export interface HybridPolicy {
+  readonly id: string;
+  readonly revision: number;
+  readonly route: VersionRef;
+  readonly performer: VersionRef;
+  readonly recipe: VersionRef;
+  readonly leadIn: {readonly quarters: number; readonly roles: readonly ('percussion')[]};
+  readonly tail: {readonly quarters: number; readonly roles: readonly ('percussion')[]};
+  readonly review: 'engineering-only';
+}
+
 /**
- * S05's one code-defined hybrid handoff: recording A → the S04 performer → recording B.
+ * S05's code-defined hybrid handoff, bound to the S01 fixtures: recording A → the S04 performer → recording B.
  * It realizes the existing directed fixture route and binds every identity it uses.
  * Engineering choices only; nobody has listened to it. A new route, performer, recipe
  * or timing needs a new revision.
  */
-export const S05_HYBRID_POLICY = Object.freeze({
+export const S05_HYBRID_POLICY: HybridPolicy = Object.freeze({
   id: 's05-hybrid-handoff',
   revision: 1,
   route: Object.freeze({id: 's01-a-to-b', revision: 1}),
@@ -28,6 +39,45 @@ export const S05_HYBRID_POLICY = Object.freeze({
   tail: Object.freeze({quarters: 4, roles: Object.freeze(['percussion'] as const)}),
   review: 'engineering-only' as const,
 });
+
+/**
+ * S09: the same handoff shape, bound to the real-FL pack that `scripts/fl-producer.ts` imports.
+ * It changes only which route and recipe it names; the performer, the role windows and every
+ * check in planHybridHandoff are the S05 ones. A policy is identified by its own id. Engineering choices only; nobody has listened to it.
+ */
+export const S09_HYBRID_POLICY: HybridPolicy = Object.freeze({
+  id: 's09-hybrid-handoff',
+  revision: 1,
+  route: Object.freeze({id: 's09-a-to-b', revision: 1}),
+  performer: S01_PERFORMER,
+  recipe: Object.freeze({id: 's09-fl-recipe', revision: 1}),
+  leadIn: S05_HYBRID_POLICY.leadIn,
+  tail: S05_HYBRID_POLICY.tail,
+  review: 'engineering-only' as const,
+});
+
+/**
+ * S09: the same handoff for the S06 MOCK FL pack, so the portable checks exercise an imported
+ * pack's DJ handoff without FL Studio. Engineering choices only.
+ */
+export const S06_MOCK_HYBRID_POLICY: HybridPolicy = Object.freeze({
+  id: 's06-mock-hybrid-handoff',
+  revision: 1,
+  route: Object.freeze({id: 's06-a-to-b', revision: 1}),
+  performer: S01_PERFORMER,
+  recipe: Object.freeze({id: 's06-mock-recipe', revision: 1}),
+  leadIn: S05_HYBRID_POLICY.leadIn,
+  tail: S05_HYBRID_POLICY.tail,
+  review: 'engineering-only' as const,
+});
+
+/** Every code-defined handoff policy. A route with no entry here cannot be handed off through a bridge. */
+export const HYBRID_POLICIES: readonly HybridPolicy[] = Object.freeze([S05_HYBRID_POLICY, S06_MOCK_HYBRID_POLICY, S09_HYBRID_POLICY]);
+
+/** The policy for a route's exact id and revision, or null. */
+export function hybridPolicyForRoute(route: VersionRef): HybridPolicy | null {
+  return HYBRID_POLICIES.find(policy => policy.route.id === route.id && policy.route.revision === route.revision) ?? null;
+}
 
 export interface HybridBridge {
   readonly recipe: VersionRef;
@@ -65,10 +115,10 @@ const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) ==
 export function planHybridHandoff(pack: AudioPack, routeId: string, bridge: ProceduralPlan,
   exit: HybridBridgeExit, fromStart: SourceStart, clock: AudioClock, allowFixtures = false,
   leadFrames = 0): HybridHandoffPlan {
-  const policy = S05_HYBRID_POLICY;
   const pair = checkedRoute(pack, routeId, allowFixtures);
   const {route, from, to} = pair;
-  requireAudio(sameRef(route, policy.route), `No hybrid handoff policy covers route ${route.id}@${route.revision}.`);
+  const policy = hybridPolicyForRoute(route);
+  requireAudio(policy, `No hybrid handoff policy covers route ${route.id}@${route.revision}.`);
   requireAudio(sameRef(bridge.performer, policy.performer) && sameRef(bridge.recipe, policy.recipe) &&
     sameRef(bridge.pack, pack), 'The bridge plan is not the policy performer and recipe for this pack revision.');
   const recipe = pack.recipes.find(item => sameRef(item, policy.recipe));

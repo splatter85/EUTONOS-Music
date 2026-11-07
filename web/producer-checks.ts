@@ -8,6 +8,7 @@ import {decodeRecordings, loadBrowserPack, type LoadedBrowserPack} from '../src/
 import {compilePhrase, compileS01Phrase} from '../src/phrase-plan.js';
 import {decodeProceduralSamples, ProceduralSource} from '../src/procedural-source.js';
 import {planTransition, RecordedSource, requireAudio, WebAudioClock} from '../src/web-audio.js';
+import {HANDOFF_CASES, measureHandoff} from './handoff-measure.js';
 
 const tolerance = 0.000003;
 /** Two PCM16-to-float conventions: symmetric (/32768) and Chromium's (negative /32768, positive /32767). */
@@ -137,7 +138,7 @@ async function renderRoute(mock: LoadedBrowserPack, rate: number) {
     producer: 'MOCK FL (no FL Studio)', output: 'OfflineAudioContext; no device output'};
 }
 
-/** Four grouped S06 checks, appended after the S05 groups. */
+/** Four grouped S06 checks and one S09 imported-handoff check, appended after the S05 groups. */
 export async function runProducerChecks(s01: LoadedBrowserPack,
   record: (name: string, action: () => Promise<unknown>) => Promise<void>): Promise<void> {
   const url = new URL(MOCK_PACK_PATH, window.location.href);
@@ -163,4 +164,9 @@ export async function runProducerChecks(s01: LoadedBrowserPack,
     async () => renderPhrase(await loaded(), s01, 44100));
   await record('S06 mock recordings A → B over the authored route: native stereo samples at 48 kHz',
     async () => renderRoute(await loaded(), 48000));
+  // S09: the imported pack drives the hybrid handoff through its own policy.
+  await record('S09 imported mock-FL pack: A → procedural bridge → B through its own policy, ownership exact, no clipping or gap',
+    async () => { const pack = await loaded(), out = [];
+      for (const c of HANDOFF_CASES) out.push(await measureHandoff(pack, c));
+      return out; });
 }

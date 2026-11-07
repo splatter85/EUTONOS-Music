@@ -4,6 +4,16 @@ import {DeterministicDj, type DjCommandResult, type DjHandoff} from '../src/dj.j
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import type {MusicState} from '../src/pack-types.js';
 
+/** The DJ plays one pack per page load; switching navigates, so pagehide disposes the old player. */
+const PACKS = {
+  s01: {manifest: '/fixtures/s01/manifest.json', label: 'S01 original fixture'},
+  'mock-fl': {manifest: '/generated/s06-mock-fl/pack/manifest.json', label: 'S06 imported mock'},
+  fl: {manifest: '/local/s09-fl/pack/manifest.json', label: 'S09 real FL (owner-local)'},
+} as const;
+type PackChoice = keyof typeof PACKS;
+const requestedPack = new URLSearchParams(location.search).get('pack') ?? 's01';
+const packChoice: PackChoice | null = Object.hasOwn(PACKS, requestedPack) ? requestedPack as PackChoice : null;
+
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`Missing UI element: ${id}`);
@@ -15,6 +25,7 @@ const volume = element<HTMLInputElement>('volume');
 const stateInput = element<HTMLSelectElement>('state');
 const genreInput = element<HTMLInputElement>('genre');
 const handoffInput = element<HTMLSelectElement>('handoff');
+const packInput = element<HTMLSelectElement>('dj-pack');
 const progress = element<HTMLProgressElement>('progress');
 const queueList = element<HTMLUListElement>('queue');
 const errorBox = element('error');
@@ -26,6 +37,7 @@ let leaseEpoch = 0;
 let pauseReason = '';
 let lastQueueKey = '';
 let lastResult: DjCommandResult | null = null;
+let failed = false;
 
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function setText(id: string, value: string): void {
@@ -33,8 +45,13 @@ function setText(id: string, value: string): void {
   if (target.textContent !== value) target.textContent = value;
 }
 function title(id: string | null): string {
-  return id === 's01-recording-a' ? 'S01 A — slow triangle pulse' : id === 's01-recording-b' ? 'S01 B — syncopated pulse'
-    : id === 's01-recipe' ? 'Procedural bridge' : id ?? 'None';
+  if (id === null) return 'None';
+  if (loaded?.pack.recipes.some(recipe => recipe.id === id)) return 'Procedural bridge';
+  return loaded?.pack.assets.find(asset => asset.id === id)?.title ?? id;
+}
+function routeIds(): {a: string; b: string} | null {
+  const route = loaded?.pack.routes[0];
+  return route ? {a: route.from.id, b: route.to.id} : null;
 }
 function seconds(value: number): string { return `${Math.max(0, value).toFixed(1)}s`; }
 function releaseOwnership(): void {
@@ -60,9 +77,9 @@ function acquireOwnership(): Promise<void> {
 }
 function getDj(): DeterministicDj {
   if (dj) return dj;
-  if (!loaded) throw new Error('The fixture pack is still loading.');
+  if (!loaded) throw new Error('The pack is not loaded.');
   const route = loaded.pack.routes[0];
-  if (!route) throw new Error('The fixture pack has no A → B route.');
+  if (!route) throw new Error('The pack has no A → B route.');
   dj = new DeterministicDj(new SmallPlayer(new AudioContext(), loaded, route.id), loaded, 'explore',
     {handoff: handoffInput.value as DjHandoff});
   dj.setVolume(Number(volume.value));
@@ -89,8 +106,13 @@ async function request(action: Action): Promise<void> {
   finally { render(); }
 }
 
-buttons['queue-a'].addEventListener('click', () => { void request({type: 'queueTrack', trackId: 's01-recording-a'}); });
-buttons['queue-b'].addEventListener('click', () => { void request({type: 'queueTrack', trackId: 's01-recording-b'}); });
+buttons['queue-a'].addEventListener('click', () => { const ids = routeIds(); if (ids) void request({type: 'queueTrack', trackId: ids.a}); });
+buttons['queue-b'].addEventListener('click', () => { const ids = routeIds(); if (ids) void request({type: 'queueTrack', trackId: ids.b}); });
+packInput.addEventListener('change', () => {
+  const url = new URL(location.href);
+  if (packInput.value === 's01') url.searchParams.delete('pack'); else url.searchParams.set('pack', packInput.value);
+  location.assign(url.href);
+});
 buttons.play.addEventListener('click', () => { void request({type: 'transport', action: 'play'}); });
 buttons.pause.addEventListener('click', () => { void request({type: 'transport', action: dj?.snapshot().player.state === 'paused' ? 'play' : 'pause'}); });
 buttons.stop.addEventListener('click', () => { pauseReason = ''; void request({type: 'transport', action: 'stop'}); });
@@ -114,6 +136,7 @@ function render(): void {
   const ready = loaded !== null;
   for (const button of Object.values(buttons)) button.disabled = !ready;
   handoffInput.disabled = !ready;
+  packInput.disabled = running;
   buttons.pause.disabled = !ready || !running;
   buttons.pause.textContent = state === 'paused' ? 'Resume' : 'Pause';
   buttons['cancel-next'].disabled = !ready || !snapshot?.pending || snapshot.pending.phase !== 'scheduled'
@@ -129,13 +152,14 @@ function render(): void {
   setText('next-title', player?.next ? title(player.next) : 'Nothing scheduled');
   const bridge = player?.handoff?.bridge;
   setText('next-detail', snapshot?.pending ? `${snapshot.pending.kind} · ${snapshot.pending.phase}${player?.transitionInSeconds !== null && player?.transitionInSeconds !== undefined ? ` · in ${seconds(player.transitionInSeconds)}` : ''}${bridge ? ` · bridge seed ${bridge.seed} · ${bridge.state}` : ''}` : 'Choose Next Song or add a track to the queue.');
-  setText('status', state === 'loading' ? 'Preparing audio…' : state === 'closed' ? 'Player closed — reload to start a new session.' : state === 'ended' ? 'Playback ended' : state === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeStatus[player.handoff.phase] : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Handoff complete' : state === 'playing' ? 'Playing' : state === 'scheduled' ? 'Scheduled — waiting for the audio clock' : ready ? 'Ready — press Play to start' : 'Loading fixture…');
+  setText('status', state === 'loading' ? 'Preparing audio…' : state === 'closed' ? 'Player closed — reload to start a new session.' : state === 'ended' ? 'Playback ended' : state === 'paused' ? pauseReason || 'Paused — the audio clock is suspended.' : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeStatus[player.handoff.phase] : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Handoff complete' : state === 'playing' ? 'Playing' : state === 'scheduled' ? 'Scheduled — waiting for the audio clock' : ready ? `Ready — ${PACKS[packChoice!].label} — press Play to start` : failed ? 'Pack unavailable — choose a pack.' : 'Loading pack…');
   progress.value = player && player.durationSeconds > 0 ? Math.min(1, player.elapsedSeconds / player.durationSeconds) : 0;
   setText('clock-detail', player ? `${player.contextState} · ${player.sampleRate} Hz · frame ${player.currentFrame} · generation ${player.engineGeneration}` : 'Audio context starts on your first control request.');
   const result = snapshot?.last ?? lastResult;
   setText('execution', result ? `${result.receipt.status} · ${result.execution.status} · ${result.execution.reason}` : 'No command yet. Acceptance and playback are separate steps.');
   setText('revision', `Revision ${control?.revision ?? 0}`);
-  for (const id of ['a', 'b']) element(`track-${id}`).classList.toggle('is-active', player?.now.includes(`s01-recording-${id}`) ?? false);
+  const ids = routeIds();
+  for (const id of ['a', 'b'] as const) element(`track-${id}`).classList.toggle('is-active', ids !== null && (player?.now.includes(ids[id]) ?? false));
   const queue = control?.queue ?? [];
   const queueKey = queue.map(entry => `${entry.commandId}:${entry.trackId}`).join('|');
   if (queueKey !== lastQueueKey || !queueList.childElementCount) {
@@ -174,10 +198,25 @@ window.addEventListener('pageshow', () => { render(); });
 async function initialize(): Promise<void> {
   try {
     if (!window.isSecureContext || !window.AudioContext || !navigator.locks || !crypto.subtle) throw new Error('Use a current browser on http://127.0.0.1 or HTTPS with Web Audio and Web Locks support.');
-    loaded = await loadBrowserPack(new URL('/fixtures/s01/manifest.json', window.location.href), true);
-    setText('loading', 'Two original recordings · 120 BPM · A minor');
+    if (!packChoice) throw new Error('Unknown pack. Choose S01 original, S06 imported mock or S09 real FL.');
+    packInput.value = packChoice;
+    const candidate = await loadBrowserPack(new URL(PACKS[packChoice].manifest, window.location.href), true);
+    const route = candidate.pack.routes[0];
+    const recordings = route ? [route.from, route.to].map(ref => candidate.pack.assets.find(a => a.id === ref.id && a.revision === ref.revision)) : [];
+    if (!route || recordings.length !== 2 || recordings.some(r => !r?.timing)) throw new Error('The pack needs one A → B route between two timed recordings.');
+    loaded = candidate;
+    for (const [index, side] of (['a', 'b'] as const).entries()) {
+      const asset = recordings[index]!;
+      setText(`track-${side}-title`, asset.title);
+      setText(`track-${side}-meta`, `${asset.timing!.bars} bars · ${asset.timing!.bpm} BPM · ${asset.eligibility}`);
+    }
+    const first = recordings[0]!;
+    genreInput.value = first.genres[0] ?? '';
+    setText('loading', `${PACKS[packChoice].label} · two recordings · ${first.timing!.bpm} BPM · ${first.key ?? 'no key'}`);
   } catch (error) {
-    setText('loading', 'Audio unavailable — fix the error and reload.');
+    failed = true;
+    setText('loading', 'Audio unavailable — choose another pack or fix the error and reload.');
+    if (!packChoice) packInput.selectedIndex = -1;
     errorBox.textContent = message(error);
   }
   render();

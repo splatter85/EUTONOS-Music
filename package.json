@@ -17,6 +17,8 @@
     "validate": "npm run build && node dist/scripts/validate-pack.js fixtures/s01",
     "import": "npm run build && node dist/scripts/import-delivery.js",
     "mock:fl": "npm run build && node dist/scripts/mock-fl-producer.js",
+    "fl:produce": "npm run build && node dist/scripts/fl-producer.js",
+    "check:fl": "npm run build && node dist/scripts/fl-check.js",
     "check": "npm test && npm run fixtures:check && npm run validate"
   },
   "devDependencies": {

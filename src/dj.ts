@@ -1,9 +1,9 @@
 import type {LoadedBrowserPack} from './browser-pack.js';
 import {ControlContract, type CommandReceipt, type ControlRequest, type ControlSnapshot} from './control.js';
-import {bridgeSeed, type HybridBridgeExit} from './hybrid-handoff.js';
+import {bridgeSeed, hybridPolicyForRoute, type HybridBridgeExit} from './hybrid-handoff.js';
 import {eligibleForPlayback} from './pack.js';
 import type {AudioAsset, MusicState, VersionRef} from './pack-types.js';
-import {compileS01Phrase, type S01PhraseState} from './phrase-plan.js';
+import {compilePhrase, type S01PhraseState} from './phrase-plan.js';
 import type {ClockStamp} from './playable-source.js';
 import {SmallPlayer, type PlayerSnapshot} from './player.js';
 
@@ -342,8 +342,10 @@ export class DeterministicDj {
         bridgeState: requested === bridgeState ? requested : null};
       if (this.handoff === 'hybrid') {
         // The seed derives from the command ID, so a recorded command replays the same bridge.
-        const bridge = compileS01Phrase(this.loaded.pack,
-          {seed: bridgeSeed(commandId), state: bridgeState, allowFixtures: this.loaded.allowFixtures});
+        const policy = hybridPolicyForRoute(this.renderer.pair.route);
+        if (!policy) throw new Error(`No hybrid handoff policy covers route ${this.renderer.pair.route.id}.`);
+        const bridge = compilePhrase(this.loaded.pack,
+          {seed: bridgeSeed(commandId), state: bridgeState, recipe: policy.recipe, allowFixtures: this.loaded.allowFixtures});
         await this.renderer.scheduleHybrid(bridge, this.bridgeExit);
       } else await this.renderer.scheduleAB();
       this.sync(); // native start may have crossed before this continuation ran

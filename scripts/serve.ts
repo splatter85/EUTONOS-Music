@@ -41,6 +41,10 @@ function assetPath(requestTarget: string): string | undefined {
   if (/^\/generated\/s06-mock-fl\/pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
     return `dist${path}`;
   }
+  // S09: the owner-local real-FL pack under the git-ignored local/ folder (never committed or published).
+  if (/^\/local\/s09-fl\/pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
+    return path.slice(1);
+  }
   return undefined;
 }
 

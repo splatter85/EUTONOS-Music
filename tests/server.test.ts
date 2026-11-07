@@ -73,6 +73,8 @@ test('demo server serves only mapped assets with correct MIME, query and HEAD be
     ['/fixtures/s01/manifest.json', 'fixtures/s01/manifest.json', '{"version":0}', 'application/json; charset=utf-8'],
     ['/fixtures/s01/README.md', 'fixtures/s01/README.md', '# Fixture', 'text/plain; charset=utf-8'],
     ['/fixtures/s01/audio/test.wav', 'fixtures/s01/audio/test.wav', 'RIFF sample bytes', 'audio/wav'],
+    ['/local/s09-fl/pack/manifest.json', 'local/s09-fl/pack/manifest.json', '{"fl":1}', 'application/json; charset=utf-8'],
+    ['/local/s09-fl/pack/audio/s09-fl-kick.wav', 'local/s09-fl/pack/audio/s09-fl-kick.wav', 'RIFF fl bytes', 'audio/wav'],
   ] as const;
   for (const [url, file, content, mime] of assets) {
     await put(root, file, content);
@@ -97,7 +99,8 @@ test('demo server keeps repo files, node adapters, directories and absent assets
     'AGENTS.md', '.git/config', 'package.json', 'node_modules/example/index.js',
     'dist/scripts/serve.js', 'dist/tests/server.test.js', 'dist/src/node.js',
     'dist/src/unreviewed.js', 'web/index.html', 'web/checks.html', 'web/app.ts',
-    'fixtures/s01/secret.txt',
+    'fixtures/s01/secret.txt', 'local/s09-fl/delivery/delivery.json', 'local/s09-fl/workspace/projects/x/x.flp',
+    'local/s09-fl/pack/notes.txt', 'local/other/pack/manifest.json',
   ];
   for (const path of privatePaths) {
     await put(root, path, 'private');
