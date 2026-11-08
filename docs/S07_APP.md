@@ -7,7 +7,7 @@ S07 connects the existing recording DJ/hybrid and procedural sampler as two link
 
 ## Run and compare
 
-The declared runtime is Node 24.x. The S07 Windows verification used the available Node 26.12.1; no runtime, browser or package was installed for this slice. From a prepared checkout:
+The project needs Node 24 or newer. The S07 Windows verification used Node 26.12.1; no runtime, browser or package was installed for this slice. From a prepared checkout:
 
 ```sh
 npm run check
@@ -37,4 +37,4 @@ The DJ and S05 hybrid still use S01 recordings and recipe. [S09](S09_FL_IMPORT.m
 
 The renderer, DJ, importer and original media are unchanged. The [S01 provenance](../fixtures/s01/PROVENANCE.md) and [S06 mock producer](S06_IMPORT.md#the-mock-fl-producer) describe the original engineering assets. No downloaded/proprietary audio, credentials, new dependencies, real FL operations or MCP authoring tool calls are part of S07. The mock generator exercises the in-process broker only. Generated mock audio remains under ignored `dist/`.
 
-Verification is **Windows only**. macOS/Linux and the declared Node 24 runtime were not run for S07. Chromium headless scheduling and offline rendering do not establish real audio-device behavior, sleep/device recovery, other browsers, musical quality or owner acceptance. Physical output and listening are **NOT TESTED**. The independent review and its corrections are recorded in [the S07 review](reviews/EMF_S07_APP_REVIEW.md). Same-origin locks do not exclude other origins, browser profiles or applications. S09 joins eligible real FL outputs; S10 supplies owner listening acceptance before Mission Control integration.
+Verification is **Windows only**. macOS/Linux were not run for S07. Chromium headless scheduling and offline rendering do not establish real audio-device behavior, sleep/device recovery, other browsers, musical quality or owner acceptance. Physical output and listening are **NOT TESTED**. The independent review and its corrections are recorded in [the S07 review](reviews/EMF_S07_APP_REVIEW.md). Same-origin locks do not exclude other origins, browser profiles or applications. S09 joins eligible real FL outputs; S10 supplies owner listening acceptance before Mission Control integration.

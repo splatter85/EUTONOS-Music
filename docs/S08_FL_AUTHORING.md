@@ -47,7 +47,7 @@ Live editing inside a running FL GUI is **not supported** on this host; it is re
 
 ## Setup and registration (declared in this repository)
 
-Prerequisites: Node 24, `npm ci --ignore-scripts`, `npm run build`, and FL Studio installed. The adapter finds `C:\Program Files\Image-Line\FL Studio <year>\FL64.exe`; override it with `EUTONOS_FL_EXE`.
+Prerequisites: Node 24 or newer, `npm ci --ignore-scripts`, `npm run build`, and FL Studio installed. The adapter finds `C:\Program Files\Image-Line\FL Studio <year>\FL64.exe`; override it with `EUTONOS_FL_EXE`.
 
 **Workspace:**
 

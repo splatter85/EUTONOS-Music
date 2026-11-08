@@ -7,7 +7,7 @@ Scope: one finite seeded sampler/phrase source and its audition path. The [campa
 
 ## Try a variation
 
-Use **Node 24.x** on Windows, macOS or Linux:
+Use **Node 24 or newer** on Windows, macOS or Linux:
 
 ```sh
 npm ci --ignore-scripts

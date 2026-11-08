@@ -1091,7 +1091,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF-S11",
       "status": "active",
-      "summary": "First increment in main: versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies (Windows). Page wiring, gates, genres and transition coverage remain.",
+      "summary": "First increment in main: versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies (Windows); its two checks run in the npm gates since 2026-11-08. Page wiring, genres and transition coverage remain.",
       "title": "S11 optional cloud breadth",
       "type": "slice"
     },

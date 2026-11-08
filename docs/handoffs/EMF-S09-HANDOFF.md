@@ -48,7 +48,7 @@ Recordings A and B: 8 bars, 120 BPM, A minor, 44.1 kHz stereo. Imported pack `s0
 
 ## Exact verification
 
-Runtime: **Windows 11, Node 26.12.1 (declared Node 24 not installed), Chromium 151.0.7922.34, Playwright 1.62.1.** macOS and Linux were not run.
+Runtime: **Windows 11, Node 26.12.1, Chromium 151.0.7922.34, Playwright 1.62.1.** macOS and Linux were not run.
 
 | Command | Result | Evidence and limits |
 | --- | --- | --- |
@@ -102,4 +102,4 @@ Owner-chosen self-review only; not an independent review and not listening appro
 
 **EMF-S10 — PC + owner**, when separately assigned: the owner listens to and accepts or revises the complete creation → generator → DJ → app flow, with FL and agents closed during playback.  
 **Owner steps:** close FL Studio; run `npm run fl:produce`; run `npm run demo`; open http://127.0.0.1:4173/?pack=fl, pick **Procedural bridge**, press Play, then Next Song; also try /procedural.html?pack=fl.  
-**Still not done:** physical output, human listening, macOS/Linux/Node 24, continuous playback, live FL control and the accepted standalone MVP. Campaign effort percentage is unknown. S10 precedes S12 Mission Control.
+**Still not done:** physical output, human listening, macOS/Linux, continuous playback, live FL control and the accepted standalone MVP. Campaign effort percentage is unknown. S10 precedes S12 Mission Control.

@@ -7,7 +7,7 @@ This is the small executable boundary for the next browser player and independen
 
 ## Setup on Windows, macOS or Linux
 
-Use Node.js **24.x** with npm. From the repository root, use the same commands in PowerShell, Command Prompt or a Unix shell:
+Use Node.js **24 or newer** with npm. From the repository root, use the same commands in PowerShell, Command Prompt or a Unix shell:
 
 ```sh
 npm ci --ignore-scripts

@@ -7,7 +7,7 @@ Scope: one portable import path from any producer's delivery into an `em.audio-p
 
 ## Try it
 
-Use Node 24.x on Windows, macOS or Linux:
+Use Node 24 or newer on Windows, macOS or Linux:
 
 ```sh
 npm ci --ignore-scripts
@@ -86,7 +86,7 @@ It makes six original stereo 44.1 kHz renders: two 8-bar recordings (A and B, on
 - S06 imported no real FL Studio output. [S09](S09_FL_IMPORT.md) imports real FL material through this same path, unchanged. S08's FL renders were `playback`-only; for S09 the owner allowed owner-local sample reuse, so S09 renders enter as palette samples on that PC only and are never published ([EM-DEC033](DECISIONS.md)).
 - Imported material stays `fixture-only` or `unreviewed`; an import never makes something listening-reviewed.
 - The importer checks technical facts and the presence of rights evidence. It does not prove who made the audio, whether the rights claim is true, or whether it sounds good.
-- Verified on Windows only, under Node 26.12.1 (the package declares Node 24). Native checks ran at 44.1 and 48 kHz in Chromium 151. macOS, Linux, other browsers and real audio devices are not verified.
+- Verified on Windows only, under Node 26.12.1. Native checks ran at 44.1 and 48 kHz in Chromium 151. macOS, Linux, other browsers and real audio devices are not verified.
 - Chromium decodes PCM16 slightly asymmetrically (negative values ÷ 32768, positive ÷ 32767). The 44.1 kHz check accepts either scaling and reports which matched; other browsers may differ by up to about one least-significant step.
 
 ## Verification

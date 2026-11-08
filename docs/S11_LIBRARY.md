@@ -8,15 +8,14 @@ S11 adds the first post-proof breadth: a small versioned **music library** that 
 ## Try it
 
 ```sh
-npm run build
-node dist/scripts/s11-library-demo.js
-node dist/scripts/s11-browser-check.js
+npm run library:demo
+npm run check:browser
 ```
 
 1. `s11-library-demo` derives a study pack from the S01 fixture, saves one vibe per study in `local/s11-library/` (git-ignored; `--directory DIR` picks another), then restores each one **stopped** and prints its recipe, performer, seed and event count. It verifies the fixture WAVs and creates no audio.
 2. `s11-browser-check` runs in headless Chromium on an ephemeral loopback port: IndexedDB save → real page reload → stopped restore with live audio blocked, two connections racing one compare-and-swap, malformed/future records preserved, and 24 offline renders (3 studies × 44.1/48 kHz × Explore/Drive × 2 seeds) each rendered twice and compared bit for bit. It writes `artifacts/s11-browser/report.json`.
 
-Neither command is part of `npm run check` or `npm run check:browser`; the S11 Node tests are (they run under `npm test`).
+Since 2026-11-08 both are in the standard gates: `npm run check` ends with the library demo in the ignored `artifacts/s11-library-check/` folder (it can run repeatedly, since re-saving the same data changes nothing), and `npm run check:browser` runs `s11-browser-check` after the main browser check. The S11 Node tests run under `npm test`.
 
 ## Library (`src/library.ts`)
 

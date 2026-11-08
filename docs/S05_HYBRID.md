@@ -7,7 +7,7 @@ Scope: one checked hybrid handoff policy and the DJ path that uses it. The [camp
 
 ## Try it
 
-Use Node 24.x on Windows, macOS or Linux:
+Use Node 24 or newer on Windows, macOS or Linux:
 
 ```sh
 npm ci --ignore-scripts
@@ -94,7 +94,7 @@ console.log(player.snapshot().handoff);       // policy, seed/state, boundaries,
 - The S04 performer has no vocals; vocal ownership is untested. Tempo, key or meter changes between recordings are refused, not bridged.
 - The bridge always starts on A's route exit cue. The page uses the `phrase` exit; `end` is available through `DjOptions` and the API.
 - Timing, fade lengths and which roles overlap are engineering choices. Whether the result sounds good is unknown until someone listens (S10).
-- Verified on Windows only, under Node 26.12.1 (the package declares Node 24). Native checks ran at 44.1 and 48 kHz in Chromium 151. macOS, Linux, other browsers, real audio devices and long sessions are not verified.
+- Verified on Windows only, under Node 26.12.1. Native checks ran at 44.1 and 48 kHz in Chromium 151. macOS, Linux, other browsers, real audio devices and long sessions are not verified.
 
 ## Verification
 

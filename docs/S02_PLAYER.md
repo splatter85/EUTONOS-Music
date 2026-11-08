@@ -8,7 +8,7 @@ The browser demo plays the two original S01 recordings independently and schedul
 
 ## Run on Windows, macOS or Linux
 
-Install Node.js **24.x**, then run these commands from the repository root in PowerShell, Command Prompt or a Unix shell:
+Install Node.js **24 or newer**, then run these commands from the repository root in PowerShell, Command Prompt or a Unix shell:
 
 ```sh
 npm ci --ignore-scripts

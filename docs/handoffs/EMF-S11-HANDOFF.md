@@ -40,7 +40,7 @@ Read the full diff of all ten files. **KEEP.**
 
 ## Exact verification on the combined tree
 
-Runtime: **Windows 11, Node 26.12.1 (declared Node 24 not installed), Chromium 151.0.7922.34, Playwright 1.62.1.** macOS and Linux were not run. Source at `1880867`; the working tree had only these new documents uncommitted.
+Runtime: **Windows 11, Node 26.12.1, Chromium 151.0.7922.34, Playwright 1.62.1.** macOS and Linux were not run. Source at `1880867`; the working tree had only these new documents uncommitted.
 
 | Command | Result | Evidence |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ The worker separately reported Windows Node 24.20.0: 177 Node tests on its base,
 ## Remaining S11 work
 
 1. Wire the library into the pages: save vibe, restore selection stopped, volume/mute, and history writes from actual renderer events.
-2. Put the two S11 commands into the npm gates.
+2. ~~Put the two S11 commands into the npm gates.~~ Done 2026-11-08: `npm run check` runs the library demo and `npm run check:browser` runs the S11 browser check.
 3. A hybrid policy (or explicit refusal) for the study recipes as bridges.
 4. Wider genres and transition coverage (EMF12 recency, EMF13 graph).
 5. macOS and Linux runs.

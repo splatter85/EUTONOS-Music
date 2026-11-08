@@ -5,21 +5,22 @@
   "type": "module",
   "description": "Portable music foundation, Web Audio player, DJ, procedural sampler and producer import",
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "demo": "npm run build && node dist/scripts/mock-fl-producer.js && node dist/scripts/serve.js",
-    "check:browser": "npm run build && node dist/scripts/browser-check.js",
+    "check:browser": "npm run build && node dist/scripts/browser-check.js && node dist/scripts/s11-browser-check.js",
     "test": "npm run build && node --test dist/tests/*.test.js",
     "fixtures:generate": "npm run build && node dist/scripts/generate-fixtures.js",
     "fixtures:check": "npm run build && node dist/scripts/generate-fixtures.js --check",
     "validate": "npm run build && node dist/scripts/validate-pack.js fixtures/s01",
     "import": "npm run build && node dist/scripts/import-delivery.js",
     "mock:fl": "npm run build && node dist/scripts/mock-fl-producer.js",
+    "library:demo": "npm run build && node dist/scripts/s11-library-demo.js",
     "fl:produce": "npm run build && node dist/scripts/fl-producer.js",
     "check:fl": "npm run build && node dist/scripts/fl-check.js",
-    "check": "npm test && npm run fixtures:check && npm run validate"
+    "check": "npm test && npm run fixtures:check && npm run validate && node dist/scripts/s11-library-demo.js --directory artifacts/s11-library-check"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

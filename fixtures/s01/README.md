@@ -20,7 +20,7 @@ quarter 0, with an eight-quarter overlap. Entry, transition exit, and finite-end
 cues occur at quarters 0, 16, and 32. This is structural compatibility evidence;
 there has been no listening approval.
 
-From the repository root, on Windows, macOS, or Linux with Node 24:
+From the repository root, on Windows, macOS, or Linux with Node 24 or newer:
 
 ```text
 npm ci --ignore-scripts

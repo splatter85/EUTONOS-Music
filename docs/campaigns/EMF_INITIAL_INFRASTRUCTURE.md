@@ -145,7 +145,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 It adds a versioned local library (catalogue, saved vibes, volume/mute, bounded renderer-observation history) with revision-checked compare-and-swap writes, file and IndexedDB adapters, exact recipe replay, stopped restore, and three original recipe studies on their own performer. No S09 file changed. On the combined tree `npm.cmd run check` passed **182 Node tests**, `npm.cmd run check:browser` passed **24 native offline and 16 browser groups**, and the separate S11 browser check passed 4 groups with 24 paired native cases and zero differing bits. **Windows only**, Node 26.12.1. **macOS/Linux, physical output and listening NOT TESTED.**
 
-Remaining S11 work: page wiring (save, restore, history), adding the S11 commands to the gates, a policy decision for studies as bridges, wider genres and transition coverage. **One next slice stays S10 - PC + owner.**
+The two S11 commands joined the npm gates on 2026-11-08. Remaining S11 work: page wiring (save, restore, history), a policy decision for studies as bridges, wider genres and transition coverage. **One next slice stays S10 - PC + owner.**
 
 ### EMF-S09 complete
 
