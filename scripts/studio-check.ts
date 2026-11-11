@@ -30,7 +30,7 @@ const waitText = (page: Page, id: string, pattern: RegExp, timeout = 15000) =>
 
 // A tiny in-test stand-in for the local Music Studio API (http://127.0.0.1:7870).
 const fake = {online: false, patched: [] as unknown[], generated: [] as unknown[],
-  takes: [{id: 'take-1', title: 'Fake take', duration_seconds: 30, bpm: 120, key: 'A minor', starred: false, rejected: false}]};
+  takes: [{id: 'take-1', title: 'Fake take', duration_seconds: 30, bpm: 120, key: 'A minor', starred: false, rejected: false, rating: null as string | null}]};
 async function studioApi(route: Route): Promise<void> {
   if (!fake.online) { await route.abort('connectionrefused'); return; }
   const request = route.request(), url = new URL(request.url()), method = request.method();
@@ -141,10 +141,14 @@ try {
   assert.equal((fake.generated[0] as {thinking: boolean}).thinking, false);
   await page.getByRole('tab', {name: 'Library'}).click();
   await waitText(page, 'lib-takes', /Fake take/);
-  await page.locator('#lib-takes').getByRole('button', {name: 'Star'}).click();
-  await page.waitForFunction(() => document.querySelector('#lib-takes .take.is-starred') !== null);
-  assert.deepEqual(fake.patched, [{starred: true}]);
-  report.checks.push('with a fake Music Studio: Generate posts the form, takes list, Star patches');
+  await page.locator('#lib-takes').getByRole('button', {name: 'Love Fake take'}).click();
+  await page.waitForFunction(() => document.querySelector('#lib-takes .take.is-love') !== null);
+  assert.equal(await page.locator('#lib-takes').getByRole('button', {name: 'Love Fake take'}).getAttribute('aria-pressed'), 'true');
+  await page.locator('#lib-takes').getByRole('button', {name: 'Nope Fake take'}).click();
+  await page.waitForFunction(() => document.querySelector('#lib-takes .take.is-dislike') !== null);
+  await page.waitForFunction(() => !/Fake take/.test(document.getElementById('gen-takes')?.textContent ?? ''));
+  assert.deepEqual(fake.patched, [{rating: 'love'}, {rating: 'dislike'}]);
+  report.checks.push('with a fake Music Studio: Generate posts the form, takes list, Love and Nope patch the rating (Nope hides it from Recent)');
 
   for (const [tab, file] of [['DJ Booth', 'dj.png'], ['Produce', 'produce.png'], ['Library', 'library.png']] as const) {
     await page.getByRole('tab', {name: tab}).click();

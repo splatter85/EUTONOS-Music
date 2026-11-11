@@ -470,7 +470,11 @@ function renderTracks(): void {
 }
 
 // ---------- AI generator (Music Studio service) ----------
-interface Take { id: string; title?: string; description?: string; duration_seconds?: number; bpm?: number; key?: string; starred?: boolean; rejected?: boolean; created_at?: string; }
+interface Take { id: string; title?: string; description?: string; duration_seconds?: number; bpm?: number; key?: string; starred?: boolean; rejected?: boolean; rating?: Rating | null; created_at?: string; }
+type Rating = 'love' | 'like' | 'dislike';
+const RATINGS: ReadonlyArray<[Rating, string, string]> = [['love', '❤️', 'Love'], ['like', '👍', 'Like'], ['dislike', '👎', 'Nope']];
+/** Music Studio's rating; older servers only sent starred (= love) and rejected (= dislike). */
+function ratingOf(take: Take): Rating | null { return take.rating ?? (take.starred ? 'love' : take.rejected ? 'dislike' : null); }
 let engine: 'offline' | 'stopped' | 'loading' | 'ready' | 'busy' = 'offline';
 let takes: Take[] = [];
 let jobId: string | null = null;
@@ -565,21 +569,26 @@ async function exportTake(take: Take, note: HTMLElement): Promise<void> {
 }
 function takeRow(take: Take, full: boolean): HTMLLIElement {
   const meta = [take.duration_seconds ? `${Math.round(take.duration_seconds)}s` : '', take.bpm ? `${take.bpm} BPM` : '', take.key ?? ''].filter(Boolean).join(' · ');
-  const row = make('li', {className: `take${take.starred ? ' is-starred' : ''}${take.rejected ? ' is-rejected' : ''}`},
+  const rating = ratingOf(take);
+  const row = make('li', {className: `take${rating ? ' is-' + rating : ''}`},
     button(previewing === take.id ? '■' : '▶', () => { void togglePreview(take); }, 'chip', `${previewing === take.id ? 'Stop' : 'Preview'} ${take.title ?? take.id}`),
     make('span', {className: 'take-title', textContent: take.title ?? take.description ?? take.id, title: take.description ?? ''}),
-    make('span', {className: 'take-meta', textContent: meta}),
-    button(take.starred ? '★' : '☆', () => { void patchTake(take, {starred: !take.starred}); }, 'chip', take.starred ? 'Unstar' : 'Star'));
+    make('span', {className: 'take-meta', textContent: meta}));
+  for (const [value, icon, label] of RATINGS) {
+    const on = rating === value;
+    const chip = button(icon, () => { void patchTake(take, {rating: on ? null : value}); }, `chip rate${on ? ' on' : ''}`, `${label} ${take.title ?? take.id}`);
+    chip.setAttribute('aria-pressed', String(on));
+    row.append(chip);
+  }
   if (full) {
     const note = make('span', {className: 'take-meta'});
-    row.append(button(take.rejected ? 'Keep' : 'Reject', () => { void patchTake(take, {rejected: !take.rejected}); }),
-      button('Send to EUTONOS', () => { void exportTake(take, note); }, 'chip', `Export ${take.title ?? take.id} for EUTONOS`), note);
+    row.append(button('Send to EUTONOS', () => { void exportTake(take, note); }, 'chip', `Export ${take.title ?? take.id} for EUTONOS`), note);
   }
   return row;
 }
 function renderTakes(): void {
   const recent = $('gen-takes'), all = $('lib-takes');
-  recent.replaceChildren(...takes.slice(0, 4).map(t => takeRow(t, false)));
+  recent.replaceChildren(...takes.filter(t => ratingOf(t) !== 'dislike').slice(0, 4).map(t => takeRow(t, false)));
   all.replaceChildren(...(engine === 'offline' ? [] : takes.length ? takes.map(t => takeRow(t, true)) : [make('li', {className: 'empty', textContent: 'No takes yet. Generate one in Produce.'})]));
 }
 
