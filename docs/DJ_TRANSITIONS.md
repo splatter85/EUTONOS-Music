@@ -33,7 +33,7 @@ Windows synthetic tests cover 118/120/124 BPM in A minor, C major and D minor; h
 
 ## Implementation sequence
 
-Phase 1 analysis is implemented and its 22 focused tests plus the unchanged 40 analyzer/CLI tests pass on Windows. Phase 2 native filter automation is implemented: 16 new/review Node tests plus 7 existing tests and 6 native offline groups pass. Phase 3 prepared DSP and Phase 4 automatic planning/integration are still pending at this checkpoint. The [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md) records exact commands, versions and phase status.
+Phase 1 analysis is implemented and its 22 focused tests plus the unchanged 40 analyzer/CLI tests pass on Windows. Phase 2 native filter automation is implemented: 16 new/review Node tests plus 7 existing tests and 6 native offline groups pass. Phase 3 prepared DSP is implemented and 38 focused checks pass on Windows, including worker cancellation tests. Phase 4 automatic planning/integration and actual browser worker qualification are still pending at this checkpoint. The [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md) records exact commands, versions and phase status.
 
 The planned tempo bound is +/-8% and pitch bound +/-2 semitones. These are engineering choices, not listening results. Processing will render a copy of B during PREPARE, using a browser worker or a plain Node function. A proposed transition becomes schedulable only after its processed audio is ready and the existing clock deadline is rechecked. Insufficient confidence or refused processing uses the existing authored crossfade if it is still schedulable.
 

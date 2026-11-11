@@ -18,7 +18,7 @@ Status: in progress. This is an owner-assigned branch task, separate from S10 li
 | --- | --- | --- |
 | 1: analysis | done | 22 new analysis tests and 40 existing analyzer/CLI tests pass on Windows. CLI adds audio-derived estimates without changing existing measurements. |
 | 2: EQ/filter automation | done | 13 new + 7 existing Node tests and 6 native offline groups pass on Windows. Opt-in graphs preserve original direct/hybrid defaults. |
-| 3: prepare-time tempo/pitch | not started | Bounded offline processing in a browser worker and plain Node function. |
+| 3: prepare-time tempo/pitch | done | Original WSOLA/compensated resampling, optional tempo return and disposable worker client; 38 focused tests pass on Windows. Native browser qualification belongs to Phase 4. |
 | 4: planner/DJ/page | not started | Ready-only opt-in scheduling, existing authored fallback and additive browser checks. |
 
 ## Initial evidence and choices
@@ -59,3 +59,15 @@ Command: `node dist/scripts/analyze-audio.js fixtures/s01 <existing-owner-local-
 | Owner-local FL B | 119.997916 | 0.553396 | A minor | 0.856307 | 0.006159 |
 
 FL A's BPM estimate is wrong by -58.140396 BPM. Its weak rhythm/structure/key confidence is retained, not replaced by manifest values. The planned conservative confidence gates select the authored fallback for these existing pairs. Correct labels for these measured files do not establish real-song generalization.
+
+## Phase 3 executed evidence and license record
+
+`npm.cmd run build` and `node --test dist/tests/time-pitch.test.js dist/tests/mix-prepare.test.js`: **38 passed, 0 failed, 0 skipped** (29 generated-signal DSP checks + 9 worker transport/lifecycle checks), 3.072 s test duration on Windows Node v26.13.0. Independent source review: KEEP, no material defect. Node worker checks use transport doubles; actual browser workers are deferred to Phase 4 qualification.
+
+Original stereo-linked WSOLA uses 40 ms grains, 20 ms hops and a +/-10 ms source-position search. Compensated windowed-sinc resampling (24-sample radius) provides independent pitch change. Constant output length is round(inputFrames/tempoRatio); optional tempo return uses a monotonic integrated linear-rate ramp. The search bound is not a universal transient-displacement guarantee. Numeric checks measured 440 Hz tempo-only within 0.5 Hz, pitch/combined corners within 2 cents, generated 118/120/124 BPM drums to120 within 0.3 BPM and 20 ms, exact repeated bytes, stereo anti-phase retention at8/44.1/48 kHz, exact durations and zero outer boundary samples. A return ramp recovered native120 after a124 match within0.3 BPM. Pitch-up anti-alias attenuation was checked. These are synthetic engineering results, not listening results.
+
+Input bounds: mono/stereo8–192 kHz,180s and12,000,000 channel samples. External rate0.92–1.08 and pitch+/-2 semitones; impossible return ramps refuse. Output is a new copy with an outer5 ms taper and common-channel attenuation to a -1 dBFS sample-peak ceiling (not true-peak guarantee). WSOLA may repeat/smear transients; pitch does not preserve formants/timbre. Workers copy inputs, transfer only private buffers, terminate on completion/abort/error and refuse after30s; cancelled/late work cannot become prepared.
+
+Zero new runtime dependencies. No third-party DSP implementation was copied. Signalsmith Stretch's MIT license and official WASM/AudioWorklet API were checked but not used. No GPL/LGPL code is included. Primary sources: https://github.com/Signalsmith-Audio/signalsmith-stretch/blob/main/LICENSE.txt ; https://github.com/Signalsmith-Audio/signalsmith-stretch/blob/main/web/release/README.md ; https://www.isca-archive.org/eurospeech_1993/roelands93_eurospeech.html ; https://www.mdpi.com/2076-3417/6/2/57 ; https://www.dafx.de/DAFX_Book_Page/chapter7.html . Native filters use the browser's Web Audio implementation; W3C specification and EQ Cookbook were consulted, no code imported.
+
+A temporary Linux algorithm pilot under Node v24.22.1 passed29 DSP checks; this is supplemental scratch evidence, not this repository's Linux build/browser qualification. Full repository gates remain Windows-only in this task. macOS is untested. Physical output and listening NOT TESTED.
