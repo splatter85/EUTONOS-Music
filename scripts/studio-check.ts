@@ -138,6 +138,7 @@ try {
   await waitText(page, 'gen-go', /^Generate$/, 12000);
   assert.equal(fake.generated.length, 1);
   assert.equal((fake.generated[0] as {bpm: number}).bpm, 120);
+  assert.equal((fake.generated[0] as {thinking: boolean}).thinking, false);
   await page.getByRole('tab', {name: 'Library'}).click();
   await waitText(page, 'lib-takes', /Fake take/);
   await page.locator('#lib-takes').getByRole('button', {name: 'Star'}).click();

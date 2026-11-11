@@ -43,7 +43,18 @@ The page uses these calls:
 - `PATCH /api/takes/:id`
 - `POST /api/takes/:id/export`
 
-Generated takes are unreviewed until the owner listens to them. **Send to EUTONOS** only asks Music Studio to write an export. Importing a take into a pack still goes through the S06 importer and its rights and eligibility checks.
+Pressing **Generate** starts the engine if it is off; on this PC that takes about 1½ minutes. **Quick sketch** is ticked by default. It skips ACE-Step's 4B planner. Untick it for planner-guided takes, which took about 5 minutes per 30-second take on this PC.
+
+**Live test, 2026-11-11.** Music Studio commit `1a4f927` ran on Windows with the page in headless Chromium at `127.0.0.1:4173`. Every step worked:
+
+- The page showed the engine as off and listed the existing takes. Preview streamed a take.
+- Generate (Quick sketch, 15 s, 1 take) started the engine (about 100 s) and produced take `ms-20261111-003853-3feb`: 15 s, peak −1 dBFS. The status line followed the job's stages.
+- Star changed the take, and **Send to EUTONOS** wrote a 7-bar export.
+- There were no page errors.
+
+The engine was stopped afterwards. Nobody listened to the take.
+
+Generated takes are unreviewed until the owner listens to them. **Send to EUTONOS** only asks Music Studio to write an export. Importing a take into a pack still goes through the S06 importer and its rights and eligibility checks. An imported take is `unreviewed`, so the browser player refuses it until a listening review marks it reviewed.
 
 ## Checks
 
@@ -62,4 +73,4 @@ Generated takes are unreviewed until the owner listens to them. **Send to EUTONO
 
 Screenshots and `report.json` go to `artifacts/studio-browser/`.
 
-What the check does not show: the real Music Studio service, real generation, audio-device output, listening quality, and macOS or Linux (it ran on Windows only).
+What the check does not show: the real Music Studio service and real generation (see the live test above for those), as well as audio-device output, listening quality, and macOS or Linux (it ran on Windows only).

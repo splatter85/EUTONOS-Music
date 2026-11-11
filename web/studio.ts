@@ -474,6 +474,7 @@ interface Take { id: string; title?: string; description?: string; duration_seco
 let engine: 'offline' | 'stopped' | 'loading' | 'ready' | 'busy' = 'offline';
 let takes: Take[] = [];
 let jobId: string | null = null;
+let jobStage = '';
 const genError = $('gen-error');
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${STUDIO_API}${path}`, {...init, headers: {'content-type': 'application/json', ...(init?.headers ?? {})}});
@@ -511,30 +512,33 @@ async function generate(): Promise<void> {
     bpm: Number($<HTMLInputElement>('gen-bpm').value), key: $<HTMLSelectElement>('gen-key').value,
     duration_seconds: Number($<HTMLSelectElement>('gen-length').value), instrumental: $<HTMLInputElement>('gen-instrumental').checked,
     variations: Number($<HTMLSelectElement>('gen-variations').value),
+    thinking: !$<HTMLInputElement>('gen-quick').checked,
   };
   if (!body.description) { genError.textContent = 'Describe the music first.'; return; }
   try {
     const job = await api<{job_id: string}>('/api/generate', {method: 'POST', body: JSON.stringify(body)});
-    jobId = job.job_id; engine = 'busy'; renderGenerator();
+    jobId = job.job_id; jobStage = 'Queued'; engine = 'busy'; renderGenerator();
     for (;;) {
       await new Promise(r => setTimeout(r, 1500));
-      const status = await api<{status: string; progress?: number; error?: string}>(`/api/jobs/${encodeURIComponent(job.job_id)}`);
+      const status = await api<{status: string; progress?: number; error?: string; stage?: string}>(`/api/jobs/${encodeURIComponent(job.job_id)}`);
+      if (status.stage) { jobStage = status.stage; renderGenerator(); }
       $('gen-progress-bar').style.width = `${Math.round((status.progress ?? 0) * 100)}%`;
       if (status.status === 'failed' || status.status === 'error') throw new Error(status.error ?? 'Generation failed.');
       if (status.status === 'done' || status.status === 'complete' || status.status === 'completed') break;
     }
     await refreshTakes();
   } catch (error) { genError.textContent = message(error); }
-  finally { jobId = null; void pollHealth(); }
+  finally { jobId = null; jobStage = ''; void pollHealth(); }
 }
 function renderGenerator(): void {
   const light = $('gen-light');
   light.className = `light ${engine === 'offline' ? 'off' : engine === 'ready' ? 'ok' : engine === 'stopped' ? '' : 'busy'}`;
-  setText('gen-status', engine === 'offline' ? 'Music Studio not running' : engine === 'stopped' ? 'Engine off' : engine === 'loading' ? 'Engine warming up (first time can take a minute)…' : engine === 'busy' ? 'Generating…' : 'Ready');
+  setText('gen-status', engine === 'offline' ? 'Music Studio not running' : jobId ? (jobStage || 'Generating…') : engine === 'stopped' ? 'Engine off — Generate starts it (about 1½ minutes the first time)' : engine === 'loading' ? 'Engine warming up (about 1½ minutes)…' : engine === 'busy' ? 'Busy with another job…' : 'Ready');
   $('gen-offline').hidden = engine !== 'offline';
   const engineButton = $<HTMLButtonElement>('gen-engine'); engineButton.hidden = engine !== 'stopped';
-  const form = $<HTMLFormElement>('gen-form'); form.classList.toggle('is-disabled', engine !== 'ready');
-  $<HTMLButtonElement>('gen-go').disabled = engine !== 'ready' || jobId !== null;
+  const canGenerate = (engine === 'ready' || engine === 'stopped') && jobId === null;
+  const form = $<HTMLFormElement>('gen-form'); form.classList.toggle('is-disabled', engine === 'offline');
+  $<HTMLButtonElement>('gen-go').disabled = !canGenerate;
   setText('gen-go', jobId ? 'Generating…' : 'Generate');
   $('gen-progress').hidden = jobId === null;
   $('lib-takes-hint').hidden = engine !== 'offline';

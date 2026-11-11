@@ -77,6 +77,7 @@
             <label>Length<select id="gen-length"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="60">60 s</option><option value="120">2 min</option></select></label>
             <label>Takes<select id="gen-variations"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
             <label class="check"><input id="gen-instrumental" type="checkbox" checked> Instrumental</label>
+            <label class="check" title="Quick sketch skips the 4B planner: about 10 seconds per take. Unticked, each take uses the planner and can take several minutes on this PC."><input id="gen-quick" type="checkbox" checked> Quick sketch</label>
             <button id="gen-go" class="wide accent" type="submit">Generate</button>
           </form>
           <div id="gen-progress" class="progress-line" hidden><span id="gen-progress-bar"></span></div>
