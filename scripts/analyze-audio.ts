@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {analyzeAudio, decodeWav, MAX_ANALYSIS_BYTES, type AudioAnalysis} from '../src/audio-analysis.js';
 import {loadPack, packReader} from '../src/node.js';
 import type {AudioAsset} from '../src/pack-types.js';
+import {analyzeMixAudio, type MixAnalysis} from '../src/mix-analysis.js';
 
 export interface Section {readonly start: number; readonly end: number}
 const digest = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -67,12 +68,15 @@ export function manifestSections(asset: AudioAsset): Section[] {
 
 function measureFile(bytes: Uint8Array, path: string, sections: readonly Section[], asset?: AudioAsset) {
   const audio = decodeWav(bytes);
+  let mixAnalysis: MixAnalysis | {status: 'unsupported'; reason: string};
+  try { mixAnalysis = analyzeMixAudio({sampleRate: audio.sample_rate, channels: audio.samples}); }
+  catch (error) { mixAnalysis = {status: 'unsupported', reason: error instanceof Error ? error.message : String(error)}; }
   const ranges = asset ? (asset.source_kind === 'recording' ?
     (sections.length ? sections : manifestSections(asset)) : []) : sections;
   return {id: asset?.id ?? basename(path), source_kind: asset?.source_kind ?? 'wav', path,
     sha256: digest(bytes), bytes: bytes.length, format: audio.format,
     sample_rate: audio.sample_rate, channels: audio.channels, frames: audio.frames,
-    full: analyzeAudio(audio),
+    full: analyzeAudio(audio), mix_analysis: mixAnalysis,
     sections: ranges.map((range, i) => ({label: `section-${i + 1}`,
       origin: sections.length ? 'explicit' : 'manifest',
       requested_start_seconds: range.start, requested_end_seconds: range.end,
@@ -80,6 +84,7 @@ function measureFile(bytes: Uint8Array, path: string, sections: readonly Section
 }
 
 const METHODS = {
+  mix_analysis: 'mix-analysis-v1: channel-power spectral novelty, autocorrelation and a constant-tempo grid in 60–180 BPM; explicit mild 120-BPM prior; 4/4 accents and four-bar phrases are hypotheses; Hann-window spectral pitch classes with original major/minor templates; uncalibrated confidence, unknown real-song generalization; bounded to 180 s / 16,777,216 channel samples',
   loudness: 'BS.1770 K-weighting per channel; 400 ms complete blocks, 100 ms hop, -70 LUFS absolute and -10 LU relative gates; mono/stereo weights 1; null with explicit status if not measurable',
   true_peak: 'Prototype estimate using BS.1770-5 Annex 2 4x FIR, zero-extension and complete filter flush; at least sample peak. Fixed 4x is below 192 kHz for input below 48 kHz; no conformance certification',
   rms: 'Mean square over frames and channels; nonoverlapping 1 s windows with unpadded final partial window; dBFS referenced to sample amplitude 1',
@@ -154,6 +159,10 @@ export async function runAnalysisCli(args: readonly string[]): Promise<number> {
       console.log(`\n${report.source.id ?? basename(input)} -> ${destination}`);
       for (const file of report.files) {
         console.log(summary(file.id, file.full));
+        const mix = file.mix_analysis;
+        console.log('version' in mix
+          ? `  Mix estimates: ${mix.tempo.bpm?.toFixed(2) ?? 'unknown'} BPM (confidence ${mix.tempo.confidence.toFixed(2)}); key ${mix.key.name ?? 'unknown'} (confidence ${mix.key.confidence.toFixed(2)}); ${mix.mixIn.length}/${mix.mixOut.length} ranked in/out points; 4/4 and phrases are guesses`
+          : `  Mix analysis unsupported: ${mix.reason}`);
         for (const section of file.sections) console.log(`  ${summary(section.label, section.analysis)}`);
       }
     } catch (error) {
