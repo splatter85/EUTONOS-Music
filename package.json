@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "demo": "npm run build && node dist/scripts/mock-fl-producer.js && node dist/scripts/serve.js",
-    "check:browser": "npm run build && node dist/scripts/browser-check.js && node dist/scripts/s11-browser-check.js",
+    "check:browser": "npm run build && node dist/scripts/browser-check.js && node dist/scripts/s11-browser-check.js && node dist/scripts/studio-check.js",
     "test": "npm run build && node --test dist/tests/*.test.js",
     "fixtures:generate": "npm run build && node dist/scripts/generate-fixtures.js",
     "fixtures:check": "npm run build && node dist/scripts/generate-fixtures.js --check",

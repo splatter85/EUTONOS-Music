@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EUTONOS Studio</title>
+  <link rel="stylesheet" href="/web/studio.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>EUTONOS <b>Studio</b></span></div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-produce" aria-controls="panel-produce" aria-selected="false" type="button">Produce</button>
+      <button role="tab" id="tab-dj" aria-controls="panel-dj" aria-selected="true" type="button">DJ Booth</button>
+      <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false" type="button">Library</button>
+    </nav>
+    <div class="topbar-right">
+      <label class="pack-picker">Pack<select id="pack" autocomplete="off"><option value="s01">S01 original</option><option value="mock-fl">S06 imported mock</option><option value="fl">S09 real FL</option></select></label>
+      <div class="master"><label for="master-volume">Master</label><input id="master-volume" type="range" min="0" max="1" step="0.01" value="0.65"><button id="master-mute" class="chip" type="button" aria-pressed="false">Mute</button></div>
+    </div>
+  </header>
+  <p id="global-status" class="global-status" role="status">Loading pack…</p>
+
+  <main>
+    <!-- DJ BOOTH -->
+    <section id="panel-dj" class="panel" role="tabpanel" aria-labelledby="tab-dj">
+      <div class="booth">
+        <article class="deck deck-a" id="deck-a">
+          <header class="deck-head"><span class="deck-letter">A</span><div class="deck-titles"><h2 id="deck-a-title">Deck A</h2><p id="deck-a-meta" class="deck-meta">—</p></div><span id="deck-a-air" class="on-air">On air</span></header>
+          <canvas id="deck-a-wave" class="wave" width="800" height="120" aria-label="Deck A waveform"></canvas>
+          <div class="deck-foot"><span id="deck-a-time" class="readout">0:00.0</span><span id="deck-a-remain" class="readout dim">-0:00.0</span><button id="queue-a" class="chip" type="button">Queue A</button></div>
+        </article>
+
+        <div class="mixer">
+          <p class="mixer-label">Transition</p>
+          <div class="segmented" role="radiogroup" aria-label="Transition style">
+            <button id="mode-direct" role="radio" aria-checked="true" type="button">Crossfade</button>
+            <button id="mode-hybrid" role="radio" aria-checked="false" type="button">Bridge</button>
+          </div>
+          <div class="xfader" aria-label="Crossfader position (automatic)"><span class="xf-end">A</span><div class="xf-track"><span id="bridge-lamp" class="bridge-lamp">Bridge</span><span id="xf-knob" class="xf-knob"></span></div><span class="xf-end">B</span></div>
+          <p id="mix-status" class="mix-status">Ready</p>
+          <div class="transport">
+            <button id="dj-play" class="big play" type="button" aria-label="Play">▶</button>
+            <button id="dj-pause" class="big" type="button" aria-label="Pause">❚❚</button>
+            <button id="dj-stop" class="big" type="button" aria-label="Stop">■</button>
+          </div>
+          <button id="dj-next" class="wide accent" type="button">Mix to next ▸</button>
+          <div class="row2"><button id="dj-cancel" class="chip" type="button">Cancel mix</button><button id="dj-hold" class="chip" type="button" aria-pressed="false">Hold</button></div>
+          <p class="mixer-label">Energy</p>
+          <div id="state-pads" class="pads">
+            <button data-state="explore" type="button">Explore</button><button data-state="browse" type="button">Browse</button><button data-state="drive" type="button">Drive</button><button data-state="surge" type="button">Surge</button><button data-state="afterglow" type="button">Afterglow</button>
+          </div>
+        </div>
+
+        <article class="deck deck-b" id="deck-b">
+          <header class="deck-head"><span class="deck-letter">B</span><div class="deck-titles"><h2 id="deck-b-title">Deck B</h2><p id="deck-b-meta" class="deck-meta">—</p></div><span id="deck-b-air" class="on-air">On air</span></header>
+          <canvas id="deck-b-wave" class="wave" width="800" height="120" aria-label="Deck B waveform"></canvas>
+          <div class="deck-foot"><span id="deck-b-time" class="readout">0:00.0</span><span id="deck-b-remain" class="readout dim">-0:00.0</span><button id="queue-b" class="chip" type="button">Queue B</button></div>
+        </article>
+      </div>
+      <div class="booth-lower">
+        <div class="card"><h3>Up next</h3><ul id="dj-queue" class="list"><li class="empty">Nothing queued. Queue a deck, or press Mix to next.</li></ul></div>
+        <div class="card"><h3>What’s happening</h3><dl class="facts"><dt>Playing</dt><dd id="dj-now">Nothing</dd><dt>Next</dt><dd id="dj-next-title">Nothing scheduled</dd><dt>You asked for</dt><dd id="dj-requested">explore</dd></dl><p id="dj-error" class="error" role="alert"></p></div>
+      </div>
+    </section>
+
+    <!-- PRODUCE -->
+    <section id="panel-produce" class="panel" role="tabpanel" aria-labelledby="tab-produce" hidden>
+      <div class="produce">
+        <div class="card generator">
+          <header class="card-head"><h3>AI generator</h3><span id="gen-light" class="light off"></span><span id="gen-status" class="dim">Checking Music Studio…</span><button id="gen-engine" class="chip" type="button" hidden>Start engine</button></header>
+          <p id="gen-offline" class="hint" hidden>Music Studio isn’t running. Open the <b>Music Studio</b> shortcut on your desktop, then come back here.</p>
+          <form id="gen-form" class="gen-form">
+            <label class="full">Describe the music<textarea id="gen-description" rows="3" maxlength="600">Instrumental progressive house at 120 BPM in A minor. Tight kick, deep bass, warm pads, restrained arpeggio. No vocals.</textarea></label>
+            <label>BPM<input id="gen-bpm" type="number" min="60" max="200" value="120"></label>
+            <label>Key<select id="gen-key"><option>A minor</option><option>C major</option><option>D minor</option><option>E minor</option><option>F major</option><option>G major</option><option>F# minor</option><option>B minor</option></select></label>
+            <label>Length<select id="gen-length"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="60">60 s</option><option value="120">2 min</option></select></label>
+            <label>Takes<select id="gen-variations"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
+            <label class="check"><input id="gen-instrumental" type="checkbox" checked> Instrumental</label>
+            <button id="gen-go" class="wide accent" type="submit">Generate</button>
+          </form>
+          <div id="gen-progress" class="progress-line" hidden><span id="gen-progress-bar"></span></div>
+          <p id="gen-error" class="error" role="alert"></p>
+          <ul id="gen-takes" class="takes"></ul>
+        </div>
+
+        <div class="card sampler">
+          <header class="card-head"><h3>Pattern sampler</h3><span id="sampler-sub" class="dim">8 bars · 120 BPM · A minor</span></header>
+          <canvas id="grid" class="grid" width="1024" height="132" aria-label="Pattern steps: drum, percussion, bass, harmony"></canvas>
+          <div class="sampler-controls">
+            <label>Seed<input id="seed" inputmode="numeric" value="0" autocomplete="off"></label>
+            <button id="dice" class="chip" type="button" aria-label="Random seed">🎲 New</button>
+            <div class="segmented" role="radiogroup" aria-label="Energy">
+              <button id="s-explore" role="radio" aria-checked="true" type="button">Explore</button>
+              <button id="s-drive" role="radio" aria-checked="false" type="button">Drive</button>
+            </div>
+            <button id="s-play" class="big play" type="button" aria-label="Play pattern">▶</button>
+            <button id="s-stop" class="big" type="button" aria-label="Stop pattern">■</button>
+            <button id="s-save" class="chip" type="button">♥ Save to Library</button>
+          </div>
+          <p id="sampler-status" class="dim" role="status">Ready</p>
+          <p id="sampler-error" class="error" role="alert"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="panel-library" class="panel" role="tabpanel" aria-labelledby="tab-library" hidden>
+      <div class="library">
+        <div class="card"><h3>Saved patterns</h3><ul id="lib-vibes" class="list"><li class="empty">Nothing saved yet. Press ♥ in Produce.</li></ul><p id="lib-error" class="error" role="alert"></p></div>
+        <div class="card"><h3>Generated takes</h3><p id="lib-takes-hint" class="hint">Open Music Studio to see your generated takes.</p><ul id="lib-takes" class="list"></ul></div>
+        <div class="card wide-card"><h3>Tracks in this pack</h3><table class="tracks"><thead><tr><th>Title</th><th>Type</th><th>BPM</th><th>Key</th><th>Length</th><th>Status</th></tr></thead><tbody id="lib-tracks"></tbody></table></div>
+      </div>
+    </section>
+  </main>
+  <footer class="foot">Local only · nothing here has been listening-tested · generated takes are unreviewed until you listen</footer>
+  <audio id="preview" preload="none"></audio>
+  <script type="module" src="/dist/web/studio.js"></script>
+</body>
+</html>

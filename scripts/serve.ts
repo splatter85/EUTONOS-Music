@@ -8,6 +8,8 @@ const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const browserModules = new Set([
   'index', 'pack-types', 'pack', 'audio', 'playable-source', 'control',
   'browser-pack', 'web-audio', 'player', 'dj', 'phrase-plan', 'procedural-source', 'hybrid-handoff',
+  // EUTONOS Studio: S11 library, IndexedDB adapter and the pure WAV decoder for waveforms.
+  'library-codec', 'library', 'recipe-library', 'library-indexeddb', 'audio-analysis',
 ]);
 const mimeTypes: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
@@ -30,6 +32,7 @@ function assetPath(requestTarget: string): string | undefined {
   if (path === '/') return 'web/index.html';
   if (path === '/checks.html') return 'web/checks.html';
   if (path === '/procedural.html') return 'web/procedural.html';
+  if (path === '/studio.html') return 'web/studio.html';
   if (/^\/web\/[a-zA-Z0-9_-]+\.css$/.test(path)) return path.slice(1);
   if (/^\/dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(path)) return path.slice(1);
   const module = /^\/dist\/src\/([a-zA-Z0-9_-]+)\.js$/.exec(path)?.[1];

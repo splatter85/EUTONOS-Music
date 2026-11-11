@@ -24,6 +24,8 @@ Open **http://127.0.0.1:4173/**. Press **Play**, then **Next Song** before A rea
 
 The demo's **Offline checks** page renders and measures the transition without speaker output. For automated browser verification, run `npx playwright install chromium` once, then `npm run check:browser`. See the [S03 controls, selection and limits](docs/S03_DJ.md).
 
+**EUTONOS Studio** at **http://127.0.0.1:4173/studio.html** puts it all on one page with three tabs: **Produce** (pattern sampler and the optional local AI generator), **DJ Booth** (two decks, mix and energy controls) and **Library** (saved patterns, generated takes, pack tracks). [Studio guide](docs/STUDIO_APP.md).
+
 The linked **Sampler & palettes** page at **http://127.0.0.1:4173/procedural.html** plays either S01 original or S06 imported mock samples. Select a palette, seed and arrangement, then press **Play variation**. Stop before changing the palette or variation. Use the same seed and arrangement to compare both palettes. [S07 demo guide and limits](docs/S07_APP.md).
 
 On a Windows PC with FL Studio (closed), `npm run fl:produce` renders and imports the owner-local real-FL pack; then open **http://127.0.0.1:4173/?pack=fl** or choose it in the DJ's **Pack** selector. `npm run check:fl` checks it. [S09 guide](docs/S09_FL_IMPORT.md).
@@ -52,6 +54,7 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S05 recording → procedural → recording handoff](docs/S05_HYBRID.md)
 - [S06 producer import and palette contract](docs/S06_IMPORT.md)
 - [S07 integrated demo](docs/S07_APP.md)
+- [EUTONOS Studio](docs/STUDIO_APP.md)
 - [S09 real FL import](docs/S09_FL_IMPORT.md)
 - [S11 library and recipe studies](docs/S11_LIBRARY.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)

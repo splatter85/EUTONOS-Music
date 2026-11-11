@@ -24,6 +24,10 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S07 app](S07_APP.md) | Integrated demo, original/imported palette comparison, repeatable gates, review and Windows-only proof limits |
 | [S09 FL import](S09_FL_IMPORT.md) | Real FL renders through the unchanged contract, owner-local rights, fade-cut shaping, per-route hybrid policies and handoff measurements |
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
+| [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
+| [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits |
+| [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |
+| [Local generators](proposals/LOCAL_GENERATORS.md) | Proposal: local music-generation candidates (nothing installed or heard by this repo) |
 | [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |
 | [State/API](STATE_AND_CONTROL_API.md) | Intent, actual playback, command/hold/retry semantics and proposed tools |
