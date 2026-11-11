@@ -1,6 +1,7 @@
 import {eligibleForPlayback, quartersToFrames, validatePackManifest} from './pack.js';
 import type {AudioAsset, AudioPack, CueRoute} from './pack-types.js';
 import type {AudioClock, ClockStamp, PlayableSource, SourceExit, SourceStart} from './playable-source.js';
+import {createMixAutomationGraph, validateMixAutomation, type MixAutomation, type MixAutomationGraph} from './mix-automation.js';
 
 let nextGeneration = 1;
 
@@ -73,6 +74,12 @@ export function planTransition(pack: AudioPack, routeId: string, fromStart: Sour
 export interface DecodedRecording {
   readonly asset: AudioAsset;
   readonly buffer: AudioBuffer;
+  /** Explicit prepare-time derivative; source identity/rights remain the original asset. */
+  readonly processed?: {
+    readonly sourceFrames: number;
+    readonly outputFrames: number;
+    readonly algorithm: string;
+  };
 }
 
 export interface RecordingOptions {
@@ -90,6 +97,7 @@ export class RecordedSource implements PlayableSource {
   private generation = -1;
   private node: AudioBufferSourceNode | null = null;
   private gain: GainNode | null = null;
+  private mixGraph: MixAutomationGraph | null = null;
   private start: SourceStart | null = null;
   private entryFrame = 0;
   private finishFrame = 0;
@@ -115,8 +123,16 @@ export class RecordedSource implements PlayableSource {
     const {asset, buffer} = this.recording;
     requireAudio(asset.source_kind === 'recording' && asset.timing, 'A recorded source requires recording timing.');
     requireAudio(eligibleForPlayback(asset, this.options.allowFixtures), 'Recording is not eligible for playback.');
+    const sourceFrames = Math.round(asset.file.frames * clock.sampleRate / asset.file.sample_rate);
+    const processed = this.recording.processed;
+    if (processed !== undefined) requireAudio(processed && Number.isSafeInteger(processed.sourceFrames) &&
+      Math.abs(processed.sourceFrames - sourceFrames) <= 1 &&
+      Number.isSafeInteger(processed.outputFrames) && processed.outputFrames > 0 &&
+      processed.outputFrames === buffer.length && typeof processed.algorithm === 'string' &&
+      processed.algorithm.length > 0 && processed.algorithm.length <= 128,
+    'Processed recording needs explicit original/rendered frames and its algorithm version.');
     requireAudio(buffer.sampleRate === clock.sampleRate && buffer.numberOfChannels === asset.file.channels &&
-      Math.abs(buffer.length - Math.round(asset.file.frames * clock.sampleRate / asset.file.sample_rate)) <= 1,
+      (processed !== undefined || Math.abs(buffer.length - sourceFrames) <= 1),
     'Decoded buffer does not match the recording and output sample rate.');
     this.clock = clock;
     this.generation = clock.engineGeneration;
@@ -129,12 +145,14 @@ export class RecordedSource implements PlayableSource {
       if (this.phase !== 'released') this.phase = 'ended';
       this.node?.disconnect();
       this.gain?.disconnect();
+      this.mixGraph?.release(); this.mixGraph = null;
     };
     this.phase = 'prepared';
   }
 
   scheduleStart(start: SourceStart): void {
     requireAudio(this.phase === 'prepared', 'Prepare before start; start each source once.');
+    requireAudio(!this.recording.processed, 'A processed recording needs an explicit mapped mix entry.');
     this.checkStamp(start.at);
     const entry = cueFrame(this.recording.asset, start.entryCueId, 'entry', this.clock!.sampleRate);
     requireAudio(entry < this.recording.buffer.length && entry + this.fadeIn <= this.recording.buffer.length,
@@ -150,8 +168,37 @@ export class RecordedSource implements PlayableSource {
     this.phase = 'scheduled';
   }
 
+  /** Analyzed/processed entry in decoded output frames; no authored cue is rewritten. */
+  scheduleMixStart(at: ClockStamp, entryOffsetFrames: number, automation: MixAutomation): void {
+    requireAudio(this.phase === 'prepared', 'Prepare before start; start each source once.');
+    this.checkStamp(at);
+    validateMixAutomation(automation, this.clock!.sampleRate);
+    requireAudio(Number.isSafeInteger(entryOffsetFrames) && entryOffsetFrames >= 0 &&
+      entryOffsetFrames + automation.durationFrames <= this.recording.buffer.length,
+    'Analyzed entry/automation exceeds prepared audio.');
+    requireAudio(automation.gain[0]!.value === 0, 'An incoming mix must start at zero gain.');
+    const graph = createMixAutomationGraph(this.context, this.node!, this.gain!, at.frame, automation);
+    try {
+      // The mix curve owns this entrance; constructor fades belong to authored cues only.
+      this.gain!.gain.setValueAtTime(1, at.frame / this.clock!.sampleRate);
+      // Gate native filter tails at prepared EOF; onended is cleanup, never an audio deadline.
+      this.gain!.gain.setValueAtTime(0,
+        (at.frame + this.recording.buffer.length - entryOffsetFrames) / this.clock!.sampleRate);
+      this.node!.start(at.frame / this.clock!.sampleRate, entryOffsetFrames / this.clock!.sampleRate);
+    } catch (error) {
+      graph.restore(); this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); throw error;
+    }
+    this.mixGraph = graph;
+    this.start = {at: {...at}, entryCueId: 'mix-entry'};
+    this.entryFrame = entryOffsetFrames;
+    this.finishFrame = at.frame + this.recording.buffer.length - entryOffsetFrames;
+    this.naturalEndFrame = this.finishFrame;
+    this.phase = 'scheduled';
+  }
+
   getValidExits(): readonly SourceExit[] {
     requireAudio(this.phase === 'prepared' || this.phase === 'scheduled', 'Source must be ready.');
+    requireAudio(!this.recording.processed, 'Processed audio requires explicitly mapped mix offsets.');
     this.checkGeneration();
     return this.recording.asset.cues.filter(c => c.kind === 'exit').map(c => ({cueId: c.id,
       offsetFrames: cueFrame(this.recording.asset, c.id, 'exit', this.clock!.sampleRate)}));
@@ -160,6 +207,7 @@ export class RecordedSource implements PlayableSource {
   /** The fade starts at the exit cue. A caller may choose its length for this one exit (S05 tail bar). */
   transitionOut(exitCueId: string, at: ClockStamp, fadeOutFrames = this.fadeOut): void {
     requireAudio(this.phase === 'scheduled' && this.start, 'Start before transition; transition once.');
+    requireAudio(!this.recording.processed && !this.mixGraph, 'Use mapped mix offsets for an opt-in processed source.');
     this.checkStamp(at);
     requireAudio(Number.isSafeInteger(fadeOutFrames) && fadeOutFrames >= 0, 'Fades must use nonnegative integer output frames.');
     const expected = this.start.at.frame + cueFrame(this.recording.asset, exitCueId, 'exit', this.clock!.sampleRate) - this.entryFrame;
@@ -175,11 +223,37 @@ export class RecordedSource implements PlayableSource {
     this.phase = 'stopping';
   }
 
+  /** Exit at the analyzed decoded-frame offset, with every move on the owner clock. */
+  transitionMixOut(at: ClockStamp, sourceOffsetFrames: number, automation: MixAutomation): void {
+    requireAudio(this.phase === 'scheduled' && this.start && !this.mixGraph,
+      'Start before a mix exit; one automation graph owns each source.');
+    this.checkStamp(at);
+    const rate = this.clock!.sampleRate;
+    validateMixAutomation(automation, rate);
+    requireAudio(Number.isSafeInteger(sourceOffsetFrames) && sourceOffsetFrames >= this.entryFrame &&
+      at.frame === this.start.at.frame + sourceOffsetFrames - this.entryFrame,
+    'Mix exit must align to the analyzed source offset.');
+    requireAudio(at.frame + automation.durationFrames <= this.finishFrame,
+      'Mix exit automation exceeds decoded audio.');
+    requireAudio(automation.gain[0]!.value === 1 && automation.gain.at(-1)!.value === 0 &&
+      automation.lowShelfDb[0]!.value === 0 && automation.highPassHz[0]!.value === 0 &&
+      automation.lowPassHz[0]!.value === rate / 2,
+    'An outgoing mix starts neutral and ends at zero gain.');
+    const graph = createMixAutomationGraph(this.context, this.node!, this.gain!, at.frame, automation);
+    try { this.node!.stop((at.frame + automation.durationFrames) / rate); }
+    catch (error) { graph.restore(); throw error; }
+    this.mixGraph = graph;
+    this.finishFrame = at.frame + automation.durationFrames;
+    this.transitionFrame = at.frame;
+    this.phase = 'stopping';
+  }
+
   /** Restore the original start envelope and finish only before an exit has begun. */
   cancelTransition(): boolean {
     if (this.transitionFrame === null) return true;
     this.checkGeneration();
     if (this.clock!.currentFrame >= this.transitionFrame) return false;
+    this.mixGraph?.restore(); this.mixGraph = null;
     const transitionFrame = this.transitionFrame;
     const rate = this.clock!.sampleRate;
     this.gain!.gain.cancelScheduledValues(transitionFrame / rate);
@@ -220,6 +294,7 @@ export class RecordedSource implements PlayableSource {
       this.node.disconnect();
       this.gain!.disconnect();
     }
+    this.mixGraph?.release(); this.mixGraph = null;
     this.phase = 'released';
     this.node = null;
     this.gain = null;
