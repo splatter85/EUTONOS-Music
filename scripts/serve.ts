@@ -8,7 +8,7 @@ const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const browserModules = new Set([
   'index', 'pack-types', 'pack', 'audio', 'playable-source', 'control',
   'browser-pack', 'web-audio', 'player', 'dj', 'phrase-plan', 'procedural-source', 'hybrid-handoff',
-  'mix-automation',
+  'mix-automation', 'mix-analysis', 'mix-planner', 'mix-transition', 'time-pitch', 'mix-prepare', 'mix-worker',
 ]);
 const mimeTypes: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',

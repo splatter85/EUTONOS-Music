@@ -11,3 +11,10 @@ export * from './dj.js';
 export * from './phrase-plan.js';
 export * from './procedural-source.js';
 export * from './hybrid-handoff.js';
+
+export * from './mix-analysis.js';
+export * from './mix-automation.js';
+export * from './time-pitch.js';
+export * from './mix-prepare.js';
+export * from './mix-planner.js';
+export * from './mix-transition.js';

@@ -6,6 +6,7 @@ import type {AudioAsset, MusicState, VersionRef} from './pack-types.js';
 import {compilePhrase, type S01PhraseState} from './phrase-plan.js';
 import type {ClockStamp} from './playable-source.js';
 import {SmallPlayer, type PlayerSnapshot} from './player.js';
+import type {MixPlannerOptions} from './mix-planner.js';
 
 export type DjExecutionStatus = 'pending' | 'queued' | 'scheduled' | 'started' | 'completed'
   | 'applied' | 'cancelled' | 'superseded' | 'no-match' | 'blocked' | 'failed' | 'rejected';
@@ -34,11 +35,12 @@ export interface DjSnapshot {
   readonly pending: DjPending | null;
   readonly last: DjCommandResult | null;
 }
-/** direct: the S03 crossfade. hybrid: the S05 A → procedural bridge → B handoff. */
-export type DjHandoff = 'direct' | 'hybrid';
+/** Existing authored modes plus opt-in analysis/prepared DSP. */
+export type DjHandoff = 'direct' | 'hybrid' | 'mix';
 export interface DjOptions {
   readonly handoff?: DjHandoff;
   readonly bridgeExit?: HybridBridgeExit;
+  readonly mix?: MixPlannerOptions;
 }
 interface Plan extends DjPending { readonly commands: string[]; readonly bridgeNoted?: boolean; }
 interface Attempt {
@@ -81,12 +83,14 @@ export class DeterministicDj {
   private closed = false;
   private handoff: DjHandoff;
   private readonly bridgeExit: HybridBridgeExit;
+  private mixOptions: MixPlannerOptions;
 
   constructor(private readonly renderer: SmallPlayer, private readonly loaded: LoadedBrowserPack,
     initialState: MusicState = 'explore', options: DjOptions = {}) {
     this.handoff = options.handoff ?? 'direct';
     this.bridgeExit = options.bridgeExit ?? 'phrase';
-    if (!['direct', 'hybrid'].includes(this.handoff) || !['phrase', 'end'].includes(this.bridgeExit)) {
+    this.mixOptions = {...options.mix};
+    if (!['direct', 'hybrid', 'mix'].includes(this.handoff) || !['phrase', 'end'].includes(this.bridgeExit)) {
       throw new Error('Unsupported handoff option.');
     }
     this.recordings = loaded.pack.assets.filter(a => a.source_kind === 'recording')
@@ -155,10 +159,12 @@ export class DeterministicDj {
 
   /** Applies to later selections only. A committed transition keeps its original kind. */
   setHandoff(mode: DjHandoff): void {
-    if (mode !== 'direct' && mode !== 'hybrid') throw new Error('Unsupported handoff option.');
+    if (mode !== 'direct' && mode !== 'hybrid' && mode !== 'mix') throw new Error('Unsupported handoff option.');
     this.handoff = mode;
   }
   get handoffMode(): DjHandoff { return this.handoff; }
+  /** Options apply to the next selection; prepared/committed audio keeps its plan. */
+  setMixOptions(options: MixPlannerOptions): void { this.mixOptions = {...options}; }
 
   async dispose(): Promise<void> {
     this.sync();
@@ -347,7 +353,8 @@ export class DeterministicDj {
         const bridge = compilePhrase(this.loaded.pack,
           {seed: bridgeSeed(commandId), state: bridgeState, recipe: policy.recipe, allowFixtures: this.loaded.allowFixtures});
         await this.renderer.scheduleHybrid(bridge, this.bridgeExit);
-      } else await this.renderer.scheduleAB();
+      } else if (this.handoff === 'mix') await this.renderer.scheduleMix({...this.mixOptions});
+      else await this.renderer.scheduleAB();
       this.sync(); // native start may have crossed before this continuation ran
       if (epoch !== this.selectionEpoch) return;
       if (this.transitionAttempt?.commandId === commandId) {
@@ -474,6 +481,7 @@ export class DeterministicDj {
       if (player.handoff) this.sourceStates.set(player.handoff.bridge.recipe.id, attempt.bridgeState);
       this.updatePlan(this.transitionPlan, 'scheduled', player.handoff
         ? 'Scheduled the checked A → procedural bridge → B handoff; not started yet.'
+        : player.mix ? player.mix.reason
         : 'Scheduled at the checked A → B cue; not started yet.');
       this.transitionAttempt = null;
       if (this.preparing === attempt.commandId) this.preparing = null;
