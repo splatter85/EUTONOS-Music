@@ -10,6 +10,8 @@ const browserModules = new Set([
   'browser-pack', 'web-audio', 'player', 'dj', 'phrase-plan', 'procedural-source', 'hybrid-handoff',
   // EUTONOS Studio: S11 library, IndexedDB adapter and the pure WAV decoder for waveforms.
   'library-codec', 'library', 'recipe-library', 'library-indexeddb', 'audio-analysis',
+  // DJ transitions (S14): analysis, automation, planner and prepare-time tempo/pitch workers.
+  'mix-automation', 'mix-analysis', 'mix-planner', 'mix-transition', 'time-pitch', 'mix-prepare', 'mix-worker',
 ]);
 const mimeTypes: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',

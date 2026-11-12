@@ -7,7 +7,9 @@ import {commitHybridHandoff, planHybridHandoff, type HybridBridge, type HybridBr
 import type {ProceduralPlan} from './phrase-plan.js';
 import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
-  type CheckedRoute, type DecodedRecording} from './web-audio.js';
+  cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
+import type {MixPlannerOptions} from './mix-planner.js';
+import {browserMixPreparation, prepareMixTransition, type MixPreparationRuntime} from './mix-transition.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -20,6 +22,17 @@ export interface HybridSnapshot {
   readonly toStart: ClockStamp;
   readonly end: ClockStamp;
 }
+export interface MixSnapshot {
+  readonly phase: 'preparing' | 'scheduled' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
+  readonly reason: string;
+  readonly summary: null | {
+    readonly fromBpm: number; readonly toBpm: number; readonly tempoRatio: number;
+    readonly pitchSemitones: number; readonly confidence: number; readonly processor: string;
+    readonly fromExitFrame: number; readonly toEntryFrame: number; readonly processedEntryFrame: number;
+    readonly outputFrames: number; readonly returnToOriginalTempo: boolean;
+    readonly fromHash: string; readonly toHash: string;
+  };
+}
 export interface PlayerSnapshot {
   readonly state: PlayerState;
   readonly requested: string | null;
@@ -31,6 +44,7 @@ export interface PlayerSnapshot {
   readonly transitionAt: ClockStamp | null;
   readonly transitionEnd: ClockStamp | null;
   readonly handoff: HybridSnapshot | null;
+  readonly mix: MixSnapshot | null;
   readonly elapsedSeconds: number;
   readonly durationSeconds: number;
   readonly currentFrame: number;
@@ -56,6 +70,8 @@ export class SmallPlayer {
   /** The committed transition window: direct crossfade or hybrid handoff. */
   private plan: {readonly at: ClockStamp; readonly end: ClockStamp} | null = null;
   private hybrid: HybridHandoffPlan | null = null;
+  private mix: MixSnapshot | null = null;
+  private mixAbort: AbortController | null = null;
   private state: PlayerState = 'idle';
   private operation = 0;
   private transitionOperation = 0;
@@ -66,7 +82,7 @@ export class SmallPlayer {
   private readonly stateChanged = () => this.onContextState();
 
   constructor(readonly context: AudioContext, private readonly loaded: LoadedBrowserPack,
-    routeId: string) {
+    routeId: string, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation) {
     this.pair = checkedRoute(loaded.pack, routeId, loaded.allowFixtures);
     this.clock = new WebAudioClock(context);
     this.output = context.createGain();
@@ -236,19 +252,93 @@ export class SmallPlayer {
     }
   }
 
+  /** Opt-in analysis/preparation. No source is offered or scheduled before B is ready. */
+  async scheduleMix(options: MixPlannerOptions = {}): Promise<void> {
+    requireAudio(this.selected === 'a' && this.voices.length === 1 && !this.plan,
+      'Play A first. Only one A -> B transition can be scheduled.');
+    const from = this.voices[0]!;
+    requireAudio(from.source instanceof RecordedSource, 'A mix starts from recording A.');
+    const outgoing = from.source, operation = this.operation, transitionOperation = this.transitionOperation;
+    const controller = new AbortController();
+    this.mixAbort?.abort(); this.mixAbort = controller;
+    this.mix = {phase: 'preparing', reason: 'Analyzing and preparing B; no transition is scheduled.', summary: null};
+    const current = () => operation === this.operation && transitionOperation === this.transitionOperation &&
+      !controller.signal.aborted && this.selected === 'a' && this.voices[0] === from;
+    let incoming: RecordedSource | null = null;
+    const useAuthoredFallback = async (reason: string): Promise<void> => {
+      if (!current()) return;
+      this.mix = {phase: 'fallback', reason: `Authored crossfade: ${reason}`, summary: null};
+      try {
+        await this.scheduleAB();
+        if (current() && !this.plan) this.mix = null;
+      } catch (error) {
+        if (current()) this.mix = {phase: 'unavailable', summary: null,
+          reason: `${reason} Authored fallback unavailable: ${error instanceof Error ? error.message : String(error)}`};
+        throw error;
+      }
+    };
+    try {
+      const recordings = await this.decoded!;
+      if (!current()) return;
+      const to = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision);
+      requireAudio(to, 'The incoming recording is not decoded.');
+      const entry = cueFrame(this.pair.from, from.start.entryCueId, 'entry', this.clock.sampleRate);
+      requireAudio(options.minimumFromFrame === undefined || Number.isSafeInteger(options.minimumFromFrame) &&
+        options.minimumFromFrame >= 0, 'Invalid requested minimum mix frame.');
+      // A bounded two-second preparation allowance is an engineering policy, not a latency promise.
+      const earliest = Math.max(entry, this.clock.currentFrame - from.start.at.frame + entry +
+        this.leadFrames + 2 * this.clock.sampleRate, options.minimumFromFrame ?? 0);
+      const ready = await prepareMixTransition(this.context, outgoing.recording, to,
+        {...options, minimumFromFrame: earliest}, controller.signal, this.mixRuntime);
+      if (!current()) return;
+      if (ready.kind === 'fallback') { await useAuthoredFallback(ready.reason); return; }
+      incoming = new RecordedSource(this.context, ready.incoming, this.output,
+        {allowFixtures: this.loaded.allowFixtures});
+      await incoming.prepare(this.clock);
+      if (!current()) { incoming.release(); incoming = null; return; }
+      requireAudio(!this.plan, 'A transition already owns the next boundary.');
+      const at = this.clock.stamp(from.start.at.frame + ready.plan.fromExitFrame - entry);
+      requireAudio(at.frame >= this.clock.currentFrame + this.leadFrames,
+        'Prepared mix missed its exact audio-clock deadline.');
+      const end = this.clock.stamp(at.frame + ready.plan.overlapFrames);
+      incoming.scheduleMixStart(at, ready.entryFrame, ready.plan.automation.incoming);
+      // Outgoing A changes last. A refusal releases all prepared B effects before fallback.
+      outgoing.transitionMixOut(at, ready.plan.fromExitFrame, ready.plan.automation.outgoing);
+      this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'}});
+      this.plan = {at, end};
+      this.mix = {phase: 'scheduled', reason: 'Processed B is ready; the analyzed mix is scheduled on the owner clock.',
+        summary: {fromBpm: ready.plan.fromBpm, toBpm: ready.plan.toBpm, tempoRatio: ready.plan.tempoRatio,
+          pitchSemitones: ready.plan.pitchSemitones, confidence: ready.plan.confidence,
+          processor: ready.processed.processor, fromExitFrame: ready.plan.fromExitFrame,
+          toEntryFrame: ready.plan.toEntryFrame, processedEntryFrame: ready.entryFrame,
+          outputFrames: ready.incoming.buffer.length, returnToOriginalTempo: ready.plan.returnToOriginalTempo,
+          fromHash: this.pair.from.file.sha256, toHash: this.pair.to.file.sha256}};
+      incoming = null; // ownership transferred to this.voices
+    } catch (error) {
+      incoming?.release(); incoming = null;
+      if (current() && !this.plan && this.mix?.phase !== 'unavailable') {
+        await useAuthoredFallback(error instanceof Error ? error.message : String(error));
+      } else if (current()) throw error;
+    } finally {
+      if (this.mixAbort === controller) this.mixAbort = null;
+    }
+  }
+
   /** Invalidate only an in-flight transition preparation; retain committed audio. */
-  cancelTransitionPreparation(): void { ++this.transitionOperation; }
+  cancelTransitionPreparation(): void { ++this.transitionOperation; this.abortMixPreparation(); }
 
   /** Cancel preparation or a future A → B, without changing playback ownership. */
   cancelPendingTransition(): boolean {
     if (this.plan && this.clock.currentFrame >= this.plan.at.frame) return false;
     if (this.plan && !this.voices[0]!.source.cancelTransition()) return false;
     ++this.transitionOperation;
+    this.abortMixPreparation();
     if (this.plan) {
       for (const voice of this.voices.slice(1)) voice.source.release();
       this.voices = this.voices.slice(0, 1);
       this.plan = null;
       this.hybrid = null;
+      this.mix = null;
     }
     return true;
   }
@@ -256,6 +346,7 @@ export class SmallPlayer {
   async pause(): Promise<void> {
     if (this.state === 'closed') return;
     ++this.operation; // invalidates an in-flight decode/start or transition preparation
+    this.abortMixPreparation();
     this.wantsRunning = false;
     this.state = this.selected ? 'paused' : 'idle';
     this.setOutput(false); // listener control is immediate, never cue-quantized
@@ -266,6 +357,7 @@ export class SmallPlayer {
     requireAudio(this.state !== 'closed', 'Player is closed. Reload the page.');
     if (!this.voices.length) { await this.playSelection(this.selected ?? 'a', ownership); return; }
     const operation = ++this.operation;
+    this.abortMixPreparation();
     this.wantsRunning = true;
     this.state = 'loading';
     try {
@@ -338,7 +430,9 @@ export class SmallPlayer {
       voices: this.voices.map(voice => ({source: {...voice.source.reference}, start: {...voice.start.at}, endFrame: voice.source.endFrame})),
       transitionAt: this.plan ? {...this.plan.at} : null,
       transitionEnd: this.plan ? {...this.plan.end} : null,
-      handoff,
+      handoff, mix: this.mix ? {...this.mix, phase: this.mix.summary && this.plan
+        ? frame < this.plan.at.frame ? 'scheduled' : frame < this.plan.end.frame ? 'mixing' : 'complete'
+        : this.mix.phase, summary: this.mix.summary ? {...this.mix.summary} : null} : null,
       elapsedSeconds: first ? Math.max(0, Math.min(duration, (frame - first.start.at.frame) / this.clock.sampleRate)) : 0,
       durationSeconds: duration, currentFrame: frame, sampleRate: this.clock.sampleRate,
       engineGeneration: this.clock.engineGeneration, contextState: this.context.state,
@@ -359,14 +453,20 @@ export class SmallPlayer {
   private get leadFrames(): number { return Math.ceil(0.1 * this.clock.sampleRate); }
   private cancelVoices(): void {
     ++this.transitionOperation;
+    this.abortMixPreparation();
     for (const voice of this.voices) voice.source.release();
     this.voices = [];
     this.plan = null;
     this.hybrid = null;
+    this.mix = null;
     this.clock.invalidate();
   }
   private setOutput(enabled: boolean): void {
     this.output.gain.setValueAtTime(enabled && !this.muted ? this.volume : 0, this.context.currentTime);
+  }
+  private abortMixPreparation(): void {
+    this.mixAbort?.abort(); this.mixAbort = null;
+    if (!this.plan) this.mix = null;
   }
   private onContextState(): void {
     if (this.state === 'closed') return;
@@ -381,6 +481,7 @@ export class SmallPlayer {
     } else if (this.state !== 'loading' && this.context.state !== 'running') {
       // OS/device interruption is a pause. Recovery requires a new user gesture.
       ++this.operation;
+      this.abortMixPreparation();
       this.wantsRunning = false;
       this.state = 'paused';
       this.setOutput(false);
