@@ -32,7 +32,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "campaign-emf-001",
       "status": "active",
-      "summary": "Build the first EUTONOS Music proof: portable audio packs, one player and clock, a deterministic DJ, a procedural source, FL Studio authoring through one MCP facade, owner listening, then Mission Control. The campaign document owns definitions, dependencies and acceptance.",
+      "summary": "Build the EUTONOS Music DJ engine: portable packs, one player and clock, a deterministic DJ with good transitions, a procedural source, FL Studio authoring through one MCP facade, owner listening, then the Mission Control adapter. Part of one ecosystem with EMD and EMS (EM-DEC036). The campaign document owns definitions, dependencies and acceptance.",
       "title": "EMF — Initial infrastructure",
       "type": "campaign"
     },
@@ -1062,7 +1062,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF-S10",
       "status": "planned",
-      "summary": "Owner listens and accepts or revises the full creation to generator to DJ to app flow.",
+      "summary": "Owner listens to the improved DJ (after S14/S15) with FL and agents closed, and accepts or revises the flow.",
       "title": "S10 owner listening gate (PC)",
       "type": "slice"
     },
@@ -1152,6 +1152,503 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "status": "planned",
       "summary": "Optional producer jobs, assembled review, broader Windows qualification and the full-campaign release decision.",
       "title": "S13 wider campaign qualification",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/handoffs/DJ-TRANSITIONS-HANDOFF.md"
+        },
+        {
+          "path": "docs/DJ_TRANSITIONS.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "0e3121ef-c39d-5ba6-9a26-6ce5b7e527b5",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [
+            {
+              "completed_revision": "541aae31d7bc942970344b7134ad6f1963f16a1e99d81baef01d13c9c256ff99",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "66e58ab0-543a-5cf7-8980-6fc1894b8228",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+            }
+          ],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emf-001",
+        "stage_id": "EMF09"
+      },
+      "id": "EMF-S14",
+      "status": "completed",
+      "summary": "Analysed tempo/key/energy/mix points, opt-in EQ/filter and bass handovers, prepared tempo/pitch renders and a ready-only automatic mix with authored fallback. Windows engineering proof; listening not tested.",
+      "title": "S14 DJ transitions I (PC)",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "a924420a-0d4f-5561-8e2d-028c7c2267d7",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emf-001",
+        "stage_id": "EMF09"
+      },
+      "id": "EMF-S15",
+      "status": "planned",
+      "summary": "Research-led transition quality: phrase and downbeat accuracy, more styles, stem-aware swaps and objective transition scoring. Next EMF slice.",
+      "title": "S15 DJ transitions II (next)",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "7007c0b4-0281-56fa-a453-bb611599e28a",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emf-001",
+        "stage_id": "EMF06"
+      },
+      "id": "EMF-S16",
+      "status": "planned",
+      "summary": "Import Music Studio rated takes as owner-local DJ material and labelled taste data through the unchanged pack contract.",
+      "title": "S16 Rated-takes intake (PC)",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "9ed9b155-753c-5a6d-be87-3dc091636134",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        }
+      },
+      "id": "campaign-ems-001",
+      "status": "planned",
+      "summary": "Improve the owner-local Music Studio generation app and export its rated takes as material and taste data for the DJ and procedural generator. The campaign document owns definitions and acceptance.",
+      "title": "EMS — Music Studio",
+      "type": "campaign"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "052efe8c-fe69-5f55-a3c0-fe17d077a351",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S01",
+      "status": "planned",
+      "summary": "Export loved, liked and thumbs-down takes as separate local sets with manifests EMF can read.",
+      "title": "S01 Rated-takes export",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "c8469550-d7d8-59c2-807a-7f238b380a86",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S02",
+      "status": "planned",
+      "summary": "One-click mastering of a finished take saved as a new take with lineage and measured before/after.",
+      "title": "S02 Polish (mastering)",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "01179516-78c9-5645-a67f-190208a968b1",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S03",
+      "status": "planned",
+      "summary": "Grab a section and Fix a part snap to the take's beat grid.",
+      "title": "S03 Snap sections to bars",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "cb5d4d40-da95-5b16-b8bd-a0f93cc3bced",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S04",
+      "status": "planned",
+      "summary": "Measure exported takes and report measured differences between rating sets, labelled as correlation.",
+      "title": "S04 Song analyzer and sound database",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "a603483c-6935-5107-88f6-dcca589d6613",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S05",
+      "status": "planned",
+      "summary": "Offline stem separation per take after the owner approves the install.",
+      "title": "S05 Stems",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "fafcead7-5f44-57e9-b905-67ac9568f917",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S06",
+      "status": "planned",
+      "summary": "Audio-reactive visuals, lyrics timed to the sung words with automatic re-timing, then MP4 export.",
+      "title": "S06 Visuals and synced lyrics",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "c94c1506-3e1d-547c-b0b5-7be5b864a172",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        }
+      },
+      "id": "campaign-emd-001",
+      "status": "planned",
+      "summary": "A human-facing DJ app on the same state/request interface Mission Control uses, after EMF's transitions, listening and Mission Control adapter. The campaign document owns definitions and acceptance.",
+      "title": "EMD — DJ app (human-facing GUI)",
+      "type": "campaign"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "305aaed3-b96f-5432-83df-5910d20a7bbc",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emd-001"
+      },
+      "id": "EMD-S01",
+      "status": "planned",
+      "summary": "Screens for decks, mixer, transitions, library and queue, reviewed by the owner before build.",
+      "title": "S01 Design brief and mockups",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "a2a510fc-95c0-543c-98ba-b1f6a148c3f4",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emd-001"
+      },
+      "id": "EMD-S02",
+      "status": "planned",
+      "summary": "Standalone app on the same state/request API as Mission Control; it only sends requests.",
+      "title": "S02 App shell on the shared interface",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "b983ba4b-bc01-5a50-ac04-cb8e679b83ef",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emd-001"
+      },
+      "id": "EMD-S03",
+      "status": "planned",
+      "summary": "Waveforms with analysed mix points, tempo/key readouts and transition style choice.",
+      "title": "S03 Decks, mixer and transition controls",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "ed53ab3f-72ff-5bf4-963a-13bfa15d20a2",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emd-001"
+      },
+      "id": "EMD-S04",
+      "status": "planned",
+      "summary": "Browse packs and rated takes, send to deck or queue, optional Music Studio link.",
+      "title": "S04 Library and Music Studio link",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMD_DJ_APP.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "869ff110-ad6c-5733-bfab-4882ed9d8940",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-12T21:38:11.471288+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-emd-001"
+      },
+      "id": "EMD-S05",
+      "status": "planned",
+      "summary": "Owner uses the app in a real session and accepts or revises it.",
+      "title": "S05 Owner usability and listening acceptance",
       "type": "slice"
     }
   ],

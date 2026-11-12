@@ -97,3 +97,7 @@ The native replay correction uses two fixed unity-gain buses (drum/percussion an
 ## Node version - 2026-11-08
 
 **EM-DEC035:** The project runs on **Node 24 or newer** (`engines.node` is `>=24`), not only Node 24. The gates have passed on Node 24 (S01-S04 on Linux, macOS and Windows; the S11 worker on Windows) and on Node 26 (S05-S11 on Windows), and the owner decided a separate Node 24 run is not needed while the checks pass. Handoffs report the Node version that actually ran. Reconsider if a Node release breaks a gate.
+
+## One music ecosystem, three campaigns - 2026-11-12
+
+**EM-DEC036:** EUTONOS Music is one ecosystem planned as three campaigns that share one DJ engine and one playback owner. [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) builds the engine: better transitions first (EMF-S14, EMF-S15), then owner listening (EMF-S10), then the Mission Control adapter (EMF-S12). [EMD](campaigns/EMD_DJ_APP.md) then puts a human-facing DJ app on the same state/request interface Mission Control uses, so the DJ can also stand alone as an app. [EMS](campaigns/EMS_MUSIC_STUDIO.md) improves the owner-local Music Studio generation app and exports its rated takes (❤️ / 👍 / 👎) as material and taste data for the DJ and procedural generator. Music Studio code and audio stay owner-local; only publishable formats and features enter this repository. Reconsider if Mission Control needs a different interface from the human app, or if Music Studio becomes a published component.

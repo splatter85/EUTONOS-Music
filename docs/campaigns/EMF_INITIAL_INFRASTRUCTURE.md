@@ -3,10 +3,23 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS - S01-S09 and the first S11 increment in main; S10 (PC + owner listening) next**
-Recorded 2026-11-03; revised 2026-11-06, America/Chicago
+Status: **IN_PROGRESS - S01-S09, the first S11 increment and S14 DJ transitions in main; S15 better transitions next, then S10 owner listening**
+Recorded 2026-11-03; revised 2026-11-12, America/Chicago
 
 Progress estimate: **unknown**; S01 foundation, S02 player and S03 DJ/request checks pass on Windows, macOS and Linux. The corrected S04 branch passes 130 Node tests, 15 native groups and 11 browser report groups on all three OSes, including zero-error exact same-seed replay at 44.1/48 kHz. S05 adds the checked recording → procedural bridge → recording handoff; it passed 143 Node tests, 19 native groups and 12 browser report groups on Windows only. S06 adds a producer-agnostic importer, the performer palette contract and a mock FL producer (no FL Studio ran); it passed 161 Node tests, 23 native groups and 12 browser report groups on Windows only. S07 links the DJ/bridge and sampler into one demo with the imported mock palette in ordinary playback; it passed 161 Node tests, 23 native groups and 15 browser report groups on Windows only. S08 separately proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.
+
+## Revised plan, 2026-11-12
+
+The owner reset the order around what exists now ([EM-DEC036](../DECISIONS.md)). EUTONOS Music is one ecosystem in three campaigns: this one builds the DJ engine and its Mission Control adapter; [EMD](EMD_DJ_APP.md) later puts a human-facing DJ app on the same interface; [EMS](EMS_MUSIC_STUDIO.md) improves the owner-local Music Studio generator and exports rated takes to the DJ.
+
+The remaining EMF order is:
+
+1. **EMF-S14 DJ transitions I** - built on the owner's PC by a ChatGPT worker (analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders; a ready-only automatic mix with authored fallback). Integrated into main 2026-11-12. [Guide](../DJ_TRANSITIONS.md), [handoff](../handoffs/DJ-TRANSITIONS-HANDOFF.md).
+2. **EMF-S15 DJ transitions II** - next. Research-led improvements so transitions sound like a skilled DJ (phrase alignment, better beat/downbeat tracking, stem-aware swaps, transition scoring). Research brief: [DJ transitions research](../proposals/DJ_TRANSITIONS_RESEARCH.md) when published.
+3. **EMF-S16 Rated-takes intake** - read the EMS rated-takes export as owner-local DJ material and as taste labels, through the unchanged pack contract.
+4. **EMF-S10 owner listening** - on the improved DJ, with FL and agents closed.
+5. **EMF-S12 Mission Control** - after S10.
+6. **EMF-S11 remainder and EMF-S13** stay as written; human-facing app work moves to EMD.
 
 ## Outcome
 
@@ -48,7 +61,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
 
-**Current slice status:** **S01-S08 are in main** for their bounded scopes. **S09 is COMPLETE**, built on the owner's Windows PC with real FL Studio and integrated into main. [S09 handoff](../handoffs/EMF-S09-HANDOFF.md), [guide](../S09_FL_IMPORT.md). Tested source `0cee096a7e2f89ce580365088de1d43aab0f893a`: 166 Node tests, 24 native offline groups and 16 browser groups passed, plus the owner-local `check:fl` on the real-FL pack, on Windows only. macOS/Linux were not run for S09. Physical output/listening and full MVP acceptance remain open. **Next: S10 - PC + owner listening**, when separately assigned.
+**Current slice status (2026-11-12):** S14 DJ transitions I is in main; **next is S15 DJ transitions II**, then S16, then S10 owner listening on the improved DJ, then S12. The older status follows. **S01-S08 are in main** for their bounded scopes. **S09 is COMPLETE**, built on the owner's Windows PC with real FL Studio and integrated into main. [S09 handoff](../handoffs/EMF-S09-HANDOFF.md), [guide](../S09_FL_IMPORT.md). Tested source `0cee096a7e2f89ce580365088de1d43aab0f893a`: 166 Node tests, 24 native offline groups and 16 browser groups passed, plus the owner-local `check:fl` on the real-FL pack, on Windows only. macOS/Linux were not run for S09. Physical output/listening and full MVP acceptance remain open. **Next: S10 - PC + owner listening**, when separately assigned.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
@@ -61,9 +74,12 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF-S07** | **CLOUD** (built on PC; **COMPLETE** 2026-11-06) | EMF05 cloud scaffold review | S02–06 | Integrated app/demo, CI or repeatable test commands, offline/browser audio checks, review findings and exact artifact/commit SHA. Report **playable engineering proof**, not accepted full MVP. [S07](../S07_APP.md) links the DJ/bridge and original/imported sampler; Windows checks pass; integrated into main after an independent [review](../reviews/EMF_S07_APP_REVIEW.md). |
 | **EMF-S08** | **PC** | EMF15 real FL/MCP | **S01 only**; host intake | In disposable FL Studio project, verify single shared broker for Codex/Claude, real persistent note edit/readback, saved project, rendered WAV/loop and receipt reconciliation. May run **in parallel with S02–S07**. |
 | **EMF-S09** | **BOTH — PC audio** (**COMPLETE** 2026-11-07, Windows) | EMF02/04/15 integration; targeted EMF18 | S05–06, S08 | Pull exact checked cloud revision; import real FL-produced material with unchanged pack contract. Test A→procedural→B on Windows/audio device; log timing, sound and lifecycle failures. |
-| **EMF-S10** | **PC + owner** | EMF05 listening gate; standalone MVP milestone | S07, S09 | Owner listens and accepts/revises the complete creation→generator→DJ→app flow. Playback works with FL/agents closed. **Does not complete EMF19 full release.** |
+| **EMF-S10** | **PC + owner** | EMF05 listening gate; standalone MVP milestone | S07, S09, S14; after S15 by owner order | Owner listens and accepts/revises the complete creation→generator→DJ→app flow. Playback works with FL/agents closed. **Does not complete EMF19 full release.** |
 | **EMF-S11** | **CLOUD** (**IN PROGRESS**; first increment in main 2026-11-07, Windows) | Remaining EMF06–13 breadth | S07 | Optional post-proof persistence, genres, recipe/history and expanded transition coverage. Can proceed without PC when scope is disjoint. [S11 guide](../S11_LIBRARY.md): versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies; page wiring and transition coverage remain. |
 | **EMF-S12** | **BOTH — actual MC** | EMF14 | S10, necessary API hardening | Connect Mission Control to the same state/genre/next interface, manual first, optional activity mapping only after verifying signals and overrides. |
+| **EMF-S14** | **PC** (ChatGPT worker; **COMPLETE** 2026-11-12, Windows) | EMF09/11/13 transitions | S09 | Offline tempo/key/energy/mix-point analysis, opt-in EQ/filter and bass handovers, prepared tempo/pitch renders in workers, ready-only automatic `mix` handoff with authored fallback. Engineering proof; listening NOT TESTED. [Guide](../DJ_TRANSITIONS.md), [handoff](../handoffs/DJ-TRANSITIONS-HANDOFF.md). |
+| **EMF-S15** | **PC or CLOUD** (**NEXT**) | EMF09/11/13 transitions | S14; research brief | Research-led transition quality: phrase and downbeat accuracy, more transition styles (echo-out, loop roll, drum/bass swap), stem-aware swaps when stems exist, objective transition scoring. Exact scope set from the research brief and owner choice. |
+| **EMF-S16** | **PC** | EMF02/06/12 material and taste | S14, EMS-S01 | Import EMS rated takes as owner-local DJ material through the unchanged pack contract, with ratings as labelled taste data; no audio published. |
 | **EMF-S13** | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
 
 ### Exactly when to involve the PC
@@ -71,7 +87,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 - **Handoff #1, after S01 is published:** tell owner the checked Git SHA, pack contract and setup constraints: *“You can pull now to start PC slice S08 in parallel; I'll continue S02–S07 in the cloud.”* This notification is part of the closeout, **not a background automation**. Missing PC integration does not stop the cloud sequence.
 - **Handoff #2, after S07 is published:** provide exact build SHA, run commands, artifact/demo, checks and caveats: *“Pull this tested revision for S09 once S08 has produced eligible FL exports.”*
 - **Join at S09.** Do not make two implementations of the asset contract, queue or DJ. PC work changes only the producer adapter and supplies real files into the same validated format. Real audio-device testing, listening and host compatibility cannot be declared successful from GitHub CI alone.
-- **Next now:** S10 - PC + owner - is the next separately assigned slice: the owner listens to the real-FL demo ([S09 guide](../S09_FL_IMPORT.md)) and accepts or revises it. No automatic DAW operation, download, release or Mission Control change is authorized.
+- **Next now (2026-11-12):** S15 DJ transitions II, then S16, then S10. **Earlier text:** S10 - PC + owner - is the next separately assigned slice: the owner listens to the real-FL demo ([S09 guide](../S09_FL_IMPORT.md)) and accepts or revises it. No automatic DAW operation, download, release or Mission Control change is authorized.
 
 ## Stage map and sole status owner
 
@@ -85,12 +101,12 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF05** | IN_PROGRESS — S07 scaffold review done; S10 listening open | Scaffold review and owner listening | S07 cloud proof; S09 PC integration | S07 self-review, an independent [review](../reviews/EMF_S07_APP_REVIEW.md) and technical gates pass on Windows ([handoff](../handoffs/EMF-S07-HANDOFF.md)); this is engineering review, not listening. S09 supplies the FL-backed pack and `check:fl` engineering evidence (Windows, self-review only). S10 adds real PC listening and owner acceptance. |
 | **EMF06** | IN_PROGRESS — S06 importer contract checked | Versioned library and importer | EMF05 | [S06](../S06_IMPORT.md) imports any producer's delivery (`em.producer-delivery.v0`) into the unchanged pack format: measured PCM, canonical WAV headers, producer-hash checks, silent-tail trimming, rights evidence, unverified producer record and useful coded refusals, with an `IMPORT.json` receipt. Windows only. S09 imports real FL material through it unchanged. S11 adds a versioned local library snapshot with an exact-metadata catalogue, file and IndexedDB adapters ([S11](../S11_LIBRARY.md), Windows only); the pages do not use it yet. |
 | **EMF07** | IN_PROGRESS — S03 local request subset checked | Transport and state lifecycle | EMF05–06 | S03 separates requested/prepared/renderer-active evidence, Hold, canonical retry effects and cancellation. Wider musical dwell, expiry/durable history and restart protocol remain open. |
-| **EMF08** | PLANNED | Manual listening app | EMF07 | Simple MC-facing panel plus advanced lab, pending display, skip/favorite, save-vibe and accessible controls. |
-| **EMF09** | IN_PROGRESS — S05 thin proof checked | Recorded transition path | EMF06–08 | S05 adds checked route cues, A's one-bar exit fade and B's full-level phrase entry around a bridge, with cancellation restoring A exactly. Reviewed phrase mix, role substitution and safe fallback across more content remain open. |
+| **EMF08** | PLANNED | Manual listening app | EMF07 | Simple MC-facing panel plus advanced lab, pending display, skip/favorite, save-vibe and accessible controls. The full human-facing DJ app moves to [EMD](EMD_DJ_APP.md) (EM-DEC036); EMF08 keeps only the minimal panel Mission Control needs. |
+| **EMF09** | IN_PROGRESS — S05 thin proof and S14 transitions checked | Recorded transition path | EMF06–08 | S05 adds checked route cues, A's one-bar exit fade and B's full-level phrase entry around a bridge, with cancellation restoring A exactly. S14 adds analysed mix points, opt-in EQ/filter and bass handovers, prepared tempo/pitch renders and a ready-only automatic mix with authored fallback (Windows; [guide](../DJ_TRANSITIONS.md)). Phrase accuracy on real songs, more styles and listening remain open (S15). |
 | **EMF10** | IN_PROGRESS — first finite S04 performer cloud-verified | Procedural recipe performer | EMF06–08 | One original-palette eight-bar performer has deterministic plan/resource tests, exact native replay and browser qualification on all three OSes. S11 adds three original recipe studies on their own performer with paired native bitwise replay at 44.1/48 kHz (Windows only). More palettes and listening across selected/held-out seeds remain open. |
 | **EMF11** | IN_PROGRESS — S05 small proof checked | Hybrid musical handoffs | EMF09–10 | S05 proves one route under policy `s05-hybrid-handoff@1`: shared tempo/meter/key checks, percussion-only lead-in and tail, and bass ownership that changes only across silence (Windows native evidence). S09 chooses the policy by exact route identity (S05, S06 mock and S09 FL policies, [EM-DEC033](../DECISIONS.md)) and measures the FL-pack handoff offline and live (Windows). Vocal ownership, latency alignment and listening remain open. |
 | **EMF12** | IN_PROGRESS — S03 thin selection checked | DJ selection and persistent history | EMF11 | S03 provides deterministic supported/eligible state/genre selection and manual FIFO priority. S11 adds exact recipe replays (pinned seed, state and hashes) and a bounded renderer-observation history in the local library (Windows only), not yet written by the pages. Procedural selection and recency remain open. |
-| **EMF13** | PLANNED | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
+| **EMF13** | PLANNED — S14 ranks candidate mix points; S15 adds scoring | Transition graph and coverage | EMF12 | Directed continuation/bridge routes and dead-end/coverage diagnosis, not all-pairs discovery or universal compatibility. |
 | **EMF14** | PLANNED — after S10 | Mission Control request adapter | S10, required API refinement | S12 real MC integration only after standalone MVP listening acceptance. |
 | **EMF15** | IN_PROGRESS — S08 bounded path verified on Windows | Unified FL Studio MCP authoring control | S01 contract, actual PC environment | [S08](../handoffs/EMF-S08-HANDOFF.md) verified real note/tempo/clip edits, FL-side readback, save, CLI render, export checks, reconcile and recovery through one facade for Claude Code and Codex. Live GUI control, mixer/plugins, render settings and non-Windows FL remain open; S06 adds mock-producer contract tests through the same broker with no FL Studio; S09 drives the broker for real renders and imports them ([handoff](../handoffs/EMF-S09-HANDOFF.md)). |
 | **EMF16** | PLANNED — later | Optional production-job boundary | EMF06, EMF15 | Background model jobs are optional; basic agent-assisted FL creation does not require them. |
@@ -138,6 +154,10 @@ These IDs and meanings are retained. M1 and M2 are smaller milestone evidence, n
 All required checks and EMF19 must be satisfied for full completion. A provider may remain unsupported with an explicit limit; that does not remove the production-boundary test or claim singing has shipped. Three-day breadth, arbitrary-song accompaniment, all genres, all FL actions, remote streaming and a broad public pack catalogue are later outcomes, not hidden criteria for the first pilot.
 
 ## Current checkpoint
+
+### EMF-S14 DJ transitions I integrated
+
+**S14 COMPLETE (engineering)**, 2026-11-12. An owner-assigned ChatGPT worker built four commits on `work/dj-transitions` from main `6670aca`; the coordinator reviewed and merged them into main with the later Studio work. See the [handoff](../handoffs/DJ-TRANSITIONS-HANDOFF.md) for the worker's own Windows gates and the [Current Tasks](../CURRENT_TASKS.md) entry for the merged-tree checks. **Windows only. Physical output and listening NOT TESTED.** **One next slice: S15 DJ transitions II.**
 
 ### EMF-S11 first increment integrated
 

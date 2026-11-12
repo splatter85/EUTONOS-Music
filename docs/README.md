@@ -51,6 +51,8 @@ The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary
 | --- | --- |
 | [Current Tasks](CURRENT_TASKS.md) | Priority and immediate pickup |
 | [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Sole stage/status/acceptance owner and CLOUD/PC/BOTH slice order with handoffs |
+| [EMD campaign](campaigns/EMD_DJ_APP.md) | Human-facing DJ app on the shared DJ interface, after EMF's Mission Control adapter |
+| [EMS campaign](campaigns/EMS_MUSIC_STUDIO.md) | Owner-local Music Studio improvements and the rated-takes export to the DJ |
 | [Delivery plan](DELIVERY_PLAN.md) | Proof, pilot, authoring, full qualification and earned later expansion |
 | [Decisions](DECISIONS.md) | Stable design choices and reconsideration conditions |
 | [Work model](WORK_MODEL.md) | Repo-local convention and **mandatory detailed + mini handoffs** at every slice |
