@@ -1655,3 +1655,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
   "profile": "eutonos.tokenslang.board.v1"
 }
 ```
+
+
+```tokenslang-ram-links
+{"links":[{"memories":["RAM/record-1832a8d258f20b1d7071d4237cf99251614a8074e831e1689a260d65fbeb1eab.json"],"work_id":"campaign-emf-001"}],"profile":"eutonos.tokenslang.ram-links.v2"}
+```
