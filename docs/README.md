@@ -28,6 +28,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
 | [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits |
 | [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |
+| [DJ transitions research](proposals/DJ_TRANSITIONS_RESEARCH.md) | Proposal: research synthesis and recommended order for EMF-S15 (nothing implemented or heard) |
 | [Local generators](proposals/LOCAL_GENERATORS.md) | Proposal: local music-generation candidates (nothing installed or heard by this repo) |
 | [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |

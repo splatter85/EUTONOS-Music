@@ -15,7 +15,7 @@ The owner reset the order around what exists now ([EM-DEC036](../DECISIONS.md)).
 The remaining EMF order is:
 
 1. **EMF-S14 DJ transitions I** - built on the owner's PC by a ChatGPT worker (analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders; a ready-only automatic mix with authored fallback). Integrated into main 2026-11-12. [Guide](../DJ_TRANSITIONS.md), [handoff](../handoffs/DJ-TRANSITIONS-HANDOFF.md).
-2. **EMF-S15 DJ transitions II** - next. Research-led improvements so transitions sound like a skilled DJ (phrase alignment, better beat/downbeat tracking, stem-aware swaps, transition scoring). Research brief: [DJ transitions research](../proposals/DJ_TRANSITIONS_RESEARCH.md) when published.
+2. **EMF-S15 DJ transitions II** - next. Research-led improvements so transitions sound like a skilled DJ (phrase alignment, better beat/downbeat tracking, stem-aware swaps, transition scoring). Research brief: [DJ transitions research](../proposals/DJ_TRANSITIONS_RESEARCH.md) (2026-11-12). Its recommended order: multiple tempo hypotheses with beat confidence; separate cue-in/cue-out planning on downbeats and 4-bar periods; echo-out and hard-cut recipes; an offline rendered-transition evaluator; an optional Beat This! analysis sidecar; then Signalsmith stretch and offline stems. S15's exact scope is the owner's choice.
 3. **EMF-S16 Rated-takes intake** - read the EMS rated-takes export as owner-local DJ material and as taste labels, through the unchanged pack contract.
 4. **EMF-S10 owner listening** - on the improved DJ, with FL and agents closed.
 5. **EMF-S12 Mission Control** - after S10.
