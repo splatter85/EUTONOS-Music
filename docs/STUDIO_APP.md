@@ -20,7 +20,7 @@ Then open **http://127.0.0.1:4173/studio.html**. Pick the pack in the top bar: S
 
 | Tab | Controls | Under the hood |
 | --- | --- | --- |
-| DJ Booth | Two decks with waveform, time and ON AIR light. Queue A/B. Play, pause and stop. **Mix to next**, Cancel mix, Hold. Crossfade/Bridge style and five energy pads. | The same control requests as the S09 page. The crossfader and playheads are drawn from the audio clock. They are not measured output. The pack decides the A → B route. |
+| DJ Booth | Two decks with waveform, time and ON AIR light. Queue A/B. Play, pause and stop. **Mix to next**, Cancel mix, Hold. Crossfade / Bridge / **Beatmatch** style (Beatmatch is the S14 automatic mix: it analyses both songs, matches tempo and mixes with EQ, and falls back to Crossfade when unsure) and five energy pads. | The same control requests as the S09 page. The crossfader and playheads are drawn from the audio clock. They are not measured output. The pack decides the A → B route. |
 | Produce | **Pattern sampler:** a step grid, seed with 🎲, Explore/Drive, play/stop and ♥ Save to Library. **AI generator:** a description, BPM, key, length and number of takes, then Generate, with recent takes to preview and rate. | The sampler calls `compilePhrase` on the pack's first recipe and plays it with `SmallPlayer.playProcedural`. The generator calls the separate Music Studio service. |
 | Library | **Saved patterns:** Open (restores into Produce, stopped) and Delete. **Generated takes:** preview, rate ❤️ / 👍 / 👎 (click again to clear) and Send to EUTONOS. **Tracks in this pack:** BPM, key, length and eligibility. | Uses `MusicLibrary` over IndexedDB, `captureRecipeReplay` and `resolveVibe`. A saved pattern only opens with the exact pack it was saved from. |
 
@@ -62,7 +62,7 @@ Generated takes are unreviewed until the owner listens to them. **Send to EUTONO
 
 1. The pack loads.
 2. The DJ plays A, mixes to B and stops.
-3. The Bridge toggle and the energy pad work.
+3. The Bridge and Beatmatch toggles and the energy pad work.
 4. The generator shows its offline state.
 5. The sampler plays, stops, rolls a seed and saves.
 6. Starting the DJ stops the sampler.

@@ -81,6 +81,10 @@ try {
   // Bridge toggle and energy pad are requests, reflected without playback.
   await page.getByRole('radio', {name: 'Bridge'}).click();
   assert.equal(await page.getByRole('radio', {name: 'Bridge'}).getAttribute('aria-checked'), 'true');
+  await page.getByRole('radio', {name: 'Beatmatch'}).click();
+  assert.equal(await page.getByRole('radio', {name: 'Beatmatch'}).getAttribute('aria-checked'), 'true');
+  assert.equal(await page.getByRole('radio', {name: 'Bridge'}).getAttribute('aria-checked'), 'false');
+  await page.getByRole('radio', {name: 'Bridge'}).click();
   await page.locator('#state-pads button[data-state="drive"]').click();
   await waitText(page, 'dj-requested', /drive/);
   report.checks.push('Bridge mode and the Drive energy pad update the requested state');

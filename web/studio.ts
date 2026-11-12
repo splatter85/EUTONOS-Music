@@ -181,6 +181,7 @@ for (const pad of Array.from(document.querySelectorAll<HTMLButtonElement>('#stat
 function setMode(mode: DjHandoff): void { handoffMode = mode; dj?.setHandoff(mode); renderDj(); }
 $('mode-direct').addEventListener('click', () => setMode('direct'));
 $('mode-hybrid').addEventListener('click', () => setMode('hybrid'));
+$('mode-mix').addEventListener('click', () => setMode('mix'));
 
 function titleOf(id: string | null): string {
   if (id === null) return 'Nothing';
@@ -234,18 +235,19 @@ let lastQueueKey = '';
 function renderDj(): void {
   const snap = dj?.snapshot(), player = snap?.player, control = snap?.control, state = player?.state ?? 'idle';
   const running = ACTIVE.includes(state), ready = !!loaded && !!deckAssets;
-  for (const id of ['dj-play', 'dj-stop', 'dj-next', 'dj-hold', 'queue-a', 'queue-b', 'mode-direct', 'mode-hybrid']) $<HTMLButtonElement>(id).disabled = !ready;
+  for (const id of ['dj-play', 'dj-stop', 'dj-next', 'dj-hold', 'queue-a', 'queue-b', 'mode-direct', 'mode-hybrid', 'mode-mix']) $<HTMLButtonElement>(id).disabled = !ready;
   const play = $<HTMLButtonElement>('dj-play'), pause = $<HTMLButtonElement>('dj-pause');
   play.disabled = !ready || (running && state !== 'paused');
   play.classList.toggle('is-on', state === 'playing');
   pause.disabled = !ready || !running; pause.textContent = state === 'paused' ? '▶' : '❚❚';
   pause.setAttribute('aria-label', state === 'paused' ? 'Resume' : 'Pause');
-  $<HTMLButtonElement>('dj-cancel').disabled = !ready || !snap?.pending || snap.pending.phase !== 'scheduled'
-    || (player?.handoff != null && player.handoff.phase !== 'scheduled');
+  $<HTMLButtonElement>('dj-cancel').disabled = !ready || (player?.mix?.phase !== 'preparing' && (!snap?.pending || snap.pending.phase !== 'scheduled'
+    || (player?.handoff != null && player.handoff.phase !== 'scheduled')));
   const hold = control?.requested.hold ?? false;
   $('dj-hold').setAttribute('aria-pressed', String(hold)); setText('dj-hold', hold ? 'Hold on' : 'Hold');
   $('mode-direct').setAttribute('aria-checked', String(handoffMode === 'direct'));
   $('mode-hybrid').setAttribute('aria-checked', String(handoffMode === 'hybrid'));
+  $('mode-mix').setAttribute('aria-checked', String(handoffMode === 'mix'));
   const requestedState = control?.requested.state ?? 'explore';
   for (const pad of Array.from(document.querySelectorAll<HTMLButtonElement>('#state-pads button'))) {
     pad.disabled = !ready; pad.setAttribute('aria-pressed', String(pad.dataset.state === requestedState));
@@ -279,6 +281,9 @@ function renderDj(): void {
   const status = state === 'loading' ? 'Getting ready…' : state === 'closed' ? 'Player closed — reload the page.'
     : state === 'ended' ? 'Set finished. Press ▶ to start again.' : state === 'paused' ? pauseReason || 'Paused'
     : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeText[player.handoff.phase]
+    : player?.mix?.phase === 'preparing' ? 'Analysing both songs and preparing a beatmatched mix…'
+    : player?.mix?.phase === 'fallback' && player.transition !== 'complete' ? 'Not sure about this pair — using the plain crossfade instead'
+    : player?.mix?.phase === 'mixing' ? `Beatmatching A → B${player.mix.summary ? ` · B ${player.mix.summary.toBpm.toFixed(1)} → ${player.mix.summary.fromBpm.toFixed(1)} BPM${player.mix.summary.pitchSemitones ? ` · key ${player.mix.summary.pitchSemitones > 0 ? '+' : ''}${player.mix.summary.pitchSemitones}` : ''}` : ''}`
     : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Mix complete'
     : player?.transition === 'scheduled' && player.transitionInSeconds !== null ? `Mix starts in ${player.transitionInSeconds.toFixed(1)}s (on the next phrase)`
     : state === 'playing' ? 'Playing — press “Mix to next” when you want B' : state === 'scheduled' ? 'Starting on the beat…'

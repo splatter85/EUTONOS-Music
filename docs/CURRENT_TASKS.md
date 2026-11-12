@@ -2,7 +2,11 @@
 
 Document ID: `EM-D010`
 
-Updated 2026-11-11. **S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged S06 contract, play in the DJ's A → procedural bridge → B handoff; the hybrid policy is now chosen by exact route. The owner allowed owner-local sample reuse of the FL factory renders; they stay out of git. [S09 guide](S09_FL_IMPORT.md), [detailed handoff](handoffs/EMF-S09-HANDOFF.md).
+Updated 2026-11-12. **Plan revised (EM-DEC036): one music ecosystem in three campaigns.** [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) builds the DJ engine and its Mission Control adapter; [EMD](campaigns/EMD_DJ_APP.md) later puts a human-facing DJ app on the same interface; [EMS](campaigns/EMS_MUSIC_STUDIO.md) improves the owner-local Music Studio generator and exports rated takes to the DJ. EMD and EMS are planned with no slice assigned.
+
+**EMF-S14 DJ transitions I integrated into main (2026-11-12).** A ChatGPT worker built analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders in workers; and a ready-only automatic `mix` handoff with authored fallback. Reviewed independently (merge with two union conflict fixes; one medium finding about a late-preparation deadline carried into S15) and merged with the Studio work. The Studio DJ Booth gained a third **Beatmatch** transition button. [Guide](DJ_TRANSITIONS.md), [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md). Merged tree with the Beatmatch button, Windows only (Node 26): `npm.cmd run check` 320 tests passed; `npm.cmd run check:browser` 30 groups passed, including the 10-check Studio gate (now clicking Beatmatch) and 14 mix groups. macOS/Linux not run; physical output and listening NOT TESTED.
+
+Earlier: **S09 is COMPLETE and integrated into main.** Real FL Studio renders, imported through the unchanged S06 contract, play in the DJ's A → procedural bridge → B handoff; the hybrid policy is now chosen by exact route. The owner allowed owner-local sample reuse of the FL factory renders; they stay out of git. [S09 guide](S09_FL_IMPORT.md), [detailed handoff](handoffs/EMF-S09-HANDOFF.md).
 
 **S11 first increment integrated; S11 stays in progress.** A versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies are in main as library code; the DJ and sampler pages do not use them yet. [S11 guide](S11_LIBRARY.md), [handoff](handoffs/EMF-S11-HANDOFF.md).
 
@@ -10,14 +14,16 @@ Updated 2026-11-11. **S09 is COMPLETE and integrated into main.** Real FL Studio
 
 **EUTONOS Studio integrated into main (2026-11-11).** One page, `/studio.html`, with Produce, DJ Booth and Library tabs over the existing DJ, sampler and S11 library, plus an optional link to the owner's local Music Studio generator service. The S09 DJ and sampler pages are unchanged. [Guide](STUDIO_APP.md). Windows only: both npm gates passed, including the new 10-check Studio browser gate (against a fake generator service). Not a campaign slice; physical output and listening are NOT TESTED.
 
-**Campaign action: none assigned.** Tested source: `1880867b6b54412bd6119286c98a513239598df2` (S09 plus the S11 increment; Windows only: 182 Node tests, 24 native offline groups, 16 browser groups and the separate S11 browser check; S09 owner-local `check:fl` passed at `0cee096`). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
+**Next EMF slice: S15 DJ transitions II**, research-led (a ChatGPT research brief is being prepared), then S16 rated-takes intake, then S10 owner listening on the improved DJ, then S12 Mission Control. Earlier note: **Campaign action: none assigned.** Tested source: `1880867b6b54412bd6119286c98a513239598df2` (S09 plus the S11 increment; Windows only: 182 Node tests, 24 native offline groups, 16 browser groups and the separate S11 browser check; S09 owner-local `check:fl` passed at `0cee096`). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
 
-**One campaign:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md). It owns statuses, dependencies and acceptance. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
+**Campaigns:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns the engine's statuses, dependencies and acceptance; [EMD](campaigns/EMD_DJ_APP.md) and [EMS](campaigns/EMS_MUSIC_STUDIO.md) own theirs. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
-| 1 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the real-FL DJ handoff and sampler with FL and agents closed, and accepts or revises the flow. Does not complete EMF19. |
-| 2 | **EMF-S11** remaining work (optional, parallel) | CLOUD | First increment in main. The S11 checks are now in the npm gates. Remaining: wire the library into the pages, wider genres and transition coverage; keep the S09 DJ page unchanged while S10 is judged. |
+| 1 | **EMF-S15** DJ transitions II, when assigned | PC or CLOUD | Research-led transition quality: phrase/downbeat accuracy, more styles, stem-aware swaps, objective scoring, and graceful handling when preparation misses its deadline. |
+| 2 | **EMF-S16** rated-takes intake (after EMS-S01) | PC | Music Studio rated takes become owner-local DJ material and labelled taste data through the unchanged pack contract. |
+| 3 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the improved DJ with FL and agents closed, and accepts or revises the flow. Does not complete EMF19. |
+| 4 | **EMF-S11** remaining work (optional, parallel) | CLOUD | First increment in main. The S11 checks are now in the npm gates. Remaining: wire the library into the pages, wider genres and transition coverage; keep the S09 DJ page unchanged while S10 is judged. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.
 
