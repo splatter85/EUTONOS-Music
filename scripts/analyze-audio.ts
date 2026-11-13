@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {analyzeAudio, decodeWav, MAX_ANALYSIS_BYTES, type AudioAnalysis} from '../src/audio-analysis.js';
 import {loadPack, packReader} from '../src/node.js';
 import type {AudioAsset} from '../src/pack-types.js';
-import {analyzeMixAudio, type MixAnalysis} from '../src/mix-analysis.js';
+import {analyzeMixAudio, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mix-analysis.js';
 
 export interface Section {readonly start: number; readonly end: number}
 const digest = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -84,7 +84,7 @@ function measureFile(bytes: Uint8Array, path: string, sections: readonly Section
 }
 
 const METHODS = {
-  mix_analysis: 'mix-analysis-v1: channel-power spectral novelty, autocorrelation and a constant-tempo grid in 60–180 BPM; explicit mild 120-BPM prior; 4/4 accents and four-bar phrases are hypotheses; Hann-window spectral pitch classes with original major/minor templates; uncalibrated confidence, unknown real-song generalization; bounded to 180 s / 16,777,216 channel samples',
+  mix_analysis: `${MIX_ANALYSIS_VERSION}: ranked constant-tempo hypotheses in 60–180 BPM from channel-power spectral novelty, grid fit, low-band periodicity, backbeat accents and drift; optional generation BPM is soft evidence; ambiguity and confidence are uncalibrated; 4/4 accents and four-bar phrases remain hypotheses; Hann-window spectral pitch classes with original major/minor templates; unknown real-song generalization; bounded to 180 s / 16,777,216 channel samples`,
   loudness: 'BS.1770 K-weighting per channel; 400 ms complete blocks, 100 ms hop, -70 LUFS absolute and -10 LU relative gates; mono/stereo weights 1; null with explicit status if not measurable',
   true_peak: 'Prototype estimate using BS.1770-5 Annex 2 4x FIR, zero-extension and complete filter flush; at least sample peak. Fixed 4x is below 192 kHz for input below 48 kHz; no conformance certification',
   rms: 'Mean square over frames and channels; nonoverlapping 1 s windows with unpadded final partial window; dBFS referenced to sample amplitude 1',

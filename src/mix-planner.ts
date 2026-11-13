@@ -4,7 +4,7 @@ import {bassSwapAutomation, type MixAutomation} from './mix-automation.js';
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
 export const MIX_LIMITS = Object.freeze({tempoRatioMin: 0.92, tempoRatioMax: 1.08,
-  pitchSemitones: 2, tempoConfidence: 0.65, beatConfidence: 0.6,
+  pitchSemitones: 2, tempoConfidence: 0.65, beatConfidence: 0.6, tempoAmbiguity: 0.5,
   keyConfidence: 0.55, cueConfidence: 0.35, phraseConfidence: 0.2});
 
 export interface TonalKey { readonly tonic: number; readonly mode: 'major' | 'minor'; }
@@ -79,7 +79,8 @@ function validAnalysis(a: MixAnalysis): boolean {
   return Number.isSafeInteger(a.sampleRate) && a.sampleRate >= 8000 && a.sampleRate <= 192000 &&
     Number.isSafeInteger(a.frames) && a.frames > 0 && a.frames <= a.sampleRate * 180 &&
     a.tempo.bpm !== null && Number.isFinite(a.tempo.bpm) && a.tempo.bpm >= 60 && a.tempo.bpm <= 180 &&
-    [a.tempo.confidence, a.beatGrid.confidence, a.key.confidence, a.structure.phraseConfidence].every(unit) &&
+    [a.tempo.confidence, a.tempo.ambiguity, a.beatGrid.confidence, a.key.confidence,
+      a.structure.phraseConfidence].every(unit) &&
     a.key.tonic !== null && Number.isInteger(a.key.tonic) && a.key.tonic >= 0 && a.key.tonic < 12 &&
     (a.key.mode === 'major' || a.key.mode === 'minor') &&
     a.structure.assumed === true && a.structure.meter[0] === 4 && a.structure.meter[1] === 4 &&
@@ -107,6 +108,10 @@ export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
   }
   if (!validAnalysis(from) || !validAnalysis(to) || from.sampleRate !== to.sampleRate) {
     return fallback('Insufficient or unsupported tempo/key analysis, or unequal analysis sample rates.');
+  }
+  // A precise grid at the wrong metrical level can still have high beat confidence.
+  if (Math.max(from.tempo.ambiguity, to.tempo.ambiguity) > MIX_LIMITS.tempoAmbiguity) {
+    return fallback('Tempo hypotheses are ambiguous despite grid confidence; retain the authored route.');
   }
   const evidence = {tempo: Math.min(from.tempo.confidence, to.tempo.confidence),
     beat: Math.min(from.beatGrid.confidence, to.beatGrid.confidence),
