@@ -9,7 +9,7 @@ import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
 import type {MixPlannerOptions} from './mix-planner.js';
-import {browserMixPreparation, prepareMixTransition, type MixPreparationRuntime} from './mix-transition.js';
+import {browserMixPreparation, prepareMixTransition, replanPreparedMix, type MixPreparationRuntime} from './mix-transition.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -274,7 +274,7 @@ export class SmallPlayer {
       } catch (error) {
         if (current()) this.mix = {phase: 'unavailable', summary: null,
           reason: `${reason} Authored fallback unavailable: ${error instanceof Error ? error.message : String(error)}`};
-        throw error;
+        // An unavailable mix is a reported outcome; A and the DJ's queued intent remain intact.
       }
     };
     try {
@@ -297,21 +297,30 @@ export class SmallPlayer {
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
-      const at = this.clock.stamp(from.start.at.frame + ready.plan.fromExitFrame - entry);
+      let plan = ready.plan;
+      let at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
+      if (at.frame < this.clock.currentFrame + this.leadFrames) {
+        const later = replanPreparedMix(ready, Math.max(earliest,
+          this.clock.currentFrame + this.leadFrames - from.start.at.frame + entry));
+        requireAudio(later.kind === 'mix',
+          'Prepared mix missed its exact audio-clock deadline; no later analyzed cue is available.');
+        plan = later;
+        at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
+      }
       requireAudio(at.frame >= this.clock.currentFrame + this.leadFrames,
         'Prepared mix missed its exact audio-clock deadline.');
-      const end = this.clock.stamp(at.frame + ready.plan.overlapFrames);
-      incoming.scheduleMixStart(at, ready.entryFrame, ready.plan.automation.incoming);
+      const end = this.clock.stamp(at.frame + plan.overlapFrames);
+      incoming.scheduleMixStart(at, ready.entryFrame, plan.automation.incoming);
       // Outgoing A changes last. A refusal releases all prepared B effects before fallback.
-      outgoing.transitionMixOut(at, ready.plan.fromExitFrame, ready.plan.automation.outgoing);
+      outgoing.transitionMixOut(at, plan.fromExitFrame, plan.automation.outgoing);
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'}});
       this.plan = {at, end};
       this.mix = {phase: 'scheduled', reason: 'Processed B is ready; the analyzed mix is scheduled on the owner clock.',
-        summary: {fromBpm: ready.plan.fromBpm, toBpm: ready.plan.toBpm, tempoRatio: ready.plan.tempoRatio,
-          pitchSemitones: ready.plan.pitchSemitones, confidence: ready.plan.confidence,
-          processor: ready.processed.processor, fromExitFrame: ready.plan.fromExitFrame,
-          toEntryFrame: ready.plan.toEntryFrame, processedEntryFrame: ready.entryFrame,
-          outputFrames: ready.incoming.buffer.length, returnToOriginalTempo: ready.plan.returnToOriginalTempo,
+        summary: {fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio: plan.tempoRatio,
+          pitchSemitones: plan.pitchSemitones, confidence: plan.confidence,
+          processor: ready.processed.processor, fromExitFrame: plan.fromExitFrame,
+          toEntryFrame: plan.toEntryFrame, processedEntryFrame: ready.entryFrame,
+          outputFrames: ready.incoming.buffer.length, returnToOriginalTempo: plan.returnToOriginalTempo,
           fromHash: this.pair.from.file.sha256, toHash: this.pair.to.file.sha256}};
       incoming = null; // ownership transferred to this.voices
     } catch (error) {

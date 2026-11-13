@@ -1,6 +1,6 @@
 import {analyzeMixPairInWorker, prepareTimePitch} from './mix-prepare.js';
 import type {MixAnalysis, MixPcm} from './mix-analysis.js';
-import {planAutomaticMix, type AutomaticMixPlan, type MixPlannerOptions} from './mix-planner.js';
+import {planAutomaticMix, type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
 import {outputFrameAtSource, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
 import type {DecodedRecording} from './web-audio.js';
 
@@ -16,6 +16,16 @@ export interface ReadyMixTransition {
   readonly kind: 'ready'; readonly plan: AutomaticMixPlan;
   readonly incoming: DecodedRecording; readonly entryFrame: number;
   readonly processed: PreparedTimePitch;
+  readonly analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis};
+}
+
+/** Choose a later A exit without changing the already rendered B entry or time map. */
+export function replanPreparedMix(ready: ReadyMixTransition, minimumFromFrame: number): MixDecision {
+  const {plan, analysis} = ready;
+  return planAutomaticMix(analysis.from,
+    {...analysis.to, mixIn: analysis.to.mixIn.filter(c => c.frame === plan.toEntryFrame)},
+    {minimumFromFrame, overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
+      returnToOriginalTempo: plan.returnToOriginalTempo});
 }
 export type PreparedMixDecision = ReadyMixTransition | {readonly kind: 'fallback'; readonly reason: string};
 
@@ -87,7 +97,7 @@ export async function prepareMixTransition(context: BaseAudioContext, from: Deco
   const buffer = context.createBuffer(processed.audio.channels.length, processed.mapping.outputFrames, context.sampleRate);
   processed.audio.channels.forEach((channel, i) => buffer.copyToChannel(new Float32Array(channel), i));
   checkAbort(signal);
-  return {kind: 'ready', plan, entryFrame, processed,
+  return {kind: 'ready', plan, entryFrame, processed, analysis,
     incoming: {asset: to.asset, buffer, processed: {sourceFrames: to.buffer.length,
       outputFrames: buffer.length, algorithm: processed.processor}}};
 }

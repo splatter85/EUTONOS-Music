@@ -5,7 +5,7 @@ import {DeterministicDj} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import {SmallPlayer} from '../src/player.js';
 import {prepareMixTransition, type MixPreparationRuntime} from '../src/mix-transition.js';
-import {renderTimePitch} from '../src/time-pitch.js';
+import {outputFrameAtSource, renderTimePitch, type PreparedTimePitch} from '../src/time-pitch.js';
 import {ContextDouble, NodeDouble, ParameterDouble, deferred, fixturePack} from './audio-double.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
 
@@ -43,14 +43,34 @@ async function setup(runtime: MixPreparationRuntime = inline) {
   await player.play('a'); context.advance(0.2);
   return {loaded, context, player};
 }
-function blockedRuntime() {
+function blockedRuntime(base: MixPreparationRuntime = inline) {
   const entered = deferred(), gate = deferred();
-  let signal: AbortSignal | undefined, calls = 0;
-  const runtime: MixPreparationRuntime = {...inline, render: async (audio, options, abort) => {
+  let signal: AbortSignal | undefined, calls = 0, processed: PreparedTimePitch | undefined;
+  const runtime: MixPreparationRuntime = {...base, render: async (audio, options, abort) => {
     signal = abort; calls++; entered.release(); await gate.promise;
-    return renderTimePitch(audio, options);
+    processed = await base.render(audio, options, abort);
+    return processed;
   }};
-  return {runtime, entered, gate, get signal() { return signal; }, get calls() { return calls; }};
+  return {runtime, entered, gate, get signal() { return signal; }, get calls() { return calls; },
+    get processed() { return processed; }};
+}
+/** Controlled cue/energy evidence isolates deadline selection from detector accuracy. */
+function lateRuntime(exits: readonly number[]) {
+  return blockedRuntime({...inline, analyze: async (from, to, signal) => {
+    const analysis = await inline.analyze(from, to, signal), rate = from.sampleRate;
+    const cue = (seconds: number, score: number) => ({frame: Math.round(seconds * rate), seconds,
+      score, confidence: 0.9, reasons: ['Controlled deadline-test cue.']});
+    const energy = (frames: number, split: number) => [
+      {startFrame: 0, endFrame: split * rate, rms: 0.1, lowRms: 0.1, dbfs: -20},
+      {startFrame: split * rate, endFrame: frames, rms: 1, lowRms: 1, dbfs: 0},
+    ];
+    return {from: {...analysis.from, tempo: {...analysis.from.tempo, bpm: 120},
+      mixOut: exits.map((seconds, i) => cue(seconds, 1 - i * 0.01)),
+      energyCurve: energy(analysis.from.frames, 8)},
+    to: {...analysis.to, tempo: {...analysis.to.tempo, bpm: 124},
+      key: {...analysis.to.key, tonic: 8}, mixIn: [cue(1, 1), cue(2, 0.99)],
+      energyCurve: energy(analysis.to.frames, 2)}};
+  }});
 }
 
 test('a mix becomes scheduled only after its processed buffer is ready', async () => {
@@ -105,17 +125,108 @@ test('Resume aborts preparation requested while paused and clears late-result st
   assert.equal(context.sources.length, 1);
   player.stop();
 });
-test('missed analyzed and authored deadlines preserve A and schedule no late B', async () => {
-  const block = blockedRuntime(), {context, player} = await setup(block.runtime);
-  const task = player.scheduleMix(); await block.entered.promise;
-  context.advance(10); block.gate.release();
-  await assert.rejects(task, /exit cue has passed/);
-  assert.equal(player.snapshot().mix?.phase, 'unavailable');
-  assert.equal(player.snapshot().voices.length, 1);
-  assert.equal(player.snapshot().transition, 'none');
-  assert.equal(context.sources.filter(s => s.starts.length).length, 1);
+test('slow preparation selects a later A cue while preserving processed B mapping, identity and cancellation', async () => {
+  const block = lateRuntime([4, 10, 13]), {loaded, context, player} = await setup(block.runtime);
+  const before = player.snapshot(), rate = context.sampleRate;
+  const task = player.scheduleMix({pitchSemitones: 1, returnToOriginalTempo: true});
+  await block.entered.promise;
+  context.advance(6); block.gate.release(); await task;
+  const snapshot = player.snapshot(), summary = snapshot.mix!.summary!, processed = block.processed!;
+  assert.equal(snapshot.mix?.phase, 'scheduled');
+  assert.equal(summary.fromExitFrame, 10 * rate, 'later valid exit wins before the authored fallback');
+  assert.equal(snapshot.transitionAt!.frame, before.voices[0]!.start.frame + 10 * rate);
+  assert.equal(snapshot.transitionEnd!.frame - snapshot.transitionAt!.frame, 4 * rate);
+  assert.ok(snapshot.transitionAt!.frame >= player.clock.currentFrame + Math.ceil(0.1 * rate));
+  assert.equal(summary.toEntryFrame, rate, 'B entry stays fixed even though energy ranking now favors its second cue');
+  assert.equal(summary.processedEntryFrame, outputFrameAtSource(processed.mapping, rate));
+  assert.equal(summary.tempoRatio, 120 / 124);
+  assert.equal(summary.pitchSemitones, 1);
+  assert.equal(summary.returnToOriginalTempo, true);
+  assert.equal(summary.processor, processed.processor);
+  assert.equal(summary.outputFrames, processed.mapping.outputFrames);
+  assert.equal(summary.toHash, loaded.pack.assets.find(a => a.id === player.pair.to.id)!.file.sha256);
+  assert.deepEqual(snapshot.voices[1]!.source, {id: player.pair.to.id, revision: player.pair.to.revision});
+  assert.equal(context.sources[1]!.buffer!.length, processed.mapping.outputFrames);
+  assert.deepEqual(context.sources[1]!.buffer!.getChannelData(0), processed.audio.channels[0]);
+  assert.deepEqual(context.sources[1]!.starts, [{when: snapshot.transitionAt!.frame / rate,
+    offset: summary.processedEntryFrame / rate}]);
+  assert.equal(block.calls, 1, 'retiming does not render B again');
+  assert.equal(player.cancelPendingTransition(), true);
+  assert.equal(player.snapshot().mix, null);
+  assert.deepEqual(player.snapshot().voices, before.voices);
+  assert.ok(context.sources[1]!.disconnectCalls > 0);
+  assert.deepEqual(context.sources[1]!.connections, []);
+  assert.deepEqual(context.sources[0]!.stops, [snapshot.transitionEnd!.frame / rate, before.voices[0]!.endFrame / rate]);
   player.stop();
 });
+test('slow preparation with no later valid analyzed exit uses the exact authored crossfade', async () => {
+  const block = lateRuntime([4, 13]), {context, player} = await setup(block.runtime);
+  const before = player.snapshot(), task = player.scheduleMix({pitchSemitones: 1});
+  await block.entered.promise;
+  context.advance(6); block.gate.release(); await task;
+  const snapshot = player.snapshot();
+  assert.equal(snapshot.mix?.phase, 'fallback');
+  assert.match(snapshot.mix!.reason, /no later analyzed cue/);
+  assert.equal(snapshot.mix?.summary, null);
+  assert.equal(snapshot.transitionAt!.frame, before.voices[0]!.start.frame + 8 * context.sampleRate);
+  assert.equal(snapshot.transitionEnd!.frame - snapshot.transitionAt!.frame, 4 * context.sampleRate);
+  assert.ok(snapshot.transitionAt!.frame >= player.clock.currentFrame + Math.ceil(0.1 * context.sampleRate));
+  assert.deepEqual(context.sources[1]!.starts, [], 'unused processed B never starts');
+  assert.equal(context.sources[1]!.disconnectCalls, 1);
+  assert.deepEqual(context.sources[2]!.starts, [{when: 8.1, offset: 0}]);
+  assert.equal(block.calls, 1);
+  assert.equal(player.cancelPendingTransition(), true);
+  assert.deepEqual(player.snapshot().voices, before.voices);
+  player.stop();
+});
+test('missed analyzed and authored deadlines resolve unavailable, preserve A and schedule no late B', async () => {
+  const block = lateRuntime([4, 10, 13]), {context, player} = await setup(block.runtime);
+  const before = player.snapshot(), gainCalls = structuredClone(context.gains[1]!.gain.calls);
+  const task = player.scheduleMix({pitchSemitones: 1}); await block.entered.promise;
+  context.advance(10); block.gate.release();
+  await assert.doesNotReject(task);
+  const snapshot = player.snapshot();
+  assert.equal(snapshot.mix?.phase, 'unavailable');
+  assert.match(snapshot.mix!.reason, /no later analyzed cue.*Authored fallback unavailable:.*exit cue has passed/);
+  assert.equal(snapshot.mix?.summary, null);
+  assert.equal(snapshot.state, 'playing');
+  assert.deepEqual(snapshot.voices, before.voices);
+  assert.equal(snapshot.transition, 'none');
+  assert.equal(snapshot.next, null);
+  assert.equal(context.sources.filter(s => s.starts.length).length, 1);
+  assert.equal(context.sources[1]!.disconnectCalls, 1);
+  assert.deepEqual(context.sources[0]!.stops, []);
+  assert.deepEqual(context.gains[1]!.gain.calls, gainCalls);
+  // Preparation ownership was cleared, so a fresh attempt reports its own outcome.
+  const retry = player.scheduleMix({pitchSemitones: 1}); await assert.doesNotReject(retry);
+  assert.equal(player.snapshot().mix?.phase, 'unavailable');
+  assert.equal(player.snapshot().transition, 'none');
+  player.stop();
+});
+for (const outcome of ['fallback', 'error'] as const) {
+  test(`slow analysis ${outcome} after the authored deadline resolves unavailable without starting B`, async () => {
+    const entered = deferred(), gate = deferred();
+    const runtime: MixPreparationRuntime = {...inline, analyze: async (from, to, signal) => {
+      entered.release(); await gate.promise;
+      if (outcome === 'error') throw new Error('late analysis failure');
+      const analysis = await inline.analyze(from, to, signal);
+      return {...analysis, from: {...analysis.from, tempo: {...analysis.from.tempo, confidence: 0}}};
+    }};
+    const {context, player} = await setup(runtime), before = player.snapshot();
+    const task = player.scheduleMix(); await entered.promise;
+    context.advance(10); gate.release(); await assert.doesNotReject(task);
+    const snapshot = player.snapshot();
+    assert.equal(snapshot.mix?.phase, 'unavailable');
+    assert.match(snapshot.mix!.reason, outcome === 'error' ? /late analysis failure/ : /confidence/);
+    assert.match(snapshot.mix!.reason, /Authored fallback unavailable:.*exit cue has passed/);
+    assert.deepEqual(snapshot.voices, before.voices);
+    assert.equal(snapshot.state, 'playing');
+    assert.equal(snapshot.transition, 'none');
+    assert.equal(context.sources.length, 1);
+    assert.deepEqual(context.sources[0]!.stops, []);
+    player.stop();
+  });
+}
 test('worker failure uses the unchanged authored transition, with a visible reason', async () => {
   const runtime: MixPreparationRuntime = {...inline, analyze: async () => { throw new Error('worker deliberately unavailable'); }};
   const {player} = await setup(runtime);
@@ -162,6 +273,44 @@ test('DJ exact retries and Cancel next during preparation keep intent separate f
   assert.equal(dj.snapshot().player.voices.length, 1);
   assert.equal(dj.snapshot().pending, null);
   assert.equal(dj.snapshot().player.mix, null);
+  await dj.dispose();
+});
+test('a late unavailable mix keeps the DJ FIFO and Hold with no pending or failed effect', async () => {
+  const block = lateRuntime([4, 10, 13]), {loaded, context, player} = await setup(block.runtime);
+  player.stop();
+  const dj = new DeterministicDj(player, loaded, 'explore', {handoff: 'mix', mix: {pitchSemitones: 1}});
+  const command = (id: string, action: object, source: 'manual' | 'automation' = 'manual'): ControlRequest =>
+    ({...action, commandId: id, expectedRevision: dj.snapshot().control.revision,
+      schemaVersion: CONTROL_VERSION, source}) as ControlRequest;
+  await dj.request(command('hold', {type: 'hold', enabled: true}));
+  await dj.request(command('initial-a', {type: 'queueTrack', trackId: player.pair.from.id}));
+  await dj.request(command('head-b', {type: 'queueTrack', trackId: player.pair.to.id}));
+  await dj.request(command('tail-a', {type: 'queueTrack', trackId: player.pair.from.id}));
+  await dj.request(command('play', {type: 'transport', action: 'play'}));
+  context.advance(0.2);
+  const before = dj.snapshot(), next = command('late-next', {type: 'nextSong'}), task = dj.request(next);
+  await block.entered.promise;
+  assert.equal((await dj.request(command('held-drive', {type: 'setState', state: 'drive'}, 'automation')))
+    .execution.reason, 'held');
+  context.advance(10); block.gate.release();
+  assert.equal((await task).execution.status, 'cancelled', 'unavailable resolves as an uncommitted DJ request');
+  const snapshot = dj.snapshot();
+  assert.equal(snapshot.player.mix?.phase, 'unavailable');
+  assert.match(snapshot.player.mix!.reason, /exit cue has passed/);
+  assert.deepEqual(snapshot.control.queue, before.control.queue);
+  assert.deepEqual(snapshot.control.queue.map(q => q.commandId), ['head-b', 'tail-a']);
+  assert.equal(snapshot.control.requested.hold, true);
+  assert.equal(snapshot.control.requested.state, 'explore');
+  assert.equal(snapshot.pending, null);
+  assert.equal(snapshot.control.planned, null);
+  assert.equal(snapshot.control.audible?.source?.id, player.pair.from.id);
+  assert.equal(snapshot.player.state, 'playing');
+  assert.equal(context.sources.filter(s => s.starts.length).length, 2, 'only the setup A and DJ A ever start');
+  assert.equal((await dj.request(next)).execution.status, 'cancelled');
+  assert.equal(block.calls, 1, 'an exact retry never repeats failed preparation');
+  await dj.request(command('release', {type: 'hold', enabled: false}));
+  assert.equal(dj.snapshot().control.requested.state, 'explore', 'Hold release does not replay rejected targets');
+  assert.deepEqual(dj.snapshot().control.queue, before.control.queue);
   await dj.dispose();
 });
 test('new opt-in options keep direct as the DJ default and reject unknown modes', async () => {
