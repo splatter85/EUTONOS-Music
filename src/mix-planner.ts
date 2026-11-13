@@ -85,10 +85,19 @@ function validAnalysis(a: MixAnalysis): boolean {
     (a.key.mode === 'major' || a.key.mode === 'minor') &&
     a.structure.assumed === true && a.structure.meter[0] === 4 && a.structure.meter[1] === 4 &&
     [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= 0 && c.frame < a.frames &&
-      unit(c.score) && unit(c.confidence));
+      unit(c.score) && unit(c.confidence) && (!c.evidence ||
+        ['boundary', 'low-interference', 'track-start'].includes(c.evidence.kind) &&
+        [c.evidence.boundary, c.evidence.period, c.evidence.salience, c.evidence.interference].every(unit) &&
+        Number.isSafeInteger(c.evidence.windowEndFrame) && c.evidence.windowEndFrame > c.frame &&
+        c.evidence.windowEndFrame <= a.frames && c.evidence.chroma.length === 12 &&
+        c.evidence.chroma.every(unit))) &&
+    (a.vocalSpans ?? []).every(s => Number.isSafeInteger(s.startFrame) && Number.isSafeInteger(s.endFrame) &&
+      s.startFrame >= 0 && s.endFrame > s.startFrame && s.endFrame <= a.frames);
 }
-function eligibleCues(cues: readonly MixPointCandidate[], low: number, high: number): MixPointCandidate[] {
-  return cues.filter(c => c.frame >= low && c.frame <= high && c.confidence >= MIX_LIMITS.cueConfidence)
+function eligibleCues(cues: readonly MixPointCandidate[], low: number, high: number,
+  spans: MixAnalysis['vocalSpans'] = []): MixPointCandidate[] {
+  return cues.filter(c => c.frame >= low && c.frame <= high && c.confidence >= MIX_LIMITS.cueConfidence &&
+    !spans.some(span => c.frame >= span.startFrame && c.frame < span.endFrame))
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence || a.frame - b.frame);
 }
 
@@ -139,19 +148,26 @@ export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
   }
   if (harmonic.score < 0.85) return fallback('No supported harmonic relation within the selected pitch-shift policy.');
   const overlapFrames = Math.round(overlapBeats * 60 * from.sampleRate / fromBpm);
-  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames - 1);
+  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames - 1, from.vocalSpans);
   // A four-beat linear tempo return consumes the mean of its endpoint rates.
   // Reserve that actual source budget plus one native B beat before ranking cues.
   const returnFrames = options.returnToOriginalTempo ? Math.round(4 * 60 * from.sampleRate / fromBpm) : 0;
   const tailSourceFrames = returnFrames * (tempoRatio + 1) / 2 + to.sampleRate * 60 / toBpm;
   const incoming = eligibleCues(to.mixIn, 0,
-    to.frames - Math.ceil(overlapFrames * tempoRatio + tailSourceFrames) - 2);
+    to.frames - Math.ceil(overlapFrames * tempoRatio + tailSourceFrames) - 2, to.vocalSpans);
   if (!outgoing.length || !incoming.length) return fallback('No confident future mix points have enough audio for the overlap.');
   const candidates = outgoing.flatMap(out => incoming.map(into => {
     const eo = from.energyCurve.find(e => out.frame >= e.startFrame && out.frame < e.endFrame)?.rms ?? 0;
     const ei = to.energyCurve.find(e => into.frame >= e.startFrame && into.frame < e.endFrame)?.rms ?? 0;
     const mismatch = Math.abs(eo - ei) / Math.max(1e-8, eo + ei);
-    return {out, into, score: out.score + into.score - 0.15 * mismatch};
+    const left = out.evidence, right = into.evidence;
+    // Pair costs depend on both windows; standalone cue ranks cannot express them.
+    const densityMismatch = left && right ? Math.abs(left.interference - right.interference) : 0;
+    const tonalDistance = left && right ? left.chroma.reduce((sum, value, i) =>
+      sum + Math.abs(value - right.chroma[(i - pitchSemitones + 12) % 12]!), 0) / 2 : 0;
+    const alignedBoundaries = left && right ? Math.min(left.boundary, right.boundary) : 0;
+    return {out, into, score: out.score + into.score - 0.15 * mismatch -
+      0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries};
   })).sort((x, y) => y.score - x.score || x.out.frame - y.out.frame || x.into.frame - y.into.frame);
   const choice = candidates[0]!, cue = Math.min(choice.out.confidence, choice.into.confidence);
   return {kind: 'mix', version: MIX_PLANNER_VERSION, sampleRate: from.sampleRate,
