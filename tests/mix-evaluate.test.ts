@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type {MixPcm} from '../src/mix-analysis.js';
+import {analyzeMixAudio, type MixPcm} from '../src/mix-analysis.js';
 import {cleanCutAutomation, echoOutAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
 import {chooseEvaluatedMix, evaluateTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio,
   type TransitionEvaluation, type TransitionSpec} from '../src/mix-evaluate.js';
@@ -121,6 +121,18 @@ test('fixture: an intentional echo-out passes for its recipe and its tail is ren
   const e = evaluateTransition(noise(1), noise(2), spec);
   assert.equal(e.verdict, 'pass', JSON.stringify(e.flags));
   assert.equal(e.measurements!.silenceGapMs, 0);
+});
+
+test('echo-out between different tempos is judged on its entry beat only', () => {
+  const from = makeMixFixture({bpm: 120, tonic: 9}), to = makeMixFixture({bpm: 126, tonic: 9});
+  const analysis = {from: analyzeMixAudio(from), to: analyzeMixAudio(to)};
+  const echo = echoOutAutomation(120, from.sampleRate);
+  const aBeats = analysis.from.beatGrid.frames, bBeats = analysis.to.beatGrid.frames;
+  const exit = aBeats[Math.floor(aBeats.length / 3)]!, entry = bBeats[4]!;
+  const e = evaluateTransition(from, to, {recipe: 'echo-out', fromStartFrame: exit - echo.preRollFrames,
+    preRollFrames: echo.preRollFrames, toEntryFrame: entry, tempoRatio: 1, automation: echo}, analysis);
+  assert.ok(!flagged(e, 'beatPhase'), JSON.stringify(e.measurements?.beatPhase));
+  assert.ok(e.measurements!.beatPhase.beats <= 2, JSON.stringify(e.measurements!.beatPhase));
 });
 
 test('fixture: echo feedback above 1 fails before rendering', () => {

@@ -312,7 +312,8 @@ function windows(length: number, size: number, hop: number, from: number, to: nu
   return out;
 }
 
-/** Wrapped B-beat distance to A's grid, as a fraction of A's beat period. */
+/** Wrapped B-beat distance to A's grid, as a fraction of A's beat period. This uses the analysers'
+ * beat grids mapped through the spec, not beats detected in the rendered mix. */
 function beatPhase(render: TransitionRender, spec: TransitionSpec,
   analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis}): TransitionMeasurements['beatPhase'] {
   const fromBpm = analysis.from.tempo.bpm;
@@ -323,7 +324,9 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
   const aIndex = (f: number) => render.S + (f - spec.fromStartFrame);
   const grid = analysis.from.beatGrid.frames.map(aIndex).filter(n => n <= render.T + period);
   if (!grid.length) return {maxError: null, meanError: null, beats: 0};
-  const end = spec.recipe === 'cut' ? render.T + period * 1.01 : Math.max(render.E, render.T + 4 * period);
+  // Cut and echo keep B at its native tempo by design, so only B's entry beat is judged.
+  const native = spec.recipe === 'cut' || spec.recipe === 'echo-out';
+  const end = native ? render.T + period * 1.01 : Math.max(render.E, render.T + 4 * period);
   const anchor = grid[grid.length - 1]!;
   const errors = analysis.to.beatGrid.frames
     .map(g => render.T + (g - spec.toEntryFrame) / spec.tempoRatio)

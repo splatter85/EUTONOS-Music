@@ -133,7 +133,7 @@ Cut/echo preparation copies and validates decoded B without a WSOLA job and repo
   - true peak, measured by `analyzeAudio`;
   - momentary (0.4 s) and short-term (3 s) K-weighted loudness, relative to the energy interpolated linearly from A to B over S…E;
   - 25–60 / 60–120 / 120–250 Hz build-up in 1 s windows with a 0.25 s hop;
-  - beat-phase error of B's beats against A's grid (cut: first beat only);
+  - beat-phase error of B's analysed beats, mapped through the spec, against A's grid. Cut and echo keep B native, so only B's entry beat is judged. This is not beat detection on the rendered mix, so it cannot catch a render or warp error;
   - boundary flux the unprocessed tracks do not already have;
   - the largest sample step against the local step level;
   - silence gaps;
