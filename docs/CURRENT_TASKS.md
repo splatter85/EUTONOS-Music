@@ -6,6 +6,14 @@ Updated 2026-11-12. **Plan revised (EM-DEC036): one music ecosystem in three cam
 
 **Music Studio arranger planned (2026-11-13, EM-DEC037).** The owner asked for Beginner, Intermediate and Advanced (timeline) recipe modes, region edits such as "make the vocals louder", the DJ as co-producer and better quality. [The proposal](proposals/STUDIO_ARRANGER.md) and [research](proposals/STUDIO_ARRANGER_RESEARCH.md) add EMS-S07 to S12 to [EMS](campaigns/EMS_MUSIC_STUDIO.md). An owner-local spike generated a 78 s song and two bar-snapped repaints (buildup, drop) in about 4 s each; outside each window the audio stayed identical apart from a level change, and the words did not raise measured loudness. Owner listening of the three test takes is pending.
 
+**EMF-S15 DJ transitions II integrated into main (2026-11-13, `17279e5`, Windows only).**
+- **New:** tempo candidates that report octave ambiguity; paired cue-in/cue-out; clean-cut and echo-out recipes with a DJ prelude guard; a graceful late-preparation fallback; and an offline Node-only transition evaluator that is not live yet.
+- **Defaults unchanged:** `direct` handoff; `mix` stays opt-in and ready-only; the authored crossfade remains the fallback.
+- **Checks:** on main, `npm.cmd run check` passed 408/408 and `check:browser` passed (37 results plus the Studio's 10 checks). Independently reviewed.
+- **Owner-local FL pair:** A reads 60 BPM marked ambiguous, or 120 with a hint. No automatic candidate qualifies, so the DJ uses the authored crossfade.
+- **Evaluator finding (measured, not heard):** a 0.4 s low-band gap in the S14 bass swap. Listening NOT TESTED.
+- [Handoff](handoffs/EMF-S15-HANDOFF.md).
+
 **EMS-S03 and EMS-S07 built (2026-11-13, PC, Windows only).**
 - **S03 COMPLETE.** A new bar-grid command (`node dist/scripts/bar-grid.js take.wav --bpm-hint 124`, profile `eutonos.bar-grid.v1`) measures a take's real tempo and bar lines. Music Studio's Fix a part and Grab a section now snap to them.
   - Takes requested at 124 BPM measured 125, so measured bar lines replace the requested grid.
@@ -16,7 +24,7 @@ Updated 2026-11-12. **Plan revised (EM-DEC036): one music ecosystem in three cam
   - One test take's measured loudness rose intro → buildup → drop as planned.
   - Next owner step: an A/B by ear against the simple way on the same seed.
 - Handoffs: [EMS-S03](handoffs/EMS-S03-HANDOFF.md), [EMS-S07](handoffs/EMS-S07-HANDOFF.md).
-- Next for the DJ: the [EMF-S15 pickup brief](handoffs/EMF-S15-PICKUP.md) is ready for the owner to hand to a worker (increments 1–4 on `work/dj-transitions-ii`; the bar-grid contract and playback defaults stay unchanged).
+- The DJ's EMF-S15 is now in main (above); its [pickup brief](handoffs/EMF-S15-PICKUP.md) is historical.
 - `npm.cmd run check` 328 tests passed. Music Studio's 12 Song Plan tests passed. Listening NOT TESTED.
 
 **EMF-S14 DJ transitions I integrated into main (2026-11-12).** A ChatGPT worker built analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders in workers; and a ready-only automatic `mix` handoff with authored fallback. Reviewed independently (merge with two union conflict fixes; one medium finding about a late-preparation deadline carried into S15) and merged with the Studio work. The Studio DJ Booth gained a third **Beatmatch** transition button. [Guide](DJ_TRANSITIONS.md), [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md). Merged tree with the Beatmatch button, Windows only (Node 26): `npm.cmd run check` 320 tests passed; `npm.cmd run check:browser` 30 groups passed, including the 10-check Studio gate (now clicking Beatmatch) and 14 mix groups. macOS/Linux not run; physical output and listening NOT TESTED.
@@ -29,15 +37,15 @@ Earlier: **S09 is COMPLETE and integrated into main.** Real FL Studio renders, i
 
 **EUTONOS Studio integrated into main (2026-11-11).** One page, `/studio.html`, with Produce, DJ Booth and Library tabs over the existing DJ, sampler and S11 library, plus an optional link to the owner's local Music Studio generator service. The S09 DJ and sampler pages are unchanged. [Guide](STUDIO_APP.md). Windows only: both npm gates passed, including the new 10-check Studio browser gate (against a fake generator service). Not a campaign slice; physical output and listening are NOT TESTED.
 
-**Next EMF slice: S15 DJ transitions II**, research-led (a ChatGPT research brief is being prepared), then S16 rated-takes intake, then S10 owner listening on the improved DJ, then S12 Mission Control. Earlier note: **Campaign action: none assigned.** Tested source: `1880867b6b54412bd6119286c98a513239598df2` (S09 plus the S11 increment; Windows only: 182 Node tests, 24 native offline groups, 16 browser groups and the separate S11 browser check; S09 owner-local `check:fl` passed at `0cee096`). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
+**Next EMF slice: S16 rated-takes intake** (S15 DJ transitions II is in main), then S10 owner listening on the improved DJ, then S12 Mission Control. Earlier note: **Campaign action: none assigned.** Tested source: `1880867b6b54412bd6119286c98a513239598df2` (S09 plus the S11 increment; Windows only: 182 Node tests, 24 native offline groups, 16 browser groups and the separate S11 browser check; S09 owner-local `check:fl` passed at `0cee096`). **Next slice: S10 - PC + owner**, when separately assigned: the owner listens to the complete flow and accepts or revises it. Physical output and listening are NOT TESTED.
 
 **Campaigns:** [EMF - Initial infrastructure](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns the engine's statuses, dependencies and acceptance; [EMD](campaigns/EMD_DJ_APP.md) and [EMS](campaigns/EMS_MUSIC_STUDIO.md) own theirs. The [native EUTONOS board](WORK_ITEMS.md) mirrors it. Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy).
 
 | Priority | Next work | Where | Finish line |
 | --- | --- | --- | --- |
-| 1 | **EMF-S15** DJ transitions II, when assigned | PC or CLOUD | Research-led transition quality: phrase/downbeat accuracy, more styles, stem-aware swaps, objective scoring, and graceful handling when preparation misses its deadline. |
-| 2 | **EMF-S16** rated-takes intake (after EMS-S01) | PC | Music Studio rated takes become owner-local DJ material and labelled taste data through the unchanged pack contract. |
-| 3 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the improved DJ with FL and agents closed, and accepts or revises the flow. Does not complete EMF19. |
+| 1 | **EMF-S16** rated-takes intake (after EMS-S01) | PC | Music Studio rated takes become owner-local DJ material and labelled taste data through the unchanged pack contract. |
+| 2 | **EMF-S10**, when separately assigned | PC + owner | Owner listens to the improved DJ with FL and agents closed, and accepts or revises the flow, including an A/B of the S14 bass-swap gap flagged by S15's evaluator. Does not complete EMF19. |
+| 3 | Optional S15 follow-up, when assigned | BOTH | Pass the pack's `generationBpm` into analysis, and wire the evaluator into worker preparation under an assigned `scripts/serve.ts` allowlist change. |
 | 4 | **EMF-S11** remaining work (optional, parallel) | CLOUD | First increment in main. The S11 checks are now in the npm gates. Remaining: wire the library into the pages, wider genres and transition coverage; keep the S09 DJ page unchanged while S10 is judged. |
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. It selects this development entry only. The campaign above owns the actual next slice.

@@ -1204,7 +1204,10 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
-          "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+          "path": "docs/handoffs/EMF-S15-HANDOFF.md"
+        },
+        {
+          "path": "docs/DJ_TRANSITIONS.md"
         }
       ],
       "extensions": {
@@ -1220,16 +1223,29 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-12T21:38:11.471288+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "1808e6ac97360dba85fbb5d8c779488fd2678c168ebcc29faabff0eb5e333cf7",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "19edc55c-aff0-523a-a060-567073598688",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-13T21:55:44.826170+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "campaign_id": "campaign-emf-001",
         "stage_id": "EMF09"
       },
       "id": "EMF-S15",
-      "status": "planned",
-      "summary": "Research-led transition quality: phrase and downbeat accuracy, more styles, stem-aware swaps and objective transition scoring. Next EMF slice.",
-      "title": "S15 DJ transitions II (next)",
+      "status": "completed",
+      "summary": "Late-preparation fallback, tempo candidates with octave ambiguity, paired cue-in/cue-out, clean-cut and echo-out recipes with a DJ prelude guard, and an offline Node-only transition evaluator (not live). Windows engineering proof; listening not tested.",
+      "title": "S15 DJ transitions II",
       "type": "slice"
     },
     {

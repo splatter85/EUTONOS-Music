@@ -6,7 +6,7 @@
 - The owner-assigned ChatGPT worker wrote increments 0 and 2 and the DJ guard.
 - The Claude coordinator took over on 2026-11-13 (the owner said "You finish it"). It fixed increment 1's octave confidence, reviewed and committed increment 3, and built increment 4.
 
-**Branch:** `work/dj-transitions-ii-reviewed`, from base `2bf931b`. It was merged into `main`; see Status at the end.
+**Branch:** `work/dj-transitions-ii-reviewed`, from base `2bf931b`. It was merged into `main` as `17279e5` (see Status).
 
 **Status:** increments 0–4 are delivered, with the limits below.
 - Echo-out is admitted live only with an explicit caller confirmation.
@@ -108,7 +108,12 @@ Its findings and what was done:
 
 ## Status
 
-Filled in at merge time.
+**COMPLETE (engineering), 2026-11-13.**
+
+- **Merge:** the coordinator merged branch head `15d5ffd` into `main` with `--no-ff`, as `17279e5`. There were no conflicts, because `main` had not moved since base `844471a`.
+- **Gates on merged `main` (Windows 11):** after a clean rebuild, `npm run check` passed 408/408 and `npm run check:browser` exited 0, with 37 results PASS, 0 FAIL, and the Studio browser check passed (10 checks).
+- **Not run:** macOS and Linux. Listening is NOT TESTED. Owner acceptance is S10.
+- **Published:** `main` and the branch were pushed to origin.
 
 ## Next slice
 
