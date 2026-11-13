@@ -68,6 +68,23 @@ test('weak tempo, beat, key and structural evidence each independently refuse mi
     assert.equal(planAutomaticMix(weak, b).kind, 'fallback');
   }
 });
+test('tempo ambiguity independently refuses either deck without relaxing other thresholds', () => {
+  // Isolate ambiguity: these baseline analyses already produce a successful mix.
+  assert.equal(planAutomaticMix(a, b).kind, 'mix');
+  for (const ambiguity of [0.500001, 1]) {
+    const from = changed(a, {tempo: {...a.tempo, ambiguity}});
+    const to = changed(b, {tempo: {...b.tempo, ambiguity}});
+    for (const decision of [planAutomaticMix(from, b), planAutomaticMix(a, to)]) {
+      assert.ok(decision.kind === 'fallback' && /ambiguous/.test(decision.reason));
+    }
+  }
+  assert.equal(planAutomaticMix(changed(a, {tempo: {...a.tempo, ambiguity: 0.5}}), b).kind, 'mix');
+  for (const ambiguity of [NaN, Infinity, -0.1, 1.1]) {
+    assert.equal(planAutomaticMix(changed(a, {tempo: {...a.tempo, ambiguity}}), b).kind, 'fallback');
+    assert.equal(planAutomaticMix(a, changed(b, {tempo: {...b.tempo, ambiguity}})).kind, 'fallback');
+  }
+});
+
 test('unknown key, invalid estimates and unequal sample rates refuse mixing', () => {
   for (const invalid of [changed(a, {tempo: {...a.tempo, bpm: null}}),
     changed(a, {key: {...a.key, tonic: null, mode: null}}),
