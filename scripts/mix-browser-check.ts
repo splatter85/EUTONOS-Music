@@ -61,7 +61,7 @@ try {
     return runMixChecks(loaded);
   });
   report.results.push(...native);
-  assert.ok(native.length === 12 && native.every(result => result.status === 'PASS'),
+  assert.ok(native.length === 19 && native.every(result => result.status === 'PASS'),
     JSON.stringify(native.filter(result => result.status !== 'PASS')));
   await page.goto(origin + '/');
   await page.waitForFunction(() => !(document.getElementById('play') as HTMLButtonElement).disabled);

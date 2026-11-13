@@ -1,5 +1,5 @@
 import {analyzeMixAudio, type MixAnalysis, type MixPcm, type MixPointCandidate} from './mix-analysis.js';
-import {bassSwapAutomation, type MixAutomation} from './mix-automation.js';
+import {bassSwapAutomation, cleanCutAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -10,10 +10,15 @@ export const MIX_LIMITS = Object.freeze({tempoRatioMin: 0.92, tempoRatioMax: 1.0
 export interface TonalKey { readonly tonic: number; readonly mode: 'major' | 'minor'; }
 export interface HarmonicCompatibility {
   readonly fromCamelot: string; readonly toCamelot: string;
-  readonly circleDistance: number; readonly score: number;
-  readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant';
+  readonly circleDistance: number | null; readonly score: number;
+  readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
+export type MixRecipe = 'blend' | 'cut' | 'echo-out';
+export const MIX_CANDIDATE_LIMIT = 6;
 export interface MixPlannerOptions {
+  readonly recipe?: MixRecipe | 'auto';
+  /** Explicit content evidence: A has a sparse, clean, dry prelude; B has no prominent vocal. Never inferred from RMS. */
+  readonly echoContentConfirmed?: boolean;
   /** Original A buffer frame. This bound includes the caller's preparation allowance. */
   readonly minimumFromFrame?: number;
   readonly overlapBeats?: 4 | 8 | 16;
@@ -25,6 +30,10 @@ export interface MixPlannerOptions {
 }
 export interface AutomaticMixPlan {
   readonly kind: 'mix'; readonly version: typeof MIX_PLANNER_VERSION;
+  readonly recipe: MixRecipe;
+  /** A source frames before B entry T; outgoing graph starts at S = T - preRollFrames. */
+  readonly preRollFrames: number;
+  readonly echoContentConfirmed?: boolean;
   readonly sampleRate: number;
   readonly fromFrames: number; readonly toFrames: number;
   readonly fromExitFrame: number; readonly toEntryFrame: number;
@@ -75,14 +84,15 @@ const fallback = (reason: string): MixFallback => ({kind: 'fallback', version: M
 const unit = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
 
 /** Validate derived data before it can become a native playback schedule. */
-function validAnalysis(a: MixAnalysis): boolean {
+function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
   return Number.isSafeInteger(a.sampleRate) && a.sampleRate >= 8000 && a.sampleRate <= 192000 &&
     Number.isSafeInteger(a.frames) && a.frames > 0 && a.frames <= a.sampleRate * 180 &&
     a.tempo.bpm !== null && Number.isFinite(a.tempo.bpm) && a.tempo.bpm >= 60 && a.tempo.bpm <= 180 &&
     [a.tempo.confidence, a.tempo.ambiguity, a.beatGrid.confidence, a.key.confidence,
       a.structure.phraseConfidence].every(unit) &&
-    a.key.tonic !== null && Number.isInteger(a.key.tonic) && a.key.tonic >= 0 && a.key.tonic < 12 &&
-    (a.key.mode === 'major' || a.key.mode === 'minor') &&
+    ((a.key.tonic !== null && Number.isInteger(a.key.tonic) && a.key.tonic >= 0 && a.key.tonic < 12 &&
+    (a.key.mode === 'major' || a.key.mode === 'minor')) ||
+      unknownKey && a.key.tonic === null && a.key.mode === null) &&
     a.structure.assumed === true && a.structure.meter[0] === 4 && a.structure.meter[1] === 4 &&
     [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= 0 && c.frame < a.frames &&
       unit(c.score) && unit(c.confidence) && (!c.evidence ||
@@ -105,7 +115,7 @@ function eligibleCues(cues: readonly MixPointCandidate[], low: number, high: num
  * Pure proposal from two audio-derived analyses. No clock, media effects or fallback scheduling.
  * The player binds original identities and checks its exact clock again after processing B.
  */
-export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
+function planBlend(from: MixAnalysis, to: MixAnalysis,
   options: MixPlannerOptions = {}): MixDecision {
   const minimum = options.minimumFromFrame ?? 0, overlapBeats = options.overlapBeats ?? 8;
   if (!Number.isSafeInteger(minimum) || minimum < 0 || ![4, 8, 16].includes(overlapBeats)) {
@@ -170,7 +180,7 @@ export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
       0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries};
   })).sort((x, y) => y.score - x.score || x.out.frame - y.out.frame || x.into.frame - y.into.frame);
   const choice = candidates[0]!, cue = Math.min(choice.out.confidence, choice.into.confidence);
-  return {kind: 'mix', version: MIX_PLANNER_VERSION, sampleRate: from.sampleRate,
+  return {kind: 'mix', recipe: 'blend', preRollFrames: 0, version: MIX_PLANNER_VERSION, sampleRate: from.sampleRate,
     fromFrames: from.frames, toFrames: to.frames, fromExitFrame: choice.out.frame, toEntryFrame: choice.into.frame,
     overlapFrames, overlapBeats, fromBpm, toBpm, tempoRatio, pitchSemitones,
     returnToOriginalTempo: options.returnToOriginalTempo ?? false,
@@ -180,6 +190,94 @@ export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
       `Harmonic candidate: ${harmonic.fromCamelot} -> ${harmonic.toCamelot} (${harmonic.relation}).`,
       'Bass attenuation and complementary gain curves are scheduled on the existing clock.',
       'Global key does not prove local chord/vocal compatibility. Listening is untested.']};
+}
+
+/** New recipes require explicit strong grid/cue evidence, independent of global harmony. */
+function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions,
+  recipe: 'cut' | 'echo-out'): AutomaticMixPlan[] {
+  if (!validAnalysis(from, true) || !validAnalysis(to, true) || from.sampleRate !== to.sampleRate ||
+      [from, to].some(a => a.tempo.confidence < MIX_LIMITS.tempoConfidence ||
+        a.tempo.ambiguity > MIX_LIMITS.tempoAmbiguity || a.beatGrid.confidence < MIX_LIMITS.beatConfidence ||
+        a.structure.phraseConfidence < MIX_LIMITS.phraseConfidence ||
+        !unit(a.structure.downbeatConfidence) || a.structure.downbeatConfidence < 0.65)) return [];
+  // These recipes preserve B's native mapping. Never silently discard a requested transform.
+  if (options.pitchSemitones && options.pitchSemitones !== 0 || options.returnToOriginalTempo) return [];
+  if (recipe === 'echo-out' && options.echoContentConfirmed !== true) return [];
+  const rate = from.sampleRate, fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!;
+  const automation = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate);
+  const preRollFrames = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate).preRollFrames : 0;
+  const overlapFrames = automation.incoming.durationFrames;
+  const minimum = (options.minimumFromFrame ?? 0) + preRollFrames;
+  const strong = (a: MixAnalysis, c: MixPointCandidate, incoming: boolean): boolean => {
+    const e = c.evidence;
+    return !!e && c.confidence >= 0.65 && a.structure.downbeatFrames.includes(c.frame) &&
+      (incoming ? e.salience >= 0.65 && (e.boundary >= 0.6 || e.kind === 'track-start')
+        : e.boundary >= 0.6) &&
+      (recipe !== 'echo-out' || incoming || e.interference <= 0.35);
+  };
+  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames, from.vocalSpans)
+    .filter(c => strong(from, c, false) && (recipe !== 'echo-out' ||
+      !(from.vocalSpans ?? []).some(s => s.startFrame < c.frame && s.endFrame > c.frame - preRollFrames))).slice(0, 3);
+  const incoming = eligibleCues(to.mixIn, 0, to.frames - overlapFrames, to.vocalSpans)
+    .filter(c => strong(to, c, true) && !(to.vocalSpans ?? []).some(s =>
+      s.startFrame < c.frame + overlapFrames && s.endFrame > c.frame)).slice(0, 3);
+  const knownKey = [from, to].every(a => a.key.confidence >= MIX_LIMITS.keyConfidence && a.key.tonic !== null);
+  const harmonic: HarmonicCompatibility = knownKey ? harmonicCompatibility(
+    {tonic: from.key.tonic!, mode: from.key.mode!}, {tonic: to.key.tonic!, mode: to.key.mode!}) :
+    {fromCamelot: 'unknown', toCamelot: 'unknown', circleDistance: null, score: 0, relation: 'unknown'};
+  return outgoing.flatMap(out => incoming.map(into => ({out, into})))
+    .sort((a, b) => (b.out.score + b.into.score) - (a.out.score + a.into.score) ||
+      a.out.frame - b.out.frame || a.into.frame - b.into.frame).slice(0, 2).map(({out, into}) => {
+      const evidence = {tempo: Math.min(from.tempo.confidence, to.tempo.confidence),
+        beat: Math.min(from.beatGrid.confidence, to.beatGrid.confidence),
+        key: Math.min(from.key.confidence, to.key.confidence),
+        phrase: Math.min(from.structure.phraseConfidence, to.structure.phraseConfidence),
+        cue: Math.min(out.confidence, into.confidence)};
+      return {kind: 'mix', version: MIX_PLANNER_VERSION, recipe, preRollFrames,
+        ...(recipe === 'echo-out' ? {echoContentConfirmed: true} : {}),
+        sampleRate: rate, fromFrames: from.frames, toFrames: to.frames,
+        fromExitFrame: out.frame, toEntryFrame: into.frame, overlapFrames,
+        overlapBeats: options.overlapBeats ?? 8, fromBpm, toBpm, tempoRatio: 1, pitchSemitones: 0,
+        returnToOriginalTempo: false, harmonic, evidence,
+        confidence: Math.min(evidence.tempo, evidence.beat, evidence.phrase, evidence.cue),
+        automation: recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate),
+        reasons: ['Strong downbeat/cue evidence; native B entry, no key or tempo match required.',
+          recipe === 'echo-out' ? 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Content confirmation required; low density is not vocal detection.'
+            : 'Strong standalone B cue; complementary 10 ms cut.',
+          'Finite deterministic proposals only; rendered-quality evaluation and listening are not established.']};
+    });
+}
+function validOptions(options: MixPlannerOptions): boolean {
+  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out'].includes(options.recipe)) &&
+    (options.echoContentConfirmed === undefined || typeof options.echoContentConfirmed === 'boolean') &&
+    (options.allowPitchShift === undefined || typeof options.allowPitchShift === 'boolean') &&
+    (options.returnToOriginalTempo === undefined || typeof options.returnToOriginalTempo === 'boolean') &&
+    Number.isSafeInteger(options.minimumFromFrame ?? 0) && (options.minimumFromFrame ?? 0) >= 0 &&
+    [4, 8, 16].includes(options.overlapBeats ?? 8) &&
+    (options.pitchSemitones === undefined || Number.isInteger(options.pitchSemitones) &&
+      Math.abs(options.pitchSemitones) <= MIX_LIMITS.pitchSemitones);
+}
+/** At most five proposals (one blend, two echoes, two cuts); no evaluated-quality claim. */
+export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
+  options: MixPlannerOptions = {}): readonly AutomaticMixPlan[] {
+  if (!validOptions(options)) return [];
+  const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] : ['blend', 'echo-out', 'cut'] as const;
+  const plans: AutomaticMixPlan[] = [];
+  for (const recipe of recipes) {
+    if (recipe === 'blend') {
+      const blend = planBlend(from, to, options);
+      if (blend.kind === 'mix') plans.push(blend);
+    } else plans.push(...alternatePlans(from, to, options, recipe));
+  }
+  return plans.slice(0, MIX_CANDIDATE_LIMIT);
+}
+export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
+  options: MixPlannerOptions = {}): MixDecision {
+  if (!validOptions(options)) return fallback('Invalid or unsupported mix recipe/options.');
+  const candidates = automaticMixCandidates(from, to, options);
+  if (candidates.length) return candidates[0]!;
+  const blend = planBlend(from, to, options);
+  return blend.kind === 'fallback' ? blend : fallback('Selected recipe preconditions are not established.');
 }
 
 /** Plain Node/browser function: two recordings in, a deterministic proposal out. */

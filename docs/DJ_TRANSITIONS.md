@@ -1,6 +1,6 @@
 # Opt-in DJ transitions
 
-The experimental `mix` handoff analyzes two recordings, proposes compatible beat-aligned cues, renders a processed copy of B during preparation, and schedules an EQ/gain overlap on the existing audio clock. The existing `direct` and `hybrid` handoffs, policies, pack contract and page defaults are preserved.
+The experimental `mix` handoff analyzes two recordings, proposes compatible beat-aligned cues, prepares a separate B buffer (processed for blend, native PCM for cut/echo), and schedules the selected recipe on the existing audio clock. The existing `direct` and `hybrid` handoffs, policies, pack contract and page defaults are preserved.
 
 **Physical output and listening NOT TESTED. Detection accuracy on real songs beyond the measured files is unknown.** These features have generated-signal and native browser engineering checks; they do not have listening acceptance. Exact executed commands, counts, versions and measurements are in [the handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md).
 
@@ -19,8 +19,8 @@ Use `npm.cmd` in Windows PowerShell. Open `http://127.0.0.1:4173/`. The server s
 2. Choose **Automatic mix (experimental)** in **Handoff**. The initial selection remains **Crossfade A -> B**. Selecting the new mode affects the next selection.
 3. Optionally enable **Allow a small key shift** or **Return B to its original tempo after the mix**. Both controls are initially unchecked and appear only for the new mode.
 4. Play A, then request **Next Song** early enough to prepare B and reach a future cue. The page shows the preparation state before it offers a scheduled transition.
-5. Read the mix detail for the reason, selected tempos, pitch amount and heuristic confidence. An unavailable worker, unsupported input, low confidence, incompatible key, out-of-range transformation or missed analyzed cue attempts the existing authored crossfade.
-6. **Cancel next** cancels preparation or a transition whose boundary has not started. Once the transition is audible, the existing refusal rule applies. Pause/Stop and invalidating transport actions prevent late worker results from scheduling audio.
+5. Read the mix detail for the reason, selected tempos, pitch amount and heuristic confidence. An unavailable worker, unsupported input, low confidence, unqualified recipe, unsupported transformation or missed analyzed cue attempts the existing authored crossfade.
+6. **Cancel next** cancels preparation or a transition whose boundary has not started. For echo, cancellation closes at the send prelude S, before B enters at T; B's request still starts only at T. Pause/Stop and invalidating transport actions prevent late worker results from scheduling audio.
 
 The current S01 and owner-local FL measurements do not meet the conservative mix thresholds. They therefore demonstrate the visible authored fallback, not a successful automatic mix. Generated, explicitly accented fixtures demonstrate successful processing and scheduling in the test harness. The owner-local pack is not copied into this worktree.
 
@@ -59,7 +59,7 @@ Variable tempo, non-4/4 meter, tuning changes, local chord progression, vocal sp
 
 `planAutomaticMix(fromAnalysis, toAnalysis, options)` is pure and deterministic. `planMixFromAudio(fromPcm, toPcm, options)` combines plain-function analysis with planning for Node or browser callers. A proposal contains original-buffer frame counts and cue offsets, overlap length, tempo ratio, pitch amount, confidence evidence and both automation lanes. Asset identities/hashes are bound separately by the integration. A fallback contains a reason; it does not itself schedule anything.
 
-Version `automatic-mix@1` uses these engineering thresholds for both recordings:
+Version `automatic-mix@1` uses these engineering thresholds for both recordings in the blend recipe:
 
 | Evidence | Minimum |
 | --- | ---: |
@@ -71,7 +71,7 @@ Version `automatic-mix@1` uses these engineering thresholds for both recordings:
 
 The aggregate confidence is the minimum of these evidence components, including phrase evidence. Eligible cue pairs must leave a complete overlap and B tail; optional tempo return reserves the actual source duration consumed by the return ramp. Ranking combines the two cue scores with a small energy-mismatch penalty. Stable frame-based tie-breaks make repeated inputs reproducible. The default overlap is eight A beats; the API also supports four or sixteen.
 
-The harmonic scorer indexes the circle of fifths with Camelot labels: A minor is 8A and C major is 8B. Same key scores 1.00, relative major/minor 0.95, and an adjacent fifth in the same mode 0.85. More distant relationships score lower and refuse an automatic mix. These scores are a candidate-selection policy, not a model of every chord or a guarantee of consonance.
+The harmonic scorer indexes the circle of fifths with Camelot labels: A minor is 8A and C major is 8B. Same key scores 1.00, relative major/minor 0.95, and an adjacent fifth in the same mode 0.85. More distant relationships score lower and refuse a blend; cut and echo have separate preconditions below. These scores are a candidate-selection policy, not a model of every chord or a guarantee of consonance.
 
 The planner preserves B's original key when the relationship is already supported. With `allowPitchShift: true`, it may try integer shifts from -2 to +2 semitones, penalizing larger changes. The API can request an explicit integer `pitchSemitones`, subject to the same range and harmonic checks. The low-level DSP accepts finite fractional shifts inside the bound, but the automatic planner does not select them. Pitch shifting changes neither the planned tempo nor its output duration.
 
@@ -98,13 +98,31 @@ if (plan.kind === 'mix') {
 
 `src/mix-automation.ts` defines frame-relative gain, low-shelf, high-pass and low-pass lanes. Each lane has 2-64 strictly increasing control points with explicit endpoints and linear/exponential ramps. Native AudioParam events convert those frame offsets into times on the same AudioContext that owns both recordings. No JavaScript timer drives the audio moves.
 
-The automatic planner selects `bassSwapAutomation(overlapFrames, sampleRate)`: complementary gain curves, a fixed 250 Hz low shelf and a high-pass handover. A's bass attenuation begins at 40% of the overlap and reaches its cut at 50%; B's bass stays attenuated through 50% and opens by 60%. The shelf cut is -24 dB and the high-pass moves through 500 Hz toward 1 kHz. This attenuates full-band recordings; it does not isolate bass stems.
+The blend recipe selects `bassSwapAutomation(overlapFrames, sampleRate)`: complementary gain curves, a fixed 250 Hz low shelf and a high-pass handover. A's bass attenuation begins at 40% of the overlap and reaches its cut at 50%; B's bass stays attenuated through 50% and opens by 60%. The shelf cut is -24 dB and the high-pass moves through 500 Hz toward 1 kHz. This attenuates full-band recordings; it does not isolate bass stems.
 
-`sweepAutomation(durationFrames, sampleRate, 'highpass' | 'lowpass', 'open' | 'close')` supplies a reusable sweep plan. `mixCurveValue` evaluates the same plan data for inspection/tests. The automatic planner currently chooses the bass-swap recipe; it does not optimize among different sweep styles, and the page has no separate sweep-style selector.
+`sweepAutomation(durationFrames, sampleRate, 'highpass' | 'lowpass', 'open' | 'close')` supplies a reusable sweep plan. `mixCurveValue` evaluates the same plan data for inspection/tests. The planner does not optimize among different sweep styles, and the page has no separate sweep-style selector.
 
 Bounds: one frame through 120 seconds, gain 0-1, low shelf -24 to 0 dB, and cutoff 0 through Nyquist. Web Audio BiquadFilter Q is supplied in its required dB representation. Recorded sources allocate the optional wet/dry filter graph only for mix scheduling. Pre-boundary cancellation restores A's original direct path and natural end; native-call failure rolls graph changes back.
 
 OfflineAudioContext provides the native offline implementation used in browser checks. Node checks validate automation and graph scheduling with doubles; this change does not add a second software IIR renderer for Node. Moving filters can increase instantaneous peak even with attenuating controls: one measured 0.3-peak test input reached 0.342378 during an opening high-pass sweep. No general clipping-free overlap or true-peak guarantee is claimed.
+
+## Clean cut and echo-out (S15 increment 3)
+
+`MixPlannerOptions.recipe` accepts `auto` (default), `blend`, `echo-out` or `cut`. Auto prefers a qualifying blend, then echo, then cut. The deterministic shortlist contains at most five proposals: one blend and up to two cue pairs for each new recipe (hard cap six). These are eligible proposals, **not rendered-quality-ranked or evaluated candidates**; increment 4 remains separate.
+
+Both new recipes require supported 4/4 timing, tempo/beat/phrase thresholds above, tempo ambiguity at most 0.5, downbeat confidence at least 0.65 and cue confidence at least 0.65. Cues must lie on actual supplied downbeats with measured evidence. A requires boundary strength at least 0.6; B requires salience at least 0.65 and either boundary strength at least 0.6 or supported track-start evidence. Short legacy cue hypotheses without this evidence do not qualify. Poor timing still uses the authored fallback.
+
+Key and tempo *matching* are unnecessary for cut/echo: B keeps native ratio 1, pitch 0 and its exact original entry frame. Unknown harmony is reported as `relation: 'unknown'`, unknown Camelot labels and null circle distance. Nonzero explicit pitch and tempo-return requests cannot silently become native recipes; they must qualify as blend or fall back. Unsupported option values refuse. Options are copied before preparation awaits, and late A replanning retains the recipe, B entry and transformation.
+
+- **Cut:** complementary 10 ms gain ramps at T; the standalone helper accepts 5–20 ms. Shelf/HP/LP lanes are neutral. A ends at T plus the ramp; B starts at its own cue exactly at T, with zero gain on its first sample.
+- **Echo:** two A beats of prelude from S to T, a 150 ms A dry fade ending at T, send gain 0.25 with 10 ms opening/closing ramps, half-beat delay, feedback 0.30, and feedback-loop low-pass `min(5000, 0.45 × sampleRate)` Hz. B enters natively at T with a 10 ms fade. The wet return holds and fades to exact zero over the last 20 ms of its two-bar tail, ending at E. The graph accepts feedback only from 0 to 0.45 and requires enough repeats for an analytical 80 dB decay budget; native tests also measure actual decay.
+- Echo additionally requires `echoContentConfirmed: true`: the caller has evidence that A's actual S…T prelude is sparse, clean and not already wet, and B has no prominent vocal. This confirmation covers every eligible prelude and entrance for the pair, including a later A cue selected after preparation. It is not inferred from RMS or missing vocal annotations. A's measured cue-window interference must be at most 0.35; this window follows T and cannot prove the S…T content claim. B still needs the strong standalone cue above; supplied overlapping vocal spans refuse. This conservative gate can leave many recordings on cut or authored fallback.
+
+A's **original** EOF and B's prepared EOF must both reach E. The outgoing source remains owned until E even though its dry/send lanes are silent after T. No padding or extra playback owner extends its lifetime. Readiness checks the earliest effect S against the live clock after preparation; `transitionAt` remains T and `mix.earliestEffect` reports S. Cancellation before S restores the exact A path and natural end. During S…T, the amended DJ guard reports blocked without cancelling the scheduled B operation; existing explicit queue-list removal semantics remain. Pause, mute, Stop and disposal use the existing owner controls.
+
+A module-private WeakMap binds each fresh outgoing automation object to the existing player master at commit. The runtime helper `bindEchoReturn` exposes no AudioNodes in serialized plan/worker data. Missing/wrong-context/channel-return bindings refuse before graph mutation. The existing source graph owns and releases every send, delay, feedback, filter and return node, including partial failures. The return bypasses A's outer channel fader and still follows the player master/mute. AudioParam events schedule all audible changes; no timer schedules effects.
+
+Cut/echo preparation copies and validates decoded B without a WSOLA job and reports `native-pcm@1` with no fabricated processing metrics. Native tests use generated samples and controlled known cue evidence, including repeated 44.1/48 kHz renders and an actual live DJ/AudioContext echo. Two additional untouched-PCM analysis-to-planner tests admit cut and echo for original 120 BPM signals with a 137 ms leading pickup, an A energy boundary after 28 bars and an eight-bar B intro; selected cue errors are within 25 ms. These tests do not overwrite measured confidence or change admission thresholds. Zero-offset or weaker variants can still fall back. Neither controlled lifecycle checks nor these generated positives establish real-song cue detection, general overlap headroom or listening quality.
 
 ## Tempo and pitch preparation
 

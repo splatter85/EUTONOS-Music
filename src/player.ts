@@ -8,7 +8,8 @@ import type {ProceduralPlan} from './phrase-plan.js';
 import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
-import type {MixPlannerOptions} from './mix-planner.js';
+import type {MixPlannerOptions, MixRecipe} from './mix-planner.js';
+import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {browserMixPreparation, prepareMixTransition, replanPreparedMix, type MixPreparationRuntime} from './mix-transition.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
@@ -28,6 +29,7 @@ export interface MixSnapshot {
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
+    readonly recipe: MixRecipe;
     readonly fromBpm: number; readonly toBpm: number; readonly tempoRatio: number;
     readonly pitchSemitones: number; readonly confidence: number; readonly processor: string;
     readonly fromExitFrame: number; readonly toEntryFrame: number; readonly processedEntryFrame: number;
@@ -256,6 +258,7 @@ export class SmallPlayer {
 
   /** Opt-in analysis/preparation. No source is offered or scheduled before B is ready. */
   async scheduleMix(options: MixPlannerOptions = {}): Promise<void> {
+    options = {...options};
     requireAudio(this.selected === 'a' && this.voices.length === 1 && !this.plan,
       'Play A first. Only one A -> B transition can be scheduled.');
     const from = this.voices[0]!;
@@ -301,7 +304,7 @@ export class SmallPlayer {
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
       let plan = ready.plan;
       let at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
-      if (at.frame < this.clock.currentFrame + this.leadFrames) {
+      if (at.frame - plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
         const later = replanPreparedMix(ready, Math.max(earliest,
           this.clock.currentFrame + this.leadFrames - from.start.at.frame + entry));
         requireAudio(later.kind === 'mix',
@@ -309,16 +312,26 @@ export class SmallPlayer {
         plan = later;
         at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
       }
-      requireAudio(at.frame >= this.clock.currentFrame + this.leadFrames,
+      requireAudio(at.frame - plan.preRollFrames >= this.clock.currentFrame + this.leadFrames,
         'Prepared mix missed its exact audio-clock deadline.');
+      const effect = this.clock.stamp(at.frame - plan.preRollFrames);
       const end = this.clock.stamp(at.frame + plan.overlapFrames);
+      requireAudio(plan.fromExitFrame + plan.overlapFrames <= outgoing.recording.buffer.length &&
+        ready.entryFrame + plan.overlapFrames <= ready.incoming.buffer.length,
+      'Prepared mix sources do not cover the complete tail.');
+      // The identity is unique to this live commit; native destinations never enter plan data.
+      const outgoingAutomation = structuredClone(plan.automation.outgoing);
       incoming.scheduleMixStart(at, ready.entryFrame, plan.automation.incoming);
       // Outgoing A changes last. A refusal releases all prepared B effects before fallback.
-      outgoing.transitionMixOut(at, plan.fromExitFrame, plan.automation.outgoing);
+      try {
+        if (outgoingAutomation.echo) bindEchoReturn(outgoingAutomation, this.output);
+        outgoing.transitionMixOut(effect, plan.fromExitFrame - plan.preRollFrames, outgoingAutomation);
+      } finally { unbindEchoReturn(outgoingAutomation); }
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'}});
       this.plan = {at, end};
-      this.mix = {phase: 'scheduled', reason: 'Processed B is ready; the analyzed mix is scheduled on the owner clock.',
-        summary: {fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio: plan.tempoRatio,
+      this.mix = {phase: 'scheduled', earliestEffect: effect,
+        reason: 'B is ready; the selected recipe is scheduled on the owner clock. Listening and candidate evaluation are untested.',
+        summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio: plan.tempoRatio,
           pitchSemitones: plan.pitchSemitones, confidence: plan.confidence,
           processor: ready.processed.processor, fromExitFrame: plan.fromExitFrame,
           toEntryFrame: plan.toEntryFrame, processedEntryFrame: ready.entryFrame,

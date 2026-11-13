@@ -15,7 +15,10 @@ export const browserMixPreparation: MixPreparationRuntime = {
 export interface ReadyMixTransition {
   readonly kind: 'ready'; readonly plan: AutomaticMixPlan;
   readonly incoming: DecodedRecording; readonly entryFrame: number;
-  readonly processed: PreparedTimePitch;
+  readonly processed: PreparedTimePitch | {
+    readonly processor: 'native-pcm@1'; readonly audio: MixPcm;
+    readonly mapping: PreparedTimePitch['mapping']; readonly metrics: null;
+  };
   readonly analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis};
 }
 
@@ -24,7 +27,8 @@ export function replanPreparedMix(ready: ReadyMixTransition, minimumFromFrame: n
   const {plan, analysis} = ready;
   return planAutomaticMix(analysis.from,
     {...analysis.to, mixIn: analysis.to.mixIn.filter(c => c.frame === plan.toEntryFrame)},
-    {minimumFromFrame, overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
+    {minimumFromFrame, recipe: plan.recipe, echoContentConfirmed: plan.echoContentConfirmed ?? false,
+      overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
       returnToOriginalTempo: plan.returnToOriginalTempo});
 }
 export type PreparedMixDecision = ReadyMixTransition | {readonly kind: 'fallback'; readonly reason: string};
@@ -45,6 +49,8 @@ function pcm(recording: DecodedRecording): MixPcm {
 export async function prepareMixTransition(context: BaseAudioContext, from: DecodedRecording,
   to: DecodedRecording, options: MixPlannerOptions = {}, signal?: AbortSignal,
   runtime: MixPreparationRuntime = browserMixPreparation): Promise<PreparedMixDecision> {
+  // Own options before the first asynchronous boundary.
+  options = {...options};
   checkAbort(signal);
   const a = pcm(from), b = pcm(to);
   const analysis = await runtime.analyze(a, b, signal);
@@ -55,6 +61,27 @@ export async function prepareMixTransition(context: BaseAudioContext, from: Deco
   }
   const plan = planAutomaticMix(analysis.from, analysis.to, options);
   if (plan.kind === 'fallback') return plan;
+  if (plan.recipe !== 'blend') {
+    // Native B is already decoded: do not fabricate a WSOLA render/receipt.
+    for (const channel of b.channels) for (const value of channel) {
+      if (!Number.isFinite(value) || Math.abs(value) > 0.891251) {
+        throw new Error('Native mix audio failed peak/finite validation.');
+      }
+    }
+    if (plan.toEntryFrame + plan.overlapFrames > to.buffer.length ||
+        plan.fromExitFrame + plan.overlapFrames > from.buffer.length) {
+      throw new Error('Native mix lifetime does not cover the tail.');
+    }
+    const buffer = context.createBuffer(to.buffer.numberOfChannels, to.buffer.length, context.sampleRate);
+    b.channels.forEach((channel, i) => buffer.copyToChannel(new Float32Array(channel), i));
+    const nativeAudio = pcm({asset: to.asset, buffer});
+    checkAbort(signal);
+    return {kind: 'ready', plan, entryFrame: plan.toEntryFrame, analysis,
+      incoming: {asset: to.asset, buffer},
+      processed: {processor: 'native-pcm@1', audio: nativeAudio, metrics: null,
+        mapping: {inputFrames: buffer.length, outputFrames: buffer.length,
+          tempoRatio: 1, pitchSemitones: 0, returnToOriginal: null}}};
+  }
   const returnToOriginal = plan.returnToOriginalTempo ? {
     afterFrames: Math.round(plan.toEntryFrame / plan.tempoRatio) + plan.overlapFrames,
     rampFrames: Math.round(4 * 60 * plan.sampleRate / plan.fromBpm),

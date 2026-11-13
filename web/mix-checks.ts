@@ -352,5 +352,169 @@ export async function runMixChecks(loaded: LoadedBrowserPack): Promise<readonly 
       () => pairedPrepared(template, rate, spec));
   }
   await record('Native SmallPlayer/DJ ready-only mix, cancellation, Stop and FIFO retention', () => liveDj(loaded));
+  for (const rate of [44100, 48000]) {
+    await record(`Native clean cut paired replay/cancellation at ${rate} Hz`, () => pairedRecipe(rate, 'cut', false));
+    for (const pulse of [false, true]) await record(`Native echo ${pulse ? 'pulse' : 'tone'} paired tail/master/cancellation at ${rate} Hz`,
+      () => pairedRecipe(rate, 'echo-out', pulse));
+  }
+  await record('Actual native echo DJ S/T/E, FIFO, Hold, Pause and cancellation', () => liveEchoDj(loaded));
   return results;
+}
+
+import {analyzeAudio} from '../src/audio-analysis.js';
+import {bindEchoReturn, cleanCutAutomation, createMixAutomationGraph, echoOutAutomation} from '../src/mix-automation.js';
+import type {MixAnalysis, MixPointCandidate} from '../src/mix-analysis.js';
+
+/** Isolated native output captures A and B separately; summed samples check combined headroom. */
+async function recipeRender(rate: number, recipe: 'cut' | 'echo-out', pulse: boolean, cancel = false) {
+  const context = new OfflineAudioContext(2, rate * 10, rate);
+  const merger = context.createChannelMerger(2); merger.connect(context.destination);
+  const master = context.createGain(); master.connect(merger, 0, 0);
+  const outer = context.createGain(); outer.connect(master);
+  const bMaster = context.createGain(); bMaster.connect(merger, 0, 1);
+  const a = context.createBufferSource(), b = context.createBufferSource();
+  const aBuffer = context.createBuffer(1, rate * 10, rate), bBuffer = context.createBuffer(1, rate * 10, rate);
+  const raw = aBuffer.getChannelData(0), rawB = bBuffer.getChannelData(0);
+  for (let f = 0; f < raw.length; f++) {
+    raw[f] = recipe === 'cut' ? 0.1 : pulse
+      ? (f % Math.round(rate / 2) < rate / 50 ? 0.12 * Math.cos(f * 0.07) : 0)
+      : 0.12 * Math.sin(2 * Math.PI * 440 * f / rate);
+    rawB[f] = recipe === 'cut' ? 0.1 : 0.08 + 0.02 * f / rawB.length;
+  }
+  a.buffer = aBuffer; b.buffer = bBuffer; a.connect(outer); b.connect(bMaster);
+  const automation = recipe === 'echo-out' ? echoOutAutomation(120, rate) : cleanCutAutomation(rate);
+  const T = 3 * rate, pre = recipe === 'echo-out' ? rate : 0, S = T - pre;
+  const E = T + automation.incoming.durationFrames, entry = rate / 2;
+  if (recipe === 'echo-out') bindEchoReturn(automation.outgoing, master);
+  const outgoing = createMixAutomationGraph(context, a, outer, S, automation.outgoing);
+  const incoming = createMixAutomationGraph(context, b, bMaster, T, automation.incoming);
+  a.start(0); a.stop(cancel ? raw.length / rate : E / rate);
+  if (cancel) { outgoing.restore(); incoming.release(); }
+  else {
+    b.start(T / rate, entry / rate);
+    // Prove the echo return survives the actual outer A fader reaching zero.
+    outer.gain.setValueAtTime(0, (recipe === 'echo-out' ? T : E) / rate);
+  }
+  const rendered = await context.startRendering();
+  const left = new Float32Array(rendered.getChannelData(0)), right = new Float32Array(rendered.getChannelData(1));
+  let peak = 0, beforeError = 0, tailPeak = 0, lastTailPeak = 0, boundaryJump = 0;
+  for (let f = 0; f < left.length; f++) {
+    requireAudio(Number.isFinite(left[f]) && Number.isFinite(right[f]), 'Nonfinite recipe samples.');
+    peak = Math.max(peak, Math.abs(left[f]! + right[f]!));
+    if (f < S || cancel) beforeError = Math.max(beforeError, Math.abs(left[f]! - raw[f]!));
+    if (f > T + rate / 100 && f < E) tailPeak = Math.max(tailPeak, Math.abs(left[f]!));
+    if (f > E - rate / 4 && f < E) lastTailPeak = Math.max(lastTailPeak, Math.abs(left[f]!));
+    if (f > T - 5 && f < E + 5 && f > 0) boundaryJump = Math.max(boundaryJump,
+      Math.abs(left[f]! + right[f]! - left[f - 1]! - right[f - 1]!));
+  }
+  requireAudio(beforeError === 0, 'A changed before S or cancellation did not restore exact sample bits.');
+  requireAudio(peak < 0.3, 'Generated recipe exceeded its declared sample-headroom budget.');
+  requireAudio(right.subarray(0, T + 1).every(v => v === 0), 'B produced audio before its exact T entrance.');
+  if (!cancel) {
+    const fade = Math.round(rate * 0.01), probe = Math.round(fade / 2);
+    requireAudio(Math.abs(right[T + probe]! - rawB[entry + probe]! * probe / fade) < 0.00001,
+      'B source offset/start or small fade is not sample aligned.');
+    requireAudio(left.subarray(E).every(v => v === 0), 'A echo/filter audio escaped the exact E gate.');
+    if (recipe === 'echo-out') requireAudio(tailPeak > 0.001 && lastTailPeak < 0.001,
+      'Echo did not survive outer fade or decay below -60 dBFS inside its budget.');
+    else requireAudio(boundaryJump < 0.00001, 'Complementary native cut created a discontinuity.');
+  }
+  const sum = Float64Array.from(left, (v, i) => v + right[i]!);
+  const measured = analyzeAudio({sample_rate: rate, channels: 1, frames: sum.length,
+    format: 'float32', samples: [sum], positive_rail: 1, negative_rail: -1});
+  requireAudio(measured.true_peak.linear <= 10 ** (-1 / 20), 'Generated recipe exceeded -1 dBTP.');
+  outgoing.release(); incoming.release();
+  return {left, right, evidence: {rate, recipe, pulse, S, T, E, entry,
+    peak, truePeak: measured.true_peak, beforeError, tailPeak, lastTailPeak, boundaryJump, cancellation: cancel,
+    bAtExactFrame: true, outerAFaderZeroAtT: recipe === 'echo-out'}};
+}
+async function pairedRecipe(rate: number, recipe: 'cut' | 'echo-out', pulse: boolean) {
+  const first = await recipeRender(rate, recipe, pulse), second = await recipeRender(rate, recipe, pulse);
+  const differences = differingBits(first.left, second.left) + differingBits(first.right, second.right);
+  requireAudio(differences === 0, 'Native recipe replay changed sample bits.');
+  const cancelled = await recipeRender(rate, recipe, pulse, true);
+  return {...first.evidence, differingSampleBitPatterns: differences, independentRenders: 2,
+    exactCancellationRestore: cancelled.evidence.beforeError === 0};
+}
+
+/** Controlled known synthetic cues isolate live scheduling from detector qualification. */
+function recipeEvidence(analysis: MixAnalysis): MixAnalysis {
+  const rate = analysis.sampleRate;
+  const cue = (seconds: number): MixPointCandidate => ({frame: seconds * rate, seconds, score: 1 - seconds / 100,
+    confidence: 0.9, reasons: ['Known generated recipe timing; not a detector result.'],
+    evidence: {kind: seconds ? 'boundary' : 'track-start', boundary: 0.9, period: 0.9, salience: 0.9,
+      interference: 0.1, windowEndFrame: (seconds + 1) * rate, chroma: Array(12).fill(0)}});
+  return {...analysis, tempo: {...analysis.tempo, bpm: 120, confidence: 0.9, ambiguity: 0},
+    beatGrid: {...analysis.beatGrid, confidence: 0.9},
+    structure: {...analysis.structure, downbeatConfidence: 0.9, phraseConfidence: 0.5,
+      downbeatFrames: [0, 2, 4, 8].map(s => s * rate)},
+    key: {...analysis.key, tonic: null, mode: null, confidence: 0}, mixOut: [cue(4), cue(8)], mixIn: [cue(0), cue(2)]};
+}
+async function liveEchoDj(template: LoadedBrowserPack): Promise<unknown> {
+  const loaded = await generatedPack(template), context = new AudioContext({sampleRate: 48000});
+  const runtime: MixPreparationRuntime = {analyze: async (...args) => {
+    const pair = await analyzeMixPairInWorker(...args);
+    return {from: recipeEvidence(pair.from), to: recipeEvidence(pair.to)};
+  }, render: async () => { throw Error('Echo must preserve native B, not invoke WSOLA.'); }};
+  const player = new SmallPlayer(context, loaded, loaded.pack.routes[0]!.id, runtime);
+  const dj = new DeterministicDj(player, loaded, 'explore',
+    {handoff: 'mix', mix: {recipe: 'echo-out', echoContentConfirmed: true}});
+  let serial = 0;
+  const base = () => ({schemaVersion: 'em.control.v0' as const, source: 'manual' as const,
+    commandId: 'echo-live-' + ++serial, expectedRevision: dj.snapshot().control.revision});
+  try {
+    await dj.request({...base(), type: 'hold', enabled: true});
+    await dj.request({...base(), type: 'transport', action: 'play'});
+    const original = player.snapshot().voices[0]!;
+    const head = {...base(), type: 'queueTrack' as const, trackId: player.pair.to.id};
+    await dj.request(head);
+    await dj.request({...base(), type: 'queueTrack', trackId: player.pair.from.id});
+    const scheduled = player.snapshot();
+    requireAudio(scheduled.mix?.summary?.recipe === 'echo-out' &&
+      scheduled.mix.summary.processor === 'native-pcm@1', 'Actual live echo was not scheduled.');
+    const cancel = await dj.request({...base(), type: 'cancelNext'});
+    requireAudio(cancel.execution.status === 'applied' && player.snapshot().voices[0]!.endFrame === original.endFrame &&
+      player.snapshot().mix === null, 'Native pre-S cancellation did not restore A.');
+    await dj.request({...base(), type: 'nextSong'});
+    const committed = player.snapshot(), S = committed.mix!.earliestEffect!.frame;
+    const T = committed.transitionAt!.frame, E = committed.transitionEnd!.frame;
+    requireAudio(T - S === context.sampleRate && E - T === 4 * context.sampleRate &&
+      committed.voices[1]!.start.frame === T, 'Native S/T/E or B start differs from recipe.');
+    await waitUntil(() => player.clock.currentFrame >= S, 'native echo prelude');
+    await player.pause();
+    const pausedFrame = player.clock.currentFrame;
+    await new Promise<void>(resolve => setTimeout(resolve, 80));
+    requireAudio(player.clock.currentFrame === pausedFrame && player.snapshot().state === 'paused',
+      'Pause failed to stop the owner clock.');
+    await player.resume();
+    const prelude = dj.snapshot();
+    requireAudio(prelude.player.currentFrame < T && !prelude.player.now.includes(player.pair.to.id) &&
+      dj.operation(head.commandId)?.execution.status === 'scheduled', 'B was marked started during echo prelude.');
+    const held = await dj.request({...base(), source: 'automation', type: 'setState', state: 'drive'});
+    requireAudio(held.execution.reason === 'held', 'Echo prelude bypassed Hold.');
+    const blocked = await dj.request({...base(), type: 'cancelQueue', queueCommandId: head.commandId});
+    requireAudio(blocked.execution.status === 'blocked' && dj.operation(head.commandId)?.execution.status === 'scheduled' &&
+      player.snapshot().voices.length === 2 && player.snapshot().transitionAt!.frame === T,
+      'Prelude cancellation falsely cancelled the reserved B operation.');
+    const tailQueue = dj.snapshot().control.queue.map(q => q.commandId);
+    requireAudio(tailQueue.length === 1, 'cancelQueue acceptance changed existing list semantics.');
+    await waitUntil(() => player.clock.currentFrame >= T, 'native echo B entry');
+    const entered = dj.snapshot();
+    requireAudio(entered.control.audible?.source?.id === player.pair.to.id &&
+      dj.operation(head.commandId)?.execution.status === 'started' &&
+      JSON.stringify(entered.control.queue.map(q => q.commandId)) === JSON.stringify(tailQueue),
+      'Native echo entry changed provenance or tail FIFO.');
+    requireAudio((await dj.request({...base(), type: 'cancelNext'})).execution.status === 'blocked',
+      'Native post-T cancellation changed committed echo.');
+    await waitUntil(() => player.clock.currentFrame >= E, 'native echo tail end');
+    const ended = dj.snapshot();
+    requireAudio(ended.player.now.length === 1 && ended.player.now[0] === player.pair.to.id,
+      'A did not retire at E.');
+    await dj.request({...base(), type: 'transport', action: 'stop'});
+    requireAudio(player.snapshot().voices.length === 0 && player.snapshot().mix === null, 'Stop retained echo voices.');
+    return {rate: context.sampleRate, S, T, E, processor: committed.mix!.summary!.processor,
+      actualNativeEcho: true, nativeClock: true, beforeSCancelled: true, preludeCancelBlocked: true,
+      bStartedOnlyAtT: true, pauseFreezesClock: true, holdPreserved: true, tailFifoPreserved: true,
+      stopReleased: true, evidence: 'Controlled generated cue evidence; no detector/listening claim.'};
+  } finally { await dj.dispose(); }
 }
