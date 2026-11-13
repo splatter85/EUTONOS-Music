@@ -16,6 +16,7 @@ Updated 2026-11-12. **Plan revised (EM-DEC036): one music ecosystem in three cam
   - One test take's measured loudness rose intro → buildup → drop as planned.
   - Next owner step: an A/B by ear against the simple way on the same seed.
 - Handoffs: [EMS-S03](handoffs/EMS-S03-HANDOFF.md), [EMS-S07](handoffs/EMS-S07-HANDOFF.md).
+- Next for the DJ: the [EMF-S15 pickup brief](handoffs/EMF-S15-PICKUP.md) is ready for the owner to hand to a worker (increments 1–4 on `work/dj-transitions-ii`; the bar-grid contract and playback defaults stay unchanged).
 - `npm.cmd run check` 328 tests passed. Music Studio's 12 Song Plan tests passed. Listening NOT TESTED.
 
 **EMF-S14 DJ transitions I integrated into main (2026-11-12).** A ChatGPT worker built analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders in workers; and a ready-only automatic `mix` handoff with authored fallback. Reviewed independently (merge with two union conflict fixes; one medium finding about a late-preparation deadline carried into S15) and merged with the Studio work. The Studio DJ Booth gained a third **Beatmatch** transition button. [Guide](DJ_TRANSITIONS.md), [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md). Merged tree with the Beatmatch button, Windows only (Node 26): `npm.cmd run check` 320 tests passed; `npm.cmd run check:browser` 30 groups passed, including the 10-check Studio gate (now clicking Beatmatch) and 14 mix groups. macOS/Linux not run; physical output and listening NOT TESTED.

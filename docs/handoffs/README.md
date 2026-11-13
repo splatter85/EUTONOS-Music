@@ -29,6 +29,8 @@ The [S07 handoff](EMF-S07-HANDOFF.md) records **S07 COMPLETE**, built on the own
 
 Music Studio (EMS) slices use the same template: the [EMS-S03 handoff](EMS-S03-HANDOFF.md) (bar-grid command and snap-to-bars, COMPLETE) and the [EMS-S07 handoff](EMS-S07-HANDOFF.md) (Song Plan and song sheet, PAUSED on owner A/B). The app itself is owner-local; these files describe it generically.
 
+The [EMF-S15 pickup brief](EMF-S15-PICKUP.md) assigns DJ transitions II, increments 1–4 plus the S14 late-preparation finding, to an owner-assigned worker on its own branch. It is a starting brief, not evidence S15 was done.
+
 The [S09 handoff](EMF-S09-HANDOFF.md) records **S09 COMPLETE**, built by the coordinator on the owner's PC with real FL Studio and integrated into main: owner-local FL renders imported through the unchanged contract and played in the DJ's hybrid handoff, with per-route policies and Windows-only evidence (166 Node tests, 24 native offline groups and 16 browser groups, plus `check:fl`). Physical output and listening are NOT TESTED. S10 (owner listening) is next.
 
 The [S11 handoff](EMF-S11-HANDOFF.md) records the **first S11 increment**, built by a worker and reviewed and integrated into main by the coordinator: a versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies, with Windows-only evidence on the combined tree (182 Node tests, 24 native offline and 16 browser groups, plus the S11 browser check). S11 stays in progress; page wiring remains. Physical output and listening are NOT TESTED.
