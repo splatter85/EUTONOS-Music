@@ -123,3 +123,20 @@ Follow the research brief's scope, checks and main risks for each one. These poi
   - known risks and what was not done;
   - the late-preparation test results.
 - Then send the owner a short copy-ready summary. The coordinator reviews, merges into `main` with the merged-tree gates, updates the board, campaign and Current Tasks, and runs the owner-local FL check.
+
+## Amendment 1 (2026-11-13, coordinator)
+
+The worker's independent review (its finding B3) showed that the research echo cannot be admitted live within the original boundary. The echo send opens at S, before B's entry at T. If the player publishes `transitionAt = S`, the DJ starts B's request early. If it publishes `transitionAt = T`, `cancelQueue` marks the entry cancelled and then native cancellation refuses, because only hybrid bridges have a guard for an already-entered prelude.
+
+**Writer and branch:**
+- One writer: the S15 worker on `work/dj-transitions-ii-reviewed`.
+- `work/dj-transitions-ii` stays frozen at `403946d` with its uncommitted files preserved. The worker may carry that diff over only after reviewing it.
+- The coordinator has no S15 writer.
+
+**Scope changes:**
+1. **Narrow DJ guard, allowed.** In `src/dj.ts`, `cancelQueue` and `cancelFuture` may treat "the transition's earliest committed effect has passed" the same way they treat an entered hybrid bridge: report `blocked` before marking anything cancelled.
+   - The player may expose that frame (for example, a snapshot field for the earliest effect) from `scheduleMix` and the mix status.
+   - B's request still starts at T (`transitionAt = T`). FIFO order, Hold, Stop and the `direct`/`hybrid` behaviour stay unchanged.
+   - Put this change in its own commit, with tests for cancelling before S, during S..T and after T, plus FIFO and Hold at those same times. Make no other DJ, control, clock, cancel or `web-audio.ts` changes.
+2. **Browser modules.** `scripts/serve.ts` stays protected. Put any helpers the browser needs in the already-allowed mix files instead of new `src/mix-*.ts` modules. Node-only modules (for example, the offline evaluator, if the browser never imports it) may be new files.
+3. **Fallback if the guard is not done.** Echo stays offline-evaluated only, and live admission keeps blend, cut and the authored fallback. The handoff then marks echo as partial and B3 as open.
