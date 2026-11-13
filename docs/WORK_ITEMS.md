@@ -1287,7 +1287,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
         }
       },
       "id": "campaign-ems-001",
-      "status": "planned",
+      "status": "active",
       "summary": "Improve the owner-local Music Studio generation app and export its rated takes as material and taste data for the DJ and procedural generator. The campaign document owns definitions and acceptance.",
       "title": "EMS — Music Studio",
       "type": "campaign"
@@ -1371,13 +1371,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-12T21:38:11.471288+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "4069d4864c6a8d9e212565f43aa5fc8f549d56f2e2fac4c381ed3a2676e9794e",
+              "context": {
+                "app": "claude-desktop",
+                "model": "claude-opus-5-5",
+                "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+              },
+              "event_id": "d63bee83-9fe1-5bdf-b7ca-95bc79334061",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-13T07:56:28.379785+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "campaign_id": "campaign-ems-001"
       },
       "id": "EMS-S03",
-      "status": "planned",
+      "status": "completed",
       "summary": "Grab a section and Fix a part snap to the take's beat grid.",
       "title": "S03 Snap sections to bars",
       "type": "slice"
@@ -1500,7 +1513,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
         "campaign_id": "campaign-ems-001"
       },
       "id": "EMS-S07",
-      "status": "planned",
+      "status": "active",
       "summary": "One versioned Song Plan behind Beginner, Intermediate and Advanced; an AI-assisted section sheet that compiles to tagged lyrics and a caption.",
       "title": "S07 Song Plan and Intermediate song sheet",
       "type": "slice"

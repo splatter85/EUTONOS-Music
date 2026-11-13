@@ -11,6 +11,7 @@ For executable v0 contracts and actual audio, use [S01 foundation](../S01_FOUNDA
 | [Transition](transition.example.json) | A proposed recorded-to-procedural handoff using the same harmony phase and explicit role transfers. |
 | [State intent](state-intent.example.json) | A caller-known command identity and the difference between requesting a target and scheduling audio. |
 | [Production brief](production-brief.example.json) | Plain-language direction translated into editable musical requirements and a bounded production handoff. |
+| [Song Plan](song-plan.example.json) | A Music Studio Song Plan (`studio.song-plan.v1`, EMS-S07), the shape the owner-local app validates and saves with each take. Unlike the rows above, this one matches implemented code; the lyrics are placeholders. Field rules are in [the arranger proposal](../proposals/STUDIO_ARRANGER.md#4-one-data-model-the-song-plan) and [the S07 handoff](../handoffs/EMS-S07-HANDOFF.md). |
 
 ## How the examples connect
 

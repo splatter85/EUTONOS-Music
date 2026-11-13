@@ -26,7 +26,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
-| [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits |
+| [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits; also the bar-grid command (`eutonos.bar-grid.v1`) used for snap-to-bars |
 | [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |
 | [DJ transitions research](proposals/DJ_TRANSITIONS_RESEARCH.md) | Proposal: research synthesis and recommended order for EMF-S15 (nothing implemented or heard) |
 | [Music Studio arranger](proposals/STUDIO_ARRANGER.md) | Proposal: Song Plan, recipe modes, timeline, region edits, DJ as co-producer and quality passes, with the timeline spike (EMS-S07 to S12) |

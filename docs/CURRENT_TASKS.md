@@ -4,7 +4,19 @@ Document ID: `EM-D010`
 
 Updated 2026-11-12. **Plan revised (EM-DEC036): one music ecosystem in three campaigns.** [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) builds the DJ engine and its Mission Control adapter; [EMD](campaigns/EMD_DJ_APP.md) later puts a human-facing DJ app on the same interface; [EMS](campaigns/EMS_MUSIC_STUDIO.md) improves the owner-local Music Studio generator and exports rated takes to the DJ. EMD and EMS are planned with no slice assigned.
 
-**Music Studio arranger planned (2026-11-13, EM-DEC037).** The owner asked for Beginner, Intermediate and Advanced (timeline) recipe modes, region edits such as "make the vocals louder", the DJ as co-producer and better quality. [The proposal](proposals/STUDIO_ARRANGER.md) and [research](proposals/STUDIO_ARRANGER_RESEARCH.md) add EMS-S07 to S12 to [EMS](campaigns/EMS_MUSIC_STUDIO.md). An owner-local spike generated a 78 s song and two bar-snapped repaints (buildup, drop) in about 4 s each; outside each window the audio stayed identical apart from a level change, and the words did not raise measured loudness. Owner listening of the three test takes is pending; no slice is assigned.
+**Music Studio arranger planned (2026-11-13, EM-DEC037).** The owner asked for Beginner, Intermediate and Advanced (timeline) recipe modes, region edits such as "make the vocals louder", the DJ as co-producer and better quality. [The proposal](proposals/STUDIO_ARRANGER.md) and [research](proposals/STUDIO_ARRANGER_RESEARCH.md) add EMS-S07 to S12 to [EMS](campaigns/EMS_MUSIC_STUDIO.md). An owner-local spike generated a 78 s song and two bar-snapped repaints (buildup, drop) in about 4 s each; outside each window the audio stayed identical apart from a level change, and the words did not raise measured loudness. Owner listening of the three test takes is pending.
+
+**EMS-S03 and EMS-S07 built (2026-11-13, PC, Windows only).**
+- **S03 COMPLETE.** A new bar-grid command (`node dist/scripts/bar-grid.js take.wav --bpm-hint 124`, profile `eutonos.bar-grid.v1`) measures a take's real tempo and bar lines. Music Studio's Fix a part and Grab a section now snap to them.
+  - Takes requested at 124 BPM measured 125, so measured bar lines replace the requested grid.
+  - Downbeats remain weak, so bar 1 is approximate; EMF-S15 owns that.
+- **S07 PAUSED on the owner's A/B.** The Song Plan (`studio.song-plan.v1`) and an optional Song sheet in Create are built.
+  - The sheet has parts in bars with vocals, energy, sound and lyrics, plus Write it for me, Connect, Fit and Flow, each undoable.
+  - It compiles to tagged lyrics and a length; every take saves its plan.
+  - One test take's measured loudness rose intro → buildup → drop as planned.
+  - Next owner step: an A/B by ear against the simple way on the same seed.
+- Handoffs: [EMS-S03](handoffs/EMS-S03-HANDOFF.md), [EMS-S07](handoffs/EMS-S07-HANDOFF.md).
+- `npm.cmd run check` 328 tests passed. Music Studio's 12 Song Plan tests passed. Listening NOT TESTED.
 
 **EMF-S14 DJ transitions I integrated into main (2026-11-12).** A ChatGPT worker built analysis of tempo, key, energy and mix points; opt-in EQ/filter and bass handovers; prepared tempo/pitch renders in workers; and a ready-only automatic `mix` handoff with authored fallback. Reviewed independently (merge with two union conflict fixes; one medium finding about a late-preparation deadline carried into S15) and merged with the Studio work. The Studio DJ Booth gained a third **Beatmatch** transition button. [Guide](DJ_TRANSITIONS.md), [handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md). Merged tree with the Beatmatch button, Windows only (Node 26): `npm.cmd run check` 320 tests passed; `npm.cmd run check:browser` 30 groups passed, including the 10-check Studio gate (now clicking Beatmatch) and 14 mix groups. macOS/Linux not run; physical output and listening NOT TESTED.
 

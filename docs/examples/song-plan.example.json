@@ -1,0 +1,21 @@
+{
+  "profile": "studio.song-plan.v1",
+  "mode": "intermediate",
+  "global": {
+    "style": "melodic deep house, warm pads",
+    "genres": ["deep house"],
+    "moods": ["warm"],
+    "bpm": 124,
+    "key": "A minor",
+    "vocal_language": "en"
+  },
+  "sections": [
+    {"id": "s1", "kind": "intro", "bars": 8, "vocal": "none", "energy": 3, "style": "filtered pads"},
+    {"id": "s2", "kind": "verse", "bars": 16, "vocal": "soft", "energy": 4, "style": "", "lyrics": "Fictional example line one\nFictional example line two"},
+    {"id": "s3", "kind": "buildup", "bars": 4, "vocal": "none", "energy": 7, "style": "riser, snare roll"},
+    {"id": "s4", "kind": "drop", "bars": 16, "vocal": "none", "energy": 9, "style": "heavy sub bass"},
+    {"id": "s5", "kind": "outro", "bars": 8, "vocal": "none", "energy": 2, "style": ""}
+  ],
+  "cues": [],
+  "references": []
+}

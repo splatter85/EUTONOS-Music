@@ -7,7 +7,12 @@ Owner document: this file
 Status: **PLANNED - backlog recorded; no slice assigned**  
 Recorded 2026-11-12, America/Chicago; arranger slices EMS-S07 to S12 added 2026-11-13
 
-Progress estimate: **unknown**. Nothing in this campaign has started as a campaign slice. The app already exists and works (see Inputs); this campaign plans what comes next.
+Progress estimate: **unknown** (2 of 12 slices built; no owner acceptance yet).
+
+**Slice status (2026-11-13):**
+- **EMS-S03 COMPLETE.** Bar-grid command in this repository (`eutonos.bar-grid.v1`), with snap-to-bars in Fix a part and Grab a section. [Handoff](../handoffs/EMS-S03-HANDOFF.md).
+- **EMS-S07 PAUSED on owner A/B.** Song Plan, song sheet and helpers built and checked. [Handoff](../handoffs/EMS-S07-HANDOFF.md).
+- All other slices are planned.
 
 ## Outcome
 
@@ -61,7 +66,7 @@ Slices may be reordered or split by the owner. Each slice ends with the [reposit
 | EMS-C03 | The analyzer reports measured differences between rating sets, without claiming taste | Pending |
 | EMS-C04 | Lyric timing data exists per take with method and confidence, and can be re-timed automatically | Pending |
 | EMS-C05 | Owner accepts the finished workflow by listening and using it | Pending |
-| EMS-C06 | A Song Plan round-trips between Beginner, Intermediate and Advanced without losing data | Pending |
+| EMS-C06 | A Song Plan round-trips between Beginner, Intermediate and Advanced without losing data | Partial: Beginner and Intermediate round-trip (EMS-S07 tests and browser check); Advanced not built |
 | EMS-C07 | Region edits leave audio outside the range unchanged (measured) and record mechanism and lineage | Pending |
 | EMS-C08 | The timeline places at least buildup, drop, vocal and no-vocal blocks on their bars, with target against measured result shown; owner judges by listening | Pending |
 | EMS-C09 | Two takes can be blended into a new take through DJ analysis and beatmatched seams | Pending |

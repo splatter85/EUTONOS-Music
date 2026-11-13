@@ -50,3 +50,27 @@ Run `npm run check` and `npm run check:browser` for the repository gates. Focuse
 - [libebur128 implementation](https://github.com/jiixyj/libebur128/blob/master/ebur128/ebur128.c): cross-check of the arbitrary-rate K-filter parameterization. No library code or runtime dependency is imported.
 
 **Measurements are not listening.**
+
+## Bar grid (EMS-S03)
+
+`node dist/scripts/bar-grid.js take.wav [--bpm-hint 124] [--beats-per-bar 4]` prints one JSON object, profile `eutonos.bar-grid.v1`. Music Studio's snap-to-bars calls it.
+
+**Output fields:**
+- `tempo`: bpm, analysis_bpm, hint_bpm, source, confidence, fit.
+- `beats_per_bar`, `first_beat`, `beat_seconds`.
+- `downbeat`: confidence, source, offset_beats.
+- `beats` and `bars` in seconds.
+- `warnings`.
+
+**How it works:**
+- It starts from the DJ analysis (`analyzeMixAudio`).
+- It fits one constant-tempo grid to the onsets of the whole file, within ±3 % of the hint, in 0.005 BPM steps.
+- That matters because generated takes asked for 124 BPM measured 125.0.
+
+**Limits:**
+- Tempo and meter are assumed constant.
+- Bar 1 comes from the analysis downbeats only when their confidence is at least 0.15; otherwise it is the first beat, with a warning.
+- Files over 180 s are analysed on their opening, and the grid is extended.
+- Confidence values are engineering evidence, not probabilities.
+
+EMF-S15 may replace the internals but keeps this output contract. Focused test: `node --test dist/tests/bar-grid.test.js` after building. Details are in the [EMS-S03 handoff](handoffs/EMS-S03-HANDOFF.md).
