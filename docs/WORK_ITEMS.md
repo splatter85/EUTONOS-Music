@@ -1856,5 +1856,5 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
 
 
 ```tokenslang-ram-links
-{"links":[{"memories":["RAM/record-1832a8d258f20b1d7071d4237cf99251614a8074e831e1689a260d65fbeb1eab.json","RAM/record-f6a28e736aaa0298f4d0d7fd2746a34864b99c2fe7e0e519d778eb203fc203f9.json"],"work_id":"campaign-emf-001"}],"profile":"eutonos.tokenslang.ram-links.v2"}
+{"links":[{"memories":["RAM/record-1832a8d258f20b1d7071d4237cf99251614a8074e831e1689a260d65fbeb1eab.json","RAM/record-f6a28e736aaa0298f4d0d7fd2746a34864b99c2fe7e0e519d778eb203fc203f9.json"],"work_id":"campaign-emf-001"},{"memories":["RAM/record-b3e174fc6113aff835318a9f61807fd6a46226e8f80b29cbe0b86afb4a03c521.json"],"work_id":"campaign-ems-001"}],"profile":"eutonos.tokenslang.ram-links.v2"}
 ```
