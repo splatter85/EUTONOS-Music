@@ -29,6 +29,8 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits |
 | [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |
 | [DJ transitions research](proposals/DJ_TRANSITIONS_RESEARCH.md) | Proposal: research synthesis and recommended order for EMF-S15 (nothing implemented or heard) |
+| [Music Studio arranger](proposals/STUDIO_ARRANGER.md) | Proposal: Song Plan, recipe modes, timeline, region edits, DJ as co-producer and quality passes, with the timeline spike (EMS-S07 to S12) |
+| [Arranger research](proposals/STUDIO_ARRANGER_RESEARCH.md) | Research: product timeline concepts, song-editing tools, stronger local models and ACE-Step quality levers (nothing installed or heard) |
 | [Local generators](proposals/LOCAL_GENERATORS.md) | Proposal: local music-generation candidates (nothing installed or heard by this repo) |
 | [S08 FL authoring](S08_FL_AUTHORING.md) | Shared Claude Code/Codex MCP facade for FL Studio: tools, registration, host behavior and limits |
 | [Library/transitions](LIBRARY_AND_TRANSITIONS.md) | Full asset, compatibility, curation, history and variety design |

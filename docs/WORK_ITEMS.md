@@ -1475,6 +1475,204 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
     {
       "evidence_refs": [
         {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "b70f6c29-de54-5409-a332-1fc6d212cb0a",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S07",
+      "status": "planned",
+      "summary": "One versioned Song Plan behind Beginner, Intermediate and Advanced; an AI-assisted section sheet that compiles to tagged lyrics and a caption.",
+      "title": "S07 Song Plan and Intermediate song sheet",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "b5ac5c1e-e6a1-5043-9185-d94ed1aefa3f",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S08",
+      "status": "planned",
+      "summary": "Bar-snapped quieter, louder, fade, stop and filter edits as gain/filter automation; audio outside the range unchanged.",
+      "title": "S08 Region edits I: exact mix changes",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "8580d5dc-2400-577e-a554-ea5588c26a0e",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S09",
+      "status": "planned",
+      "summary": "Repaint a region, make a buildup or drop, add an instrument with lego, and stem-based vocals louder or instrument removal, gain-matched and A/B-able.",
+      "title": "S09 Region edits II: AI rewrite, add and remove",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "737bcc20-c365-5131-9d35-e29c5b6a79c8",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S10",
+      "status": "planned",
+      "summary": "Drag-and-drop timeline realized by generate, measure, bar-snapped repaints and exact mix cues, showing target against measured result.",
+      "title": "S10 Timeline arranger",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "84f5ba25-f7cd-542f-b651-0e3aabe343be",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S11",
+      "status": "planned",
+      "summary": "Beatmatched stitch with seam repaint, blending two compatible takes into a new song, find similar and DJ energy templates.",
+      "title": "S11 DJ in the studio",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
+          "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/proposals/STUDIO_ARRANGER.md"
+        }
+      ],
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "claude-desktop",
+              "model": "claude-opus-5-5",
+              "session": "5e690a32-667b-4f44-9d15-e6d5ebfb8fa3"
+            },
+            "event_id": "695e88f4-eb3f-5fcf-9e3a-01716bed1f6a",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-13T06:12:43.841727+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "campaign_id": "campaign-ems-001"
+      },
+      "id": "EMS-S12",
+      "status": "planned",
+      "summary": "Final-quality render settings, best-of-N with a published scorer, Polish with a reference, LoRA on loved takes and optional model A/B, each install approved first.",
+      "title": "S12 Quality passes and model options",
+      "type": "slice"
+    },
+    {
+      "evidence_refs": [
+        {
           "path": "docs/campaigns/EMD_DJ_APP.md"
         }
       ],
