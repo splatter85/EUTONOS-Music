@@ -108,7 +108,7 @@ OfflineAudioContext provides the native offline implementation used in browser c
 
 ## Clean cut and echo-out (S15 increment 3)
 
-`MixPlannerOptions.recipe` accepts `auto` (default), `blend`, `echo-out` or `cut`. Auto prefers a qualifying blend, then echo, then cut. The deterministic shortlist contains at most five proposals: one blend and up to two cue pairs for each new recipe (hard cap six). These are eligible proposals, **not rendered-quality-ranked or evaluated candidates**; increment 4 remains separate.
+`MixPlannerOptions.recipe` accepts `auto` (default), `blend`, `echo-out` or `cut`. Auto prefers a qualifying blend, then echo, then cut. The deterministic shortlist contains at most five proposals: one blend and up to two cue pairs for each new recipe (hard cap six). These are eligible proposals, **not rendered-quality-ranked or evaluated candidates**; the increment 4 evaluator below ranks them offline only.
 
 Both new recipes require supported 4/4 timing, tempo/beat/phrase thresholds above, tempo ambiguity at most 0.5, downbeat confidence at least 0.65 and cue confidence at least 0.65. Cues must lie on actual supplied downbeats with measured evidence. A requires boundary strength at least 0.6; B requires salience at least 0.65 and either boundary strength at least 0.6 or supported track-start evidence. Short legacy cue hypotheses without this evidence do not qualify. Poor timing still uses the authored fallback.
 
@@ -123,6 +123,54 @@ A's **original** EOF and B's prepared EOF must both reach E. The outgoing source
 A module-private WeakMap binds each fresh outgoing automation object to the existing player master at commit. The runtime helper `bindEchoReturn` exposes no AudioNodes in serialized plan/worker data. Missing/wrong-context/channel-return bindings refuse before graph mutation. The existing source graph owns and releases every send, delay, feedback, filter and return node, including partial failures. The return bypasses A's outer channel fader and still follows the player master/mute. AudioParam events schedule all audible changes; no timer schedules effects.
 
 Cut/echo preparation copies and validates decoded B without a WSOLA job and reports `native-pcm@1` with no fabricated processing metrics. Native tests use generated samples and controlled known cue evidence, including repeated 44.1/48 kHz renders and an actual live DJ/AudioContext echo. Two additional untouched-PCM analysis-to-planner tests admit cut and echo for original 120 BPM signals with a 137 ms leading pickup, an A energy boundary after 28 bars and an eight-bar B intro; selected cue errors are within 25 ms. These tests do not overwrite measured confidence or change admission thresholds. Zero-offset or weaker variants can still fall back. Neither controlled lifecycle checks nor these generated positives establish real-song cue detection, general overlap headroom or listening quality.
+
+## Offline transition evaluator (S15 increment 4)
+
+`src/mix-evaluate.ts` renders each planner proposal offline and measures it. It is **Node-only and offline**: `scripts/serve.ts` does not serve it, `src/index.ts` does not export it and the live page and player do not call it. Live `mix` scheduling still uses the planner's first eligible proposal or the authored fallback. Wiring the evaluator into browser preparation needs a separately assigned change to the protected server allowlist (or a move of the code into an allowed mix module) plus a worker. Import it from `dist/src/mix-evaluate.js`.
+
+- `renderTransition` mirrors the live graph in plain JavaScript. Each lane is gain × low-pass(high-pass(250 Hz low shelf)), using RBJ biquads with the same Q, with coefficients updated every 128 frames. The echo send is taken before A's channel gain into a delay line whose feedback passes through the loop low-pass, and it returns on its own lane. B is native PCM, the prepared buffer when one is supplied, or a linear resample marked `linear-resample` when the tempo ratio is not 1. That last case is a measurement stand-in, not the WSOLA output.
+- `measureTransition` reports, inside the transition and 3 s of context:
+  - true peak, measured by `analyzeAudio`;
+  - momentary (0.4 s) and short-term (3 s) K-weighted loudness, relative to the energy interpolated linearly from A to B over S…E;
+  - 25–60 / 60–120 / 120–250 Hz build-up in 1 s windows with a 0.25 s hop;
+  - beat-phase error of B's beats against A's grid (cut: first beat only);
+  - boundary flux the unprocessed tracks do not already have;
+  - the largest sample step against the local step level;
+  - silence gaps;
+  - stereo correlation.
+- `judgeTransition` applies `MIX_EVALUATION_THRESHOLDS` (`mix-evaluation-thresholds@1`, status **experimental**, not listening-calibrated). Boundary flux is judged for blends only: a cut or echo is an intended change. `chooseEvaluatedMix` keeps the passing proposal with the fewest warnings, then the lowest penalty, then planner order; with none left the decision is `fallback` (the authored crossfade).
+
+| Metric | Warn | Fail | Note |
+| --- | --- | --- | --- |
+| True peak | −1 dBTP | 0 dBTP | |
+| Loudness deviation | 1 LU | 3 LU | either direction, momentary or short-term |
+| Low build-up (any band) | 3.5 dB | 5.5 dB | uncorrelated sum +3.01 dB, coherent +6.02 dB |
+| Beat phase | 0.05 beat | 0.10 beat | |
+| Boundary flux excess | 6 dB | 12 dB | blend only |
+| Sample step ratio | 4 | 8 | all recipes |
+| Silence gap | 50 ms | 250 ms | |
+| Stereo correlation | below −0.5 | — | warning only |
+
+Fixture table (16 kHz, 14 s, generated in `tests/mix-evaluate.test.ts`; all measured, not heard):
+
+| Fixture | Expected result |
+| --- | --- |
+| Equal-power noise blend | passes with no flags |
+| Both lanes at full gain | loudness flag at about +3 LU |
+| Coherent 55 Hz bass at full gain | low build-up fail at about +6 dB in 25–60 Hz |
+| Both gains zero | silence gap of about 4 s and loudness fail |
+| Hard step into a cosine tone | sample-step fail |
+| Clean cut | passes as cut; the same render judged as a blend flags boundary flux |
+| Echo-out | passes |
+| Echo feedback 1.1 | refused as invalid automation |
+
+Rendering is deterministic for the same input. Measured cost on the test PC (Windows, one run): one 120 BPM generated pair with one blend proposal took about 0.41–0.44 s, analysis included. That is small against the 30 s per-job worker deadlines, but the evaluator is not run inside any deadline today.
+
+**Finding on the S14 blend (measured, not heard).** On the generated 120 BPM pair the S14 blend fails two checks:
+- a momentary loudness dip of −12.6 LU (short-term −3.8 LU);
+- a boundary-flux excess of +24.5 dB, at S + 2.0 s.
+
+That is where the bass swap leaves both A and B shelved and high-passed for about 0.4 s, before B's low band is restored. Log-energy flux also grows when the preceding frame is quiet, so the flux value partly restates the same gap. The S14 recipe is unchanged. Whether the gap is audible is NOT TESTED; it is recorded as a follow-up.
 
 ## Tempo and pitch preparation
 
