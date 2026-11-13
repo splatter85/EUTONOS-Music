@@ -120,6 +120,9 @@ export interface MixAnalysis {
   readonly limitations: readonly string[];
 }
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
+/** Engineering starting points for the tempo octave rule, not calibrated values. */
+const TEMPO_OCTAVE = Object.freeze({emptyHalfBeat: 0.2, topBackbeat: 0.15, doubledCoverage: 0.35, hintSupport: 0.5,
+  hintedAmbiguity: 0.35, undecidedAmbiguity: 0.6});
 const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'] as const;
 
 function validate(input: MixPcm): number {
@@ -367,7 +370,7 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
   const high = Float64Array.from(rms, (x, i) => Math.sqrt(Math.max(0, x * x - low[i]! * low[i]!)));
   const highOnsets = onsetEnvelope(high);
   const radius = Math.max(2, Math.round(0.035 * rate / hop));
-  const candidates: {report: TempoCandidate; fit: Fit}[] = [];
+  const candidates: {report: TempoCandidate; fit: Fit; halfBeatEmpty: boolean}[] = [];
   for (const hypothesis of hypotheses) {
     let fit = fitGrid(values, hypothesis.lag);
     const measured = 60 * rate / (hop * fit.period);
@@ -379,12 +382,13 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
         maxError: gridResidual(values, fit.phase, boundedPeriod,
           Math.min(6, Math.round(boundedPeriod * 0.08)))};
     }
-    const on: number[] = [], off: number[] = [], snare: number[] = [];
+    const on: number[] = [], off: number[] = [], snare: number[] = [], snareOff: number[] = [];
     const pulse: number[] = [], subdivision: number[] = [];
     for (let beat = 0, at = fit.phase; at < values.length; beat++, at = fit.phase + beat * fit.period) {
       on.push(peakNear(lowOnsets, at, radius));
       off.push(peakNear(lowOnsets, at + fit.period / 2, radius));
       snare.push(peakNear(highOnsets, at, radius));
+      snareOff.push(peakNear(highOnsets, at + fit.period / 2, radius));
       pulse.push(peakNear(values, at, radius));
       subdivision.push(peakNear(values, at + fit.period / 2, radius));
     }
@@ -400,6 +404,11 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
       backbeat = Math.max(backbeat, clamp((phases[(phase + 1) % 4]! + phases[(phase + 3) % 4]! -
         phases[phase]! - phases[(phase + 2) % 4]!) / snareTotal));
     }
+    // Half-beat content in both bands. A pulse whose half-beats are empty in both bands has no
+    // evidence that separates it from its double-tempo relative: one hit per beat at X BPM and
+    // hits on alternate beats at 2X BPM are the same audio.
+    const halfBeatEmpty = offMean < TEMPO_OCTAVE.emptyHalfBeat * onMean &&
+      mean(snareOff) < TEMPO_OCTAVE.emptyHalfBeat * mean(snare);
     const driftSeconds = fit.maxError * hop / rate;
     const drift = clamp(1 - driftSeconds / Math.max(0.02, 0.08 * 60 / bpm));
     const hintSupport = generationBpm === undefined ? 0 :
@@ -412,17 +421,35 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
       0.20 * pulseEvidence + 0.04 * hintSupport;
     candidates.push({report: {bpm, strength, correlation: hypothesis.correlation,
       gridCoverage: fit.coverage, gridStrength: fit.strength, subdivisionContrast,
-      lowPeriodicity, backbeat, driftSeconds, hintSupport}, fit});
+      lowPeriodicity, backbeat, driftSeconds, hintSupport}, fit, halfBeatEmpty});
   }
   candidates.sort((a, b) => b.report.strength - a.report.strength || a.report.bpm - b.report.bpm);
   const uniqueCandidates = candidates.filter((candidate, i) => !candidates.slice(0, i).some(
     earlier => Math.abs(Math.log2(earlier.report.bpm / candidate.report.bpm)) < 0.003));
-  const chosen = uniqueCandidates[0];
-  if (!chosen || chosen.report.correlation < 0.25 || chosen.fit.coverage < 0.5) return empty;
-  const rival = uniqueCandidates.find(c => Math.abs(Math.log2(c.report.bpm / chosen.report.bpm)) >= 0.04);
+  const top = uniqueCandidates[0];
+  if (!top || top.report.correlation < 0.25 || top.fit.coverage < 0.5) return empty;
+  // Octave rule: when the top reading's half-beats are empty in both bands and its double-tempo
+  // relative also fits, the audio cannot tell the two apart (claps on 2 and 4 alone read as a
+  // pulse at half speed). Report that as ambiguity instead of a confident octave. A generation
+  // BPM hint that matches the double-tempo reading chooses it, with moderate ambiguity left.
+  const doubled = uniqueCandidates.find(c => Math.abs(Math.log2(c.report.bpm / top.report.bpm) - 1) < 0.02);
+  // The doubled grid's own autocorrelation is low by construction (its odd beats are empty), so
+  // only its grid coverage is required: it must land on the hits the top reading found.
+  // A backbeat on the top reading (accents alternating between its beats) is metrical evidence
+  // for it, so only identical, unaccented hits count as undecided.
+  const octaveUndecided = doubled !== undefined && top.halfBeatEmpty &&
+    top.report.backbeat < TEMPO_OCTAVE.topBackbeat &&
+    doubled.fit.coverage >= TEMPO_OCTAVE.doubledCoverage;
+  const hintPicksDoubled = octaveUndecided && doubled.report.hintSupport >= TEMPO_OCTAVE.hintSupport &&
+    doubled.report.hintSupport > top.report.hintSupport;
+  const chosen = hintPicksDoubled ? doubled : top;
+  const rival = octaveUndecided ? (hintPicksDoubled ? top : doubled) :
+    uniqueCandidates.find(c => Math.abs(Math.log2(c.report.bpm / chosen.report.bpm)) >= 0.04);
   const margin = rival ? (chosen.report.strength - rival.report.strength) / Math.max(0.1, chosen.report.strength) : 1;
   // Ambiguity follows the reported score margin; the prior can shift that margin only weakly.
-  const ambiguity = rival ? clamp(1 - margin / 0.18) : 0;
+  const marginAmbiguity = rival ? clamp(1 - margin / 0.18) : 0;
+  const ambiguity = !octaveUndecided ? marginAmbiguity :
+    hintPicksDoubled ? TEMPO_OCTAVE.hintedAmbiguity : Math.max(marginAmbiguity, TEMPO_OCTAVE.undecidedAmbiguity);
   // A metrical tie must also lower the legacy scalars read by barGrid.
   // Quadratic attenuation preserves clear positives; a complete tie caps at 0.35.
   const confidence = clamp((0.5 * chosen.report.correlation + 0.5 * chosen.fit.coverage) *

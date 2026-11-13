@@ -8,7 +8,7 @@ interface Pattern {
   kicks?: 'all' | 'alternate' | 'missing' | 'dnb' | 'one' | 'rare';
   beatCount?: number;
   kickAccent?: boolean;
-  snare?: 'backbeat' | 'half' | 'none';
+  snare?: 'backbeat' | 'half' | 'onKick' | 'none';
   snareGain?: number;
   hats?: 'beat' | 'double' | 'none';
   introBars?: number;
@@ -43,7 +43,8 @@ function drumPattern({bpm, kicks = 'all', beatCount = 32, kickAccent = true,
     }
     if (kicks === 'dnb' && beat % 4 === 2) add(at + period / 2, 0.11,
       t => 0.4 * Math.sin(2 * Math.PI * 55 * t) * Math.exp(-37 * t));
-    if (snare === 'backbeat' && beat % 4 % 2 === 1 || snare === 'half' && beat % 4 === 2) {
+    if (snare === 'backbeat' && beat % 4 % 2 === 1 || snare === 'half' && beat % 4 === 2 ||
+        snare === 'onKick' && mainKick) {
       add(at, 0.07, t => snareGain * 0.32 * (Math.sin(2 * Math.PI * 790 * t) +
         0.5 * Math.sin(2 * Math.PI * 1680 * t)) * Math.exp(-65 * t));
     }
@@ -182,4 +183,19 @@ test('one low attack per bar cannot establish a supported downbeat sequence', ()
   assert.deepEqual(result.structure.downbeatFrames, []);
   assert.equal(result.structure.downbeatConfidence, 0);
   assert.equal(result.structure.phraseConfidence, 0);
+});
+
+test('hits on alternate beats only report the octave as ambiguous, and a hint resolves it', () => {
+  // One hit per second with empty half-beats is the same audio at 60 BPM and at 120 BPM with
+  // hits on alternate beats (the owner-local FL A render has this shape).
+  const pcm = drumPattern({bpm: 120, kicks: 'alternate', kickAccent: false, snare: 'onKick', hats: 'none'});
+  const open = analyzeMixAudio(pcm).tempo;
+  assert.ok(hasTempo(open, 60) && hasTempo(open, 120));
+  assert.ok(open.ambiguity > 0.5, `ambiguity ${open.ambiguity}`);
+  const hinted = analyzeMixAudio(pcm, {generationBpm: 120}).tempo;
+  assert.ok(hinted.bpm !== null && Math.abs(hinted.bpm - 120) < 0.6, `bpm ${hinted.bpm}`);
+  assert.ok(hinted.ambiguity <= 0.5 && hinted.ambiguity > 0);
+  assert.ok(hinted.confidence < 0.6);
+  const otherHint = analyzeMixAudio(pcm, {generationBpm: 60}).tempo;
+  assert.ok(otherHint.ambiguity > 0.5);
 });
