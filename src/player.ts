@@ -25,6 +25,8 @@ export interface HybridSnapshot {
 export interface MixSnapshot {
   readonly phase: 'preparing' | 'scheduled' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
   readonly reason: string;
+  /** Earliest committed audible mix effect, which may precede B's entry. */
+  readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
     readonly fromBpm: number; readonly toBpm: number; readonly tempoRatio: number;
     readonly pitchSemitones: number; readonly confidence: number; readonly processor: string;

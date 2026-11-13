@@ -214,8 +214,14 @@ export class DeterministicDj {
           this.outcome(request.commandId, 'blocked', 'The queued entry has already started; it cannot be removed as a future entry.');
           break;
         }
-        if (this.transitionPlan?.queueCommandId === request.queueCommandId && this.bridgeEntered(this.renderer.snapshot())) {
-          this.outcome(request.commandId, 'blocked', 'The procedural bridge has entered, so B will still follow; the entry is no longer listed. Stop remains immediate.');
+        const playback = this.renderer.snapshot(), earliest = playback.mix?.earliestEffect;
+        const mixEntered = earliest !== undefined && earliest.engineGeneration === playback.engineGeneration &&
+          playback.currentFrame >= earliest.frame;
+        if (this.transitionPlan?.queueCommandId === request.queueCommandId &&
+          (this.bridgeEntered(playback) || mixEntered)) {
+          this.outcome(request.commandId, 'blocked', mixEntered
+            ? 'The mix prelude has entered, so B will still follow; the entry is no longer listed. Stop remains immediate.'
+            : 'The procedural bridge has entered, so B will still follow; the entry is no longer listed. Stop remains immediate.');
           break;
         }
         this.outcome(request.queueCommandId, 'cancelled', 'Removed from the manual queue.');
@@ -428,6 +434,9 @@ export class DeterministicDj {
   }
 
   private cancelFuture(status: 'cancelled' | 'superseded', reason: string): boolean {
+    const playback = this.renderer.snapshot(), earliest = playback.mix?.earliestEffect;
+    if (earliest !== undefined && earliest.engineGeneration === playback.engineGeneration &&
+      playback.currentFrame >= earliest.frame && playback.transition !== 'complete') return false;
     const hadTransition = this.transitionPlan !== null || this.renderer.snapshot().transition === 'scheduled';
     if (!this.cancelTransition(status, reason)) return false;
     if (!hadTransition && (this.startPlan || this.startAttempt)) {
