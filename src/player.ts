@@ -385,7 +385,11 @@ export class SmallPlayer {
     this.wantsRunning = true;
     this.state = 'loading';
     try {
-      await Promise.all([this.context.resume(), ownership]);
+      // Existing voices already unlocked this context on their initial gesture.
+      // Keep their frozen timeline intact until ownership is admitted.
+      await ownership;
+      if (operation !== this.operation) return;
+      await this.context.resume();
       if (operation !== this.operation) return;
       requireAudio(this.context.state === 'running', 'Audio is suspended. Press Resume again.');
       this.state = 'playing';

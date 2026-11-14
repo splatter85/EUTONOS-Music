@@ -38,6 +38,39 @@ test('stopped DJ selects deterministically but target/queue/Next do not start au
   await dj.dispose();
 });
 
+for (const allowed of [true, false]) {
+  test(`delayed Resume ownership ${allowed ? 'grant' : 'refusal'} cannot consume queued B`, async () => {
+    const {dj, context, request, send, start} = await setup();
+    await start();
+    await send({type: 'queueTrack', trackId: B}, 'queued-b');
+    await send({type: 'transport', action: 'pause'});
+    const before = dj.snapshot(), gate = deferred();
+    const resuming = dj.request(request({type: 'transport', action: 'play'}), gate.promise);
+    context.advance(10);
+    assert.equal(dj.snapshot().player.currentFrame, before.player.currentFrame);
+    assert.deepEqual(dj.snapshot().control.queue, before.control.queue);
+    assert.equal(dj.operation('queued-b')?.execution.status, 'scheduled');
+    assert.equal(outputValue(context), 0);
+    if (allowed) gate.release();
+    else gate.reject(new Error('ownership unavailable'));
+    assert.equal((await resuming).execution.status, allowed ? 'applied' : 'failed');
+    const after = dj.snapshot();
+    assert.equal(after.player.currentFrame, before.player.currentFrame);
+    assert.deepEqual(after.control.queue, before.control.queue);
+    assert.equal(after.pending?.at.frame, before.pending?.at.frame);
+    assert.equal(dj.operation('queued-b')?.execution.status, 'scheduled');
+    if (allowed) {
+      context.advance(8);
+      assert.equal(dj.snapshot().control.queue.length, 0);
+      assert.equal(dj.operation('queued-b')?.execution.status, 'started');
+    } else {
+      assert.equal(context.state, 'suspended');
+      assert.equal(outputValue(context), 0);
+    }
+    await dj.dispose();
+  });
+}
+
 test('receipt replay also deduplicates audio effects, queue edits and failures across generations', async () => {
   const {dj, context, request, send} = await setup();
   const queue = request({type: 'queueTrack', trackId: B}, 'queue-b');

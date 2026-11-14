@@ -1,7 +1,7 @@
 /** EMS-S01 data intake. Private inventory and explicit two-take audition; never a review promotion. */
 import {createHash, randomUUID} from 'node:crypto';
 import {lstat, mkdir, open, readdir, realpath, rename, rm, writeFile} from 'node:fs/promises';
-import {dirname, join, resolve, sep} from 'node:path';
+import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {readPcm16Wav} from './audio.js';
 import {importDelivery} from './importer.js';
 import {MAX_AUDIO_BYTES, portablePath, quartersToFrames} from './pack.js';
@@ -157,7 +157,22 @@ async function buildPair(scratch: string, catalog: RatedCatalog, ids: readonly [
 export async function importRatedTakes(sourceDirectory: string, outputDirectory: string,
   options: {pair?: readonly [string, string]} = {}): Promise<RatedCatalog> {
   const source = await realpath(sourceDirectory), output = resolve(outputDirectory);
-  if (output.toLowerCase() === source.toLowerCase() || output.toLowerCase().startsWith(source.toLowerCase() + sep)) {
+  // Resolve existing parents before creating anything: a junction can make a
+  // lexically external destination (including missing parents) enter the export.
+  let ancestor = dirname(output);
+  const missing: string[] = [basename(output)];
+  for (;;) {
+    try { ancestor = await realpath(ancestor); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      missing.unshift(basename(ancestor));
+      const parent = dirname(ancestor);
+      if (parent === ancestor) throw error;
+      ancestor = parent;
+    }
+  }
+  const destination = resolve(ancestor, ...missing), fromSource = relative(source, destination);
+  if (!fromSource || (!isAbsolute(fromSource) && fromSource !== '..' && !fromSource.startsWith(`..${sep}`))) {
     bad('output', 'output must be outside the source export');
   }
   if (await lstat(output).then(() => true, error => { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; })) {

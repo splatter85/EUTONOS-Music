@@ -178,6 +178,31 @@ test('symlinked take directories cannot expose outside data', async t => {
   }
 });
 
+test('output parent aliases into the export are refused before creating directories', async () => {
+  const f = await fixture();
+  try {
+    const alias = join(f.root, 'alias');
+    await symlink(f.source, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const before = await readdir(f.source);
+    for (const output of [join(alias, 'out'), join(alias, 'new-parent', 'out')]) {
+      await assert.rejects(importRatedTakes(f.source, output), /output must be outside the source export/);
+      assert.deepEqual(await readdir(f.source), before);
+    }
+    assert.deepEqual(await readdir(f.root), ['alias', 'source']);
+  } finally { await f.cleanup(); }
+});
+
+test('ordinary external output with missing parents imports successfully', async () => {
+  const f = await fixture();
+  try {
+    const output = join(f.root, 'new-parent', 'nested', 'out');
+    const catalog = await importRatedTakes(f.source, output);
+    assert.equal(catalog.takes.length, 3);
+    assert.deepEqual(JSON.parse(await readFile(join(output, 'catalog.json'), 'utf8')), catalog);
+    assert.deepEqual(await readdir(f.source), ['dislike', 'like', 'love', 'manifest.json']);
+  } finally { await f.cleanup(); }
+});
+
 test('browser audition budget is bounded even when explicitly requested', async () => {
   await assert.rejects(loadBrowserPack(new URL('http://127.0.0.1/manifest.json'), true, undefined,
     {allowUnreviewed: true, maxBytes: MAX_AUDITION_BYTES + 1}), /at most 128 MiB/);

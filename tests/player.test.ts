@@ -104,6 +104,37 @@ test('denied ownership during Resume keeps an existing paused voice silent and f
   await player.dispose();
 });
 
+for (const allowed of [true, false]) {
+  test(`delayed Resume ownership ${allowed ? 'grant' : 'refusal'} preserves the paused handoff`, async () => {
+    const {context, player} = setup();
+    await player.play('a');
+    await player.scheduleAB();
+    context.advance(1);
+    await player.pause();
+    const before = player.snapshot(), gate = deferred(), resumes = context.resumeCalls;
+    const resuming = player.resume(gate.promise);
+    const settled = allowed ? resuming : assert.rejects(resuming, /ownership unavailable/);
+    context.advance(10);
+    assert.equal(context.state, 'suspended');
+    assert.equal(context.resumeCalls, resumes, 'ownership must precede native clock recovery');
+    assert.equal(player.snapshot().currentFrame, before.currentFrame);
+    assert.deepEqual(player.snapshot().voices, before.voices);
+    assert.equal(outputValue(context), 0);
+    if (allowed) gate.release();
+    else gate.reject(new Error('ownership unavailable'));
+    await settled;
+    assert.equal(player.snapshot().currentFrame, before.currentFrame);
+    assert.deepEqual(player.snapshot().voices, before.voices);
+    assert.equal(context.state, allowed ? 'running' : 'suspended');
+    assert.equal(outputValue(context), allowed ? 0.65 : 0);
+    if (allowed) {
+      context.advance(8);
+      assert.equal(player.snapshot().transition, 'mixing');
+    }
+    await player.dispose();
+  });
+}
+
 test('Stop or Pause during a pending decode cannot be undone by its eventual completion', async () => {
   for (const action of ['stop', 'pause'] as const) {
     const {context, player} = setup();
@@ -141,6 +172,8 @@ test('Stop or a second Pause during pending Resume keeps output silent when Resu
     context.resumeGate = deferred();
     const resuming = player.resume();
     assert.equal(player.snapshot().state, 'loading');
+    await Promise.resolve(); // ownership admitted; native resume is now pending
+    assert.equal(context.resumeCalls, 2);
     if (action === 'stop') player.stop();
     else await player.pause();
     context.resumeGate.release();
@@ -151,6 +184,27 @@ test('Stop or a second Pause during pending Resume keeps output silent when Resu
     assert.equal(context.sources.length, 1, 'the old source was not started a second time');
     if (action === 'stop') assert.equal(context.sources[0]!.connections.length, 0);
     context.resumeGate = null;
+    await player.dispose();
+  }
+});
+
+test('Stop or Pause before ownership admission prevents a stale native Resume', async () => {
+  for (const action of ['stop', 'pause'] as const) {
+    const {context, player} = setup();
+    await player.play('a');
+    context.advance(1);
+    await player.pause();
+    const gate = deferred(), resumes = context.resumeCalls, frame = player.snapshot().currentFrame;
+    const resuming = player.resume(gate.promise);
+    if (action === 'stop') player.stop();
+    else await player.pause();
+    gate.release();
+    await resuming;
+    assert.equal(context.resumeCalls, resumes);
+    assert.equal(context.state, 'suspended');
+    assert.equal(player.snapshot().currentFrame, frame);
+    assert.equal(player.snapshot().state, action === 'stop' ? 'idle' : 'paused');
+    assert.equal(outputValue(context), 0);
     await player.dispose();
   }
 });
