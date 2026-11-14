@@ -1911,6 +1911,11 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "type": "slice"
     },
     {
+      "evidence_refs": [
+        {
+          "path": "docs/reviews/MUSIC_RUNTIME_REVIEW_20261114.md"
+        }
+      ],
       "extensions": {
         "attribution": {
           "creator": {
@@ -1924,12 +1929,25 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-14T18:39:57.733390+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "50a7af83c2e10268648a7ef000dc3d661d4bcfdd07d00e363271d4f4f6e81d9c",
+              "context": {
+                "app": "codex",
+                "model": null,
+                "session": "01a1b024-eeac-7ae1-a8fc-60f9612cdafe"
+              },
+              "event_id": "33e8c122-6b42-5ae3-b488-b73fc56b83ed",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-14T18:53:43.700613+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         }
       },
       "id": "quick-music-review-20261114",
-      "status": "active",
+      "status": "completed",
       "summary": "Owner assigned 2026-11-14: review rated intake integrity, playback ownership/cancellation and Studio local API async boundaries; reproduce and fix concrete defects, run focused regressions and official gates, integrate into local main. No new music, live FL, installs or listening claims.",
       "title": "Review import, playback lifecycle and Studio boundaries",
       "type": "quick"

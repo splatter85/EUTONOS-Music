@@ -3,8 +3,8 @@
 **Work:** `quick-music-review-20261114`  
 **Baseline:** `5cf0129`  
 **Branch:** `work/music-review-20261114`  
-**Disposition:** All four confirmed P2 findings are fixed; no open findings. Independent final review returned KEEP for Studio and intake; coordinator review returned KEEP for player and intake. Full gates passed; local-main integration/readback remain pending.  
-**Corrected source SHA:** `1dd748469d0d27236db00ae4eeecee1e8519814a` includes `003ef88` (intake/playback) and `1dd7484` (Studio). Focused and full verification are recorded below; both official gates passed. This source is on the review branch, not yet verified in main.
+**Disposition:** **COMPLETE.** All four confirmed P2 findings are fixed; no open findings. Independent final review returned KEEP for Studio and intake; coordinator review returned KEEP for player and intake. Full gates passed; local-main integration/readback verified at `358cc5c4dfa213a6e99b8f7b3bff73c3cfaa059b`.  
+**Corrected source SHA:** `1dd748469d0d27236db00ae4eeecee1e8519814a` includes `003ef88` (intake/playback) and `1dd7484` (Studio). Focused and full verification are recorded below; both official gates passed. Local main was fast-forwarded to `358cc5c4dfa213a6e99b8f7b3bff73c3cfaa059b`; readback was clean. Its runtime/test paths (`src`, `web`, `scripts`, `tests`, `package.json`) are unchanged from this tested source. No public push was performed.
 
 ## Scope and method
 
@@ -32,7 +32,7 @@ Source paths identify the reviewed areas without retaining line numbers that lat
 - Final official gates at `1dd748469d0d27236db00ae4eeecee1e8519814a`, Windows 11 / Node 26.13.0 / Chromium 151.0.7922.34: both commands exited **0**.
 - `npm.cmd run check`: **428 tests passed, zero failures/skips**; fixture regeneration, media validation and S11 demo passed.
 - `npm.cmd run check:browser`: **24 native offline checks, 16 browser checks, 4 S11 groups / 24 paired cases, 15 Studio checks and 21 mix results**; no report errors.
-- Local-main integration/readback remain **pending**. Public publication is not claimed.
+- Local main fast-forwarded to `358cc5c4dfa213a6e99b8f7b3bff73c3cfaa059b`; clean readback verified. `git diff 1dd7484 HEAD -- src web scripts tests package.json` was empty. **No public push was performed.**
 
 ## Documented limits retained
 
@@ -40,4 +40,4 @@ Requested tempo and the frame-zero 4/4 audition grid are assumptions, not measur
 
 This review adds no audio-device or listening qualification. Current executed evidence is **Windows only**; macOS and Linux remain unverified for these changes. **Physical output and human listening: NOT TESTED.** Historical S16 handoffs retain their original source pins and evidence.
 
-**Completion decision:** KEEP for the corrected bounded source, with no open findings. Required full gates passed. The review task remains in progress until local-main integration/readback are verified. Overall campaign effort percentage is unknown. **Next campaign slice: EMF-S10 — PC + owner**, when separately assigned, for listening and standalone-flow acceptance; S12 Mission Control follows S10.
+**Completion decision:** KEEP for the corrected bounded source, with no open findings. Required full gates passed and local-main integration/readback are verified at `358cc5c4dfa213a6e99b8f7b3bff73c3cfaa059b`. **The bounded review task is COMPLETE.** Overall campaign effort percentage is unknown. **Next campaign slice: EMF-S10 — PC + owner**, when separately assigned, for listening and standalone-flow acceptance; S12 Mission Control follows S10.
