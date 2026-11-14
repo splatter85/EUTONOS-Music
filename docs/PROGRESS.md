@@ -205,3 +205,15 @@ It adds a versioned local library (exact pack catalogue, saved recipe selections
 On **Windows only** (Node 26.12.1): `npm.cmd run check` passed **182 Node tests**; `npm.cmd run check:browser` passed 24 native offline and 16 browser groups; the separate S11 browser check passed 4 groups including 24 paired native cases with zero differing bits. **Physical output and listening are NOT TESTED.** [Guide](S11_LIBRARY.md), [handoff](handoffs/EMF-S11-HANDOFF.md), [EM-DEC034](DECISIONS.md).
 
 **Next: S10 — PC + owner** stays the priority; the rest of S11 may run in parallel.
+
+## 2026-11-14 — EMS-S01 rated export and EMF-S16 intake integrated
+
+**COMPLETE for bounded engineering scope.** Music local main was fast-forwarded to `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae` and read back clean. Implementation paths are unchanged from tested source `8e3147814eeb2c2254a1d2c96232a60ad520a40f`; this final documentation update records the verified integration rather than inventing its own containing SHA. Exporter owner-local main `8b145c218fd776c0fda8505edae9926a398ed064` is also clean, integrated and checked (18 tests). No public push was performed.
+
+The immutable real export and intake retain **43 takes: 3 love, 6 like, 34 dislike**, including originals, raw recipes and full PCM16 auditions. All **129 files / 2,244,119,339 bytes** independently matched hashes and byte counts. An explicit two-love-take pair requests 128 BPM and provides **63,504,088 audition-audio bytes**. Taste remains separate from playback review; the local unreviewed pair uses requested-grid assumptions and direct zero-overlap cut only, with no harmony or tail-preservation claim.
+
+Full Windows 11 gates passed with Node v26.13.0 / Chromium 151.0.7922.34: **421 Node tests**, fixture/media validation and S11 demo; **24 native offline checks, 16 browser checks, 4 S11 groups / 24 paired cases, 13 Studio checks and 21 mix results**, all reports without errors. Independent review returned KEEP after first-A ordering, unsupported rated transition controls and shared preview/DJ ownership fixes. Default eligibility and positive-overlap harmony checks remain strict; the pack schema is unchanged.
+
+Actual private-pack page load passed **12 assertions** with both WAVs loaded, clocks stopped at zero, explicit Play available, correct inventory/taste/review/grid labels and unsupported modes disabled. **No Play was clicked and no private audio was played or heard.** The live Music Studio HTTP service was not exercised; endpoint checks used a fake service and actual export used the CLI. Physical output/listening and macOS/Linux remain unverified.
+
+Native board completion for both slices was submitted and read back through the CLI; campaigns remain active. Detailed evidence: [EMS-S01 handoff](handoffs/EMS-S01-HANDOFF.md), [EMF-S16 handoff](handoffs/EMF-S16-HANDOFF.md). Overall campaign effort percentage is unknown. **One next slice: EMF-S10 — PC + owner**, when separately assigned, to hear and accept or revise the standalone flow. S12 Mission Control follows S10.

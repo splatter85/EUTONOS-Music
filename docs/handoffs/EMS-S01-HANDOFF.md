@@ -2,11 +2,12 @@
 
 **Campaign:** EMS / `campaign-ems-001`  
 **Slice:** EMS-S01  
-**Disposition:** COMPLETE (engineering scope); full gates passed; coordinator Music integration/readback next  
+**Disposition:** COMPLETE (engineering scope); full gates passed; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`
+
 **Environment:** PC, Windows 11, Node v26.13.0, Chromium 151.0.7922.34; Windows only  
 **Music inspected source / branch:** `8e3147814eeb2c2254a1d2c96232a60ad520a40f` / `work/rated-takes-20261114`  
 **Exporter source:** `8b145c218fd776c0fda8505edae9926a398ed064`, integrated into owner-local main; target clean and 18 tests passed  
-**Publication/integration:** exporter local target integration verified; Music local main integration pending. No public Git publication performed.
+**Publication/integration:** exporter local target integration verified; Music local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`. No public Git publication performed.
 
 ## Assignment and delivered changes
 
@@ -47,7 +48,7 @@ Last verified checkpoint: actual snapshot and intake succeeded, bounded checks a
 
 ## Next handoff
 
-**Exactly one next slice:** **EMF-S10 — PC + owner**, after target integration is verified; separately assigned listening session.
+**Exactly one next slice:** **EMF-S10 — PC + owner**, when separately assigned; target integration is verified.
 
 **Prerequisites:** checked integrated Music source, the private imported pack and existing FL-backed pack where applicable, normal audio output and the [listening scorecard](../S10_LISTENING_SCORECARD.md). FL and agents must be closed during the accepted playback demonstration.
 
@@ -55,4 +56,4 @@ Last verified checkpoint: actual snapshot and intake succeeded, bounded checks a
 
 **Owner action:** listen and accept or revise the bounded standalone flow. S12 Mission Control waits for S10. S10 does not complete EMF19.
 
-**Still not done:** Music target integration and readback, public Git publication, physical output/listening, macOS/Linux qualification and full MVP acceptance. No new install, deployment, restart or next-slice dispatch follows automatically.
+**Still not done:** public Git publication, physical output/listening, macOS/Linux qualification and full MVP acceptance. No new install, deployment, restart or next-slice dispatch follows automatically.

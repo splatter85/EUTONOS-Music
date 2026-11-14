@@ -10,7 +10,7 @@ Recorded 2026-11-12, America/Chicago; arranger slices EMS-S07 to S12 added 2026-
 Progress estimate: **unknown** (3 of 12 slices built: S01 and S03 engineering complete; S07 built and paused on owner A/B; no owner acceptance yet).
 
 **Slice status (2026-11-14):**
-- **EMS-S01 COMPLETE (engineering scope).** Exporter integrated into owner-local main at `8b145c218fd776c0fda8505edae9926a398ed064`; 18 tests passed on that target. Real snapshot: 43 takes (3 love, 6 like, 34 dislike), all 129 files independently hash/byte verified. Coordinated Music full gates passed; coordinator local main integration/readback is next. [Contract](../S16_RATED_TAKES.md), [handoff](../handoffs/EMS-S01-HANDOFF.md).
+- **EMS-S01 COMPLETE (engineering scope).** Exporter integrated into owner-local main at `8b145c218fd776c0fda8505edae9926a398ed064`; 18 tests passed on that target. Real snapshot: 43 takes (3 love, 6 like, 34 dislike), all 129 files independently hash/byte verified. Coordinated Music full gates passed; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`. [Contract](../S16_RATED_TAKES.md), [handoff](../handoffs/EMS-S01-HANDOFF.md).
 - **EMS-S03 COMPLETE.** Bar-grid command in this repository (`eutonos.bar-grid.v1`), with snap-to-bars in Fix a part and Grab a section. [Handoff](../handoffs/EMS-S03-HANDOFF.md).
 - **EMS-S07 PAUSED on owner A/B.** Song Plan, song sheet and helpers built and checked. [Handoff](../handoffs/EMS-S07-HANDOFF.md).
 - Other slices remain planned.

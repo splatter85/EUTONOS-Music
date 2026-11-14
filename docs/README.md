@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: S01–S09 and S14/S15 DJ transitions are in main. The first S11 increment is integrated; [Studio](STUDIO_APP.md) uses its pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback next under the coordinator** ([contract](S16_RATED_TAKES.md)). EMS-S03 is complete; EMS-S07 is paused on owner A/B. S10 owner listening follows the rated-takes handoff, then S12 Mission Control. Recent engineering evidence is Windows-only; physical output, listening and MVP acceptance remain open. [Current Tasks](CURRENT_TASKS.md) routes current evidence.
+Status: S01–S09 and S14/S15 DJ transitions are in main. The first S11 increment is integrated; [Studio](STUDIO_APP.md) uses its pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`** ([contract](S16_RATED_TAKES.md)). EMS-S03 is complete; EMS-S07 is paused on owner A/B. S10 owner listening follows the rated-takes handoff, then S12 Mission Control. Recent engineering evidence is Windows-only; physical output, listening and MVP acceptance remain open. [Current Tasks](CURRENT_TASKS.md) routes current evidence.
 
 ## Start with the next audible result
 

@@ -3,7 +3,7 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS - S01-S09, the first S11 increment and S14/S15 DJ transitions in main; S16 rated-takes intake engineering complete with EMS-S01; local main integration/readback next, then S10 owner listening**
+Status: **IN_PROGRESS - S01-S09, the first S11 increment and S14/S15 DJ transitions in main; S16 rated-takes intake engineering complete with EMS-S01; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`, then S10 owner listening**
 Recorded 2026-11-03; revised 2026-11-14, America/Chicago
 
 Progress estimate: **unknown**; S01 foundation, S02 player and S03 DJ/request checks pass on Windows, macOS and Linux. The corrected S04 branch passes 130 Node tests, 15 native groups and 11 browser report groups on all three OSes, including zero-error exact same-seed replay at 44.1/48 kHz. S05 adds the checked recording → procedural bridge → recording handoff; it passed 143 Node tests, 19 native groups and 12 browser report groups on Windows only. S06 adds a producer-agnostic importer, the performer palette contract and a mock FL producer (no FL Studio ran); it passed 161 Node tests, 23 native groups and 12 browser report groups on Windows only. S07 links the DJ/bridge and sampler into one demo with the imported mock palette in ordinary playback; it passed 161 Node tests, 23 native groups and 15 browser report groups on Windows only. S08 separately proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.
@@ -61,7 +61,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 
 **CLOUD** means ChatGPT with the GitHub repo in a properly provisioned coding/test runtime. **PC** means the owner's Windows workstation for the first actual FL Studio, Codex/Claude, installed-plugin and audio-output qualification. **BOTH** means source and content joined and qualified on that reference PC. These lane labels do not narrow the shared system's Windows/macOS/Linux support requirement.
 
-**Current slice status (2026-11-14):** S01–S09 and S14/S15 are in main. **EMS-S01 + EMF-S16 are COMPLETE for engineering scope; all full gates passed, with local main integration/readback next under the coordinator.** The first S11 increment is integrated, and Studio uses pattern save/restore; legacy pages remain unwired. After rated-takes intake comes S10 owner listening, then S12 Mission Control. Recent checks are Windows-only; physical output/listening and full MVP acceptance remain open. [Current Tasks](../CURRENT_TASKS.md) routes the evidence.
+**Current slice status (2026-11-14):** S01–S09 and S14/S15 are in main. **EMS-S01 + EMF-S16 are COMPLETE for engineering scope; all full gates passed, with local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`.** The first S11 increment is integrated, and Studio uses pattern save/restore; legacy pages remain unwired. After rated-takes intake comes S10 owner listening, then S12 Mission Control. Recent checks are Windows-only; physical output/listening and full MVP acceptance remain open. [Current Tasks](../CURRENT_TASKS.md) routes the evidence.
 
 | Slice | Where | Stage(s) informed | Dependency | Checked outcome |
 | --- | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 - **Handoff #1, after S01 is published:** tell owner the checked Git SHA, pack contract and setup constraints: *“You can pull now to start PC slice S08 in parallel; I'll continue S02–S07 in the cloud.”* This notification is part of the closeout, **not a background automation**. Missing PC integration does not stop the cloud sequence.
 - **Handoff #2, after S07 is published:** provide exact build SHA, run commands, artifact/demo, checks and caveats: *“Pull this tested revision for S09 once S08 has produced eligible FL exports.”*
 - **Join at S09.** Do not make two implementations of the asset contract, queue or DJ. PC work changes only the producer adapter and supplies real files into the same validated format. Real audio-device testing, listening and host compatibility cannot be declared successful from GitHub CI alone.
-- **Current PC work (2026-11-14):** EMS-S01 export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback next under the coordinator. S10 owner listening follows the checked local handoff; S12 follows S10. No automatic DAW operation, download, release or Mission Control change is authorized.
+- **Current PC work (2026-11-14):** EMS-S01 export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`. S10 owner listening follows the checked local handoff; S12 follows S10. No automatic DAW operation, download, release or Mission Control change is authorized.
 
 ## Stage map and sole status owner
 
@@ -157,7 +157,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 ### EMS-S01 + EMF-S16 built and locally verified
 
-**COMPLETE (engineering scope), 2026-11-14; all gates passed; coordinator local main integration/readback next.** Music source `8e3147814eeb2c2254a1d2c96232a60ad520a40f`; owner-local exporter `8b145c218fd776c0fda8505edae9926a398ed064` integrated and 18 tests passed. Actual export and intake each retain 43 takes (3 love, 6 like, 34 dislike); all 129 export files independently match hashes/bytes. Explicit two-love-take requested-128-BPM audition remains unreviewed and direct zero-overlap only. Studio's 13 checks and server's 7 tests passed; independent final review KEEP after corrections. No public publication, physical output or listening; macOS/Linux not run. [Export handoff](../handoffs/EMS-S01-HANDOFF.md), [intake handoff](../handoffs/EMF-S16-HANDOFF.md). Next: S10 owner listening, then S12.
+**COMPLETE (engineering scope), 2026-11-14; all gates passed; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`.** Music source `8e3147814eeb2c2254a1d2c96232a60ad520a40f`; owner-local exporter `8b145c218fd776c0fda8505edae9926a398ed064` integrated and 18 tests passed. Actual export and intake each retain 43 takes (3 love, 6 like, 34 dislike); all 129 export files independently match hashes/bytes. Explicit two-love-take requested-128-BPM audition remains unreviewed and direct zero-overlap only. Studio's 13 checks and server's 7 tests passed; independent final review KEEP after corrections. No public publication, physical output or listening; macOS/Linux not run. [Export handoff](../handoffs/EMS-S01-HANDOFF.md), [intake handoff](../handoffs/EMF-S16-HANDOFF.md). Next: S10 owner listening, then S12.
 
 ### EMF-S15 DJ transitions II integrated
 
