@@ -1909,6 +1909,30 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "summary": "Owner uses the app in a real session and accepts or revises it.",
       "title": "S05 Owner usability and listening acceptance",
       "type": "slice"
+    },
+    {
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "codex",
+              "model": null,
+              "session": "01a1b024-eeac-7ae1-a8fc-60f9612cdafe"
+            },
+            "event_id": "14d086bc-ca09-5ab3-a151-7fef78a0fa40",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-14T18:39:57.733390+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        }
+      },
+      "id": "quick-music-review-20261114",
+      "status": "active",
+      "summary": "Owner assigned 2026-11-14: review rated intake integrity, playback ownership/cancellation and Studio local API async boundaries; reproduce and fix concrete defects, run focused regressions and official gates, integrate into local main. No new music, live FL, installs or listening claims.",
+      "title": "Review import, playback lifecycle and Studio boundaries",
+      "type": "quick"
     }
   ],
   "profile": "eutonos.tokenslang.board.v1"

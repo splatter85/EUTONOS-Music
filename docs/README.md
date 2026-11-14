@@ -64,6 +64,7 @@ The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary
 | [Handoffs](handoffs/README.md) | Reusable closeout template, historical pickup briefs and actual slice handoffs |
 | [Progress](PROGRESS.md) | Versioned historical checkpoints and validation limits |
 | [Review](reviews/MISSION_CONTROL_FIRST_REVIEW.md) | Forty questions answered, ten strengths and primary-source checks |
+| [Runtime review](reviews/MUSIC_RUNTIME_REVIEW_20261114.md) | Bounded 2026-11-14 integrity, playback ownership and Studio request/cancellation findings; corrections and final verification status |
 | [Research map](RESEARCH.md) | Existing source routes and provider evidence |
 
 Read [AGENTS](../AGENTS.md) before changing files. Do not infer shipped capability from any proposal, upstream project, written guide or prepared stage.
