@@ -1,12 +1,12 @@
 # Slice handoffs
 
-This folder contains versioned context for the **one EMF campaign**. [Work Model](../WORK_MODEL.md) owns the policy; [EMF campaign](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md) alone owns live status and the slice order.
+This folder contains historical, source-pinned handoffs for [EMF](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md), [EMS](../campaigns/EMS_MUSIC_STUDIO.md) and later [EMD](../campaigns/EMD_DJ_APP.md) slices. [Work Model](../WORK_MODEL.md) owns the policy; each campaign owns its live status and slice order. Next-step statements below describe the original handoff checkpoint; [Current Tasks](../CURRENT_TASKS.md) routes the current assignment. **EMS-S01 + EMF-S16 are IN_PROGRESS**; final handoffs and evidence are pending.
 
 ## Mandatory at every slice stop
 
 When a slice is **COMPLETE**, **PAUSED**, or **BLOCKED**, the worker must:
 
-1. Publish a **detailed** `docs/handoffs/EMF-Sxx-HANDOFF.md` using the [template](SLICE_HANDOFF_TEMPLATE.md). Include actual outcomes, changed source, checks, failures, limitations, last verified checkpoint, and one next action with environment.
+1. Publish a **detailed** `docs/handoffs/<CAMPAIGN>-Sxx-HANDOFF.md` using the [template](SLICE_HANDOFF_TEMPLATE.md). Include actual outcomes, changed source, checks, failures, limitations, last verified checkpoint, and one next action with environment.
 2. Update the authoritative campaign checkpoint/status and [Current Tasks](../CURRENT_TASKS.md) pointer, without starting the next slice automatically.
 3. Verify that GitHub actually contains the handoff and scoped changes at an exact commit/ref. A queued or local write is not publication; if publication fails, report it.
 4. In the **same final chat response**, give the owner a **short copy/paste mini handoff** referencing the detailed file and checked commit, outcome, crucial evidence/limits, next slice/environment and first action. This is not an asynchronous reminder.
@@ -19,7 +19,7 @@ The [S02 handoff](EMF-S02-HANDOFF.md) records the small browser player's source,
 
 The [S03 handoff](EMF-S03-HANDOFF.md) records deterministic DJ/request integration, FIFO and cancellation behavior, retry/race review, native browser evidence and the S04 procedural-source pickup. Consult its disposition and the campaign for the actual completion state.
 
-The [S04 handoff](EMF-S04-HANDOFF.md) records **S04 CLOUD COMPLETE** on the separate published branch: the corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. It preserves the earlier 127-test result and original native replay failure as historical evidence. Main remains intentionally unchanged at the owner's request. S04 requires no PC action; physical output and listening are NOT TESTED. S05 is next as a separately assigned CLOUD slice from the S04 branch.
+The [S04 handoff](EMF-S04-HANDOFF.md) records **S04 CLOUD COMPLETE** on the separate published branch: the corrected source passed 130 Node tests, 15 native checks and 11 browser report groups on Windows, macOS and Linux. It preserves the earlier 127-test result and original native replay failure as historical evidence. At that handoff, main remained intentionally unchanged at the owner's request. At that checkpoint S04 required no PC action; physical output and listening are NOT TESTED. S05 was the next separately assigned CLOUD slice from the S04 branch.
 
 The [S05 handoff](EMF-S05-HANDOFF.md) records **S05 COMPLETE**, built on the owner's PC and integrated into main: the A → procedural bridge → B policy, its checks and the Windows-only evidence (143 Node tests, 19 native checks, 12 browser report groups). macOS/Linux were not run; physical output and listening are NOT TESTED.
 
@@ -29,11 +29,13 @@ The [S07 handoff](EMF-S07-HANDOFF.md) records **S07 COMPLETE**, built on the own
 
 Music Studio (EMS) slices use the same template: the [EMS-S03 handoff](EMS-S03-HANDOFF.md) (bar-grid command and snap-to-bars, COMPLETE) and the [EMS-S07 handoff](EMS-S07-HANDOFF.md) (Song Plan and song sheet, PAUSED on owner A/B). The app itself is owner-local; these files describe it generically.
 
+The [EMF-S15 handoff](EMF-S15-HANDOFF.md) records its delivered engineering scope and Windows checks; owner listening remains untested.
+
 The [EMF-S15 pickup brief](EMF-S15-PICKUP.md) assigns DJ transitions II, increments 1–4 plus the S14 late-preparation finding, to an owner-assigned worker on its own branch. It is a starting brief, not evidence S15 was done.
 
-The [S09 handoff](EMF-S09-HANDOFF.md) records **S09 COMPLETE**, built by the coordinator on the owner's PC with real FL Studio and integrated into main: owner-local FL renders imported through the unchanged contract and played in the DJ's hybrid handoff, with per-route policies and Windows-only evidence (166 Node tests, 24 native offline groups and 16 browser groups, plus `check:fl`). Physical output and listening are NOT TESTED. S10 (owner listening) is next.
+The [S09 handoff](EMF-S09-HANDOFF.md) records **S09 COMPLETE**, built by the coordinator on the owner's PC with real FL Studio and integrated into main: owner-local FL renders imported through the unchanged contract and played in the DJ's hybrid handoff, with per-route policies and Windows-only evidence (166 Node tests, 24 native offline groups and 16 browser groups, plus `check:fl`). Physical output and listening are NOT TESTED. At that checkpoint S10 owner listening was next; the current order is in the campaign.
 
-The [S11 handoff](EMF-S11-HANDOFF.md) records the **first S11 increment**, built by a worker and reviewed and integrated into main by the coordinator: a versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies, with Windows-only evidence on the combined tree (182 Node tests, 24 native offline and 16 browser groups, plus the S11 browser check). S11 stays in progress; page wiring remains. Physical output and listening are NOT TESTED.
+The [S11 handoff](EMF-S11-HANDOFF.md) records the **first S11 increment**, built by a worker and reviewed and integrated into main by the coordinator: a versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies, with Windows-only evidence on the combined tree (182 Node tests, 24 native offline and 16 browser groups, plus the S11 browser check). S11 stays in progress. Studio subsequently added pattern save/restore; legacy-page wiring and playback history remain. Physical output and listening are NOT TESTED.
 
 The [S08 handoff](EMF-S08-HANDOFF.md) records the PC FL Studio authoring facade, its live Claude Code/Codex evidence and limits. Its renders are owner-local and unauditioned.
 

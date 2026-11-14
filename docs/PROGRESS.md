@@ -1,6 +1,8 @@
 # Progress and evidence
 
 Document ID: `EM-D014`  
+
+**Historical evidence log.** Entries retain their original source versions, status and next-step observations. The opening sections through “Resume” are the **2026-11-03 documentation baseline**, not current capability claims. [Current Tasks](CURRENT_TASKS.md) and the [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md), [EMS](campaigns/EMS_MUSIC_STUDIO.md) and [EMD](campaigns/EMD_DJ_APP.md) campaigns own current assignments and status. EMS-S01 + EMF-S16 are assigned and IN_PROGRESS; final evidence is pending.
 Checkpoint: documentation baseline, 2026-11-03, America/Chicago.
 
 ## Delivered scope

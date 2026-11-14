@@ -36,7 +36,7 @@ export interface CheckedRoute {
 }
 
 /** Recheck revisions, directed cues, tempo, overlap and harmony before planning. */
-export function checkedRoute(pack: AudioPack, routeId: string, allowFixtures = false): CheckedRoute {
+export function checkedRoute(pack: AudioPack, routeId: string, allowFixtures = false, allowUnreviewed = false): CheckedRoute {
   const parsed = validatePackManifest(pack);
   const route = parsed.routes.find(r => r.id === routeId);
   requireAudio(route, `No directed route: ${routeId}`);
@@ -44,7 +44,7 @@ export function checkedRoute(pack: AudioPack, routeId: string, allowFixtures = f
   const from = parsed.assets.find(a => a.id === route.from.id && a.revision === route.from.revision)!;
   const to = parsed.assets.find(a => a.id === route.to.id && a.revision === route.to.revision)!;
   requireAudio(from.id !== to.id, 'The small player requires distinct A and B recordings.');
-  requireAudio(eligibleForPlayback(from, allowFixtures) && eligibleForPlayback(to, allowFixtures),
+  requireAudio(eligibleForPlayback(from, allowFixtures, allowUnreviewed) && eligibleForPlayback(to, allowFixtures, allowUnreviewed),
     'Both recordings must have playback permission and eligible review status.');
   return {route, from, to};
 }
@@ -56,8 +56,8 @@ export interface TransitionPlan extends CheckedRoute {
 }
 
 export function planTransition(pack: AudioPack, routeId: string, fromStart: SourceStart,
-  clock: AudioClock, allowFixtures = false, leadFrames = 0): TransitionPlan {
-  const pair = checkedRoute(pack, routeId, allowFixtures);
+  clock: AudioClock, allowFixtures = false, leadFrames = 0, allowUnreviewed = false): TransitionPlan {
+  const pair = checkedRoute(pack, routeId, allowFixtures, allowUnreviewed);
   requireAudio(fromStart.at.engineGeneration === clock.engineGeneration, 'Stale engine generation.');
   requireAudio(Number.isSafeInteger(fromStart.at.frame) && fromStart.at.frame >= 0 &&
     Number.isSafeInteger(leadFrames) && leadFrames >= 0, 'Invalid start or scheduling lead.');
@@ -84,6 +84,7 @@ export interface DecodedRecording {
 
 export interface RecordingOptions {
   readonly allowFixtures?: boolean;
+  readonly allowUnreviewed?: boolean;
   readonly fadeInFrames?: number;
   readonly fadeOutFrames?: number;
 }
@@ -122,7 +123,7 @@ export class RecordedSource implements PlayableSource {
     requireAudio(this.destination.context === this.context, 'Output belongs to another context.');
     const {asset, buffer} = this.recording;
     requireAudio(asset.source_kind === 'recording' && asset.timing, 'A recorded source requires recording timing.');
-    requireAudio(eligibleForPlayback(asset, this.options.allowFixtures), 'Recording is not eligible for playback.');
+    requireAudio(eligibleForPlayback(asset, this.options.allowFixtures, this.options.allowUnreviewed), 'Recording is not eligible for playback.');
     const sourceFrames = Math.round(asset.file.frames * clock.sampleRate / asset.file.sample_rate);
     const processed = this.recording.processed;
     if (processed !== undefined) requireAudio(processed && Number.isSafeInteger(processed.sourceFrames) &&

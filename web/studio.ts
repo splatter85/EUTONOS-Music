@@ -17,6 +17,7 @@ import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
 
 const PACKS = {
+  rated: {manifest: '/local/s16-rated/pack/manifest.json', label: 'Rated takes (local audition)'},
   s01: {manifest: '/fixtures/s01/manifest.json', label: 'S01 original'},
   'mock-fl': {manifest: '/generated/s06-mock-fl/pack/manifest.json', label: 'S06 imported mock'},
   fl: {manifest: '/local/s09-fl/pack/manifest.json', label: 'S09 real FL (owner-local)'},
@@ -53,6 +54,12 @@ function button(label: string, onClick: () => void, cls = 'chip', aria?: string)
 }
 
 // ---------- shared state ----------
+interface RatedCatalog {
+  schema_version: 'eutonos.rated-catalog.v1';
+  takes: {id: string; title: string; rating: 'love' | 'like' | 'dislike'; tempo: {bpm: number | null; source: string}}[];
+  pair: null | {take_ids: [string, string]; asset_ids: [string, string]; grid: string};
+}
+let ratedCatalog: RatedCatalog | null = null;
 let loaded: LoadedBrowserPack | null = null;
 let deckAssets: {a: AudioAsset; b: AudioAsset} | null = null;
 const peaks = new Map<string, Float32Array | null>();
@@ -178,7 +185,10 @@ $('queue-b').addEventListener('click', () => { if (deckAssets) void send({type: 
 for (const pad of Array.from(document.querySelectorAll<HTMLButtonElement>('#state-pads button'))) {
   pad.addEventListener('click', () => { void send({type: 'setState', state: pad.dataset.state as MusicState}); });
 }
-function setMode(mode: DjHandoff): void { handoffMode = mode; dj?.setHandoff(mode); renderDj(); }
+function setMode(mode: DjHandoff): void {
+  handoffMode = packChoice === 'rated' ? 'direct' : mode;
+  dj?.setHandoff(handoffMode); renderDj();
+}
 $('mode-direct').addEventListener('click', () => setMode('direct'));
 $('mode-hybrid').addEventListener('click', () => setMode('hybrid'));
 $('mode-mix').addEventListener('click', () => setMode('mix'));
@@ -243,6 +253,10 @@ function renderDj(): void {
   pause.setAttribute('aria-label', state === 'paused' ? 'Resume' : 'Pause');
   $<HTMLButtonElement>('dj-cancel').disabled = !ready || (player?.mix?.phase !== 'preparing' && (!snap?.pending || snap.pending.phase !== 'scheduled'
     || (player?.handoff != null && player.handoff.phase !== 'scheduled')));
+  $<HTMLButtonElement>('mode-hybrid').disabled = !ready || packChoice === 'rated' || !loaded?.pack.recipes.length;
+  $<HTMLButtonElement>('mode-mix').disabled = !ready || packChoice === 'rated';
+  setText('mode-direct', packChoice === 'rated' ? 'Direct cut' : 'Crossfade');
+  $('rated-transition-help').hidden = packChoice !== 'rated';
   const hold = control?.requested.hold ?? false;
   $('dj-hold').setAttribute('aria-pressed', String(hold)); setText('dj-hold', hold ? 'Hold on' : 'Hold');
   $('mode-direct').setAttribute('aria-checked', String(handoffMode === 'direct'));
@@ -315,6 +329,7 @@ let samplerNote = '';
 function preparePlan(): void {
   plan = null; samplerError.textContent = ''; samplerNote = '';
   if (!loaded) return;
+  if (!loaded.pack.recipes.length) { renderSampler(); return; }
   try {
     if (!/^\d{1,10}$/.test(seedInput.value) || Number(seedInput.value) > 0xffffffff) throw new Error('Seed must be a whole number from 0 to 4294967295.');
     const recipe = loaded.pack.recipes[0];
@@ -388,15 +403,16 @@ function renderSampler(): void {
   $('s-play').classList.toggle('is-on', state === 'playing');
   $<HTMLButtonElement>('s-stop').disabled = !running;
   $<HTMLButtonElement>('s-save').disabled = !plan;
-  seedInput.disabled = running; $<HTMLButtonElement>('dice').disabled = running || !loaded;
+  const noRecipe = !loaded?.pack.recipes.length;
+  seedInput.disabled = running || noRecipe; $<HTMLButtonElement>('dice').disabled = running || noRecipe;
   for (const [id, s] of [['s-explore', 'explore'], ['s-drive', 'drive']] as const) {
-    $(id).setAttribute('aria-checked', String(samplerState === s)); $<HTMLButtonElement>(id).disabled = running || !loaded;
+    $(id).setAttribute('aria-checked', String(samplerState === s)); $<HTMLButtonElement>(id).disabled = running || noRecipe;
   }
   const shown = running && activePlan ? activePlan : plan;
   drawGrid(shown, running && snap?.durationSeconds ? snap.elapsedSeconds / snap.durationSeconds : null);
   setText('sampler-status', state === 'playing' ? `Playing seed ${activePlan?.seed} · ${activePlan?.state} · ${(snap?.elapsedSeconds ?? 0).toFixed(1)}s of ${(snap?.durationSeconds ?? 0).toFixed(1)}s`
     : state === 'loading' || state === 'scheduled' ? 'Getting ready…' : state === 'paused' ? 'Paused' : state === 'ended' ? 'Pattern finished. Press ▶ to hear it again or roll a new seed.'
-    : samplerNote ? samplerNote : plan ? `Seed ${plan.seed} · ${plan.state} · ${plan.events.length} hits ready. Press ▶ to hear it.` : loaded ? 'Pick a valid seed.' : 'Loading…');
+    : samplerNote ? samplerNote : plan ? `Seed ${plan.seed} · ${plan.state} · ${plan.events.length} hits ready. Press ▶ to hear it.` : loaded && !loaded.pack.recipes.length ? 'Pattern sampler unavailable: this audition pack has no samples or recipes. Use the DJ Booth.' : loaded ? 'Pick a valid seed.' : 'Loading…');
 }
 
 // ---------- library ----------
@@ -467,12 +483,35 @@ function renderTracks(): void {
     body.append(make('tr', {},
       make('td', {textContent: asset.title}),
       make('td', {}, make('span', {className: `tag ${rec ? 'rec' : 'smp'}`, textContent: rec ? 'Song' : 'Sample'})),
-      make('td', {textContent: asset.timing ? String(asset.timing.bpm) : '—'}),
+      make('td', {textContent: asset.timing ? `${asset.timing.bpm}${packChoice === 'rated' ? ' requested · grid unmeasured' : ''}` : '—'}),
       make('td', {textContent: asset.key ?? '—'}),
       make('td', {textContent: clock(asset.file.frames / asset.file.sample_rate)}),
-      make('td', {}, make('span', {className: 'tag', textContent: asset.eligibility}))));
+      make('td', {}, make('span', {className: 'tag', textContent: asset.eligibility})),
+      make('td', {textContent: ratedCatalog?.takes.find(t => ratedCatalog?.pair?.asset_ids[ratedCatalog.pair.take_ids.indexOf(t.id)] === asset.id)?.rating ?? '—'})));
   }
 }
+
+async function loadRatedCatalog(): Promise<void> {
+  const hint = $('rated-inventory'); hint.hidden = false;
+  try {
+    const response = await fetch('/local/s16-rated/catalog.json', {cache: 'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const value = await response.json() as RatedCatalog;
+    if (value.schema_version !== 'eutonos.rated-catalog.v1' || !Array.isArray(value.takes)) throw new Error('Unknown inventory format');
+    ratedCatalog = value;
+    hint.textContent = `Private rated inventory: ${value.takes.length} takes · ${['love', 'like', 'dislike'].map(r => `${value.takes.filter(t => t.rating === r).length} ${r}`).join(' · ')}. Taste ratings do not confer playback review. Only the explicitly selected pair is available for audition; dislikes are never added from the inventory.`;
+  } catch (error) { hint.textContent = `Rated inventory unavailable: ${message(error)}`; }
+}
+let exportingRated = false;
+$('export-rated').addEventListener('click', () => { void (async () => {
+  exportingRated = true; renderGenerator();
+  setText('export-rated-status', 'Exporting all rated takes, including dislikes…');
+  try {
+    const result = await api<{path?: string; count?: number}>('/api/exports/rated', {method: 'POST', body: '{}'});
+    setText('export-rated-status', `Private rated snapshot exported${result.path ? `: ${result.path}` : ''}. Select and import a pair separately for DJ audition.`);
+  } catch (error) { setText('export-rated-status', `Rated export failed: ${message(error)}`); }
+  finally { exportingRated = false; renderGenerator(); }
+})(); });
 
 // ---------- AI generator (Music Studio service) ----------
 interface Take { id: string; title?: string; description?: string; duration_seconds?: number; bpm?: number; key?: string; starred?: boolean; rejected?: boolean; rating?: Rating | null; created_at?: string; }
@@ -550,18 +589,27 @@ function renderGenerator(): void {
   $<HTMLButtonElement>('gen-go').disabled = !canGenerate;
   setText('gen-go', jobId ? 'Generating…' : 'Generate');
   $('gen-progress').hidden = jobId === null;
+  $<HTMLButtonElement>('export-rated').disabled = engine === 'offline' || exportingRated;
   $('lib-takes-hint').hidden = engine !== 'offline';
 }
-function stopPreview(): void { preview.pause(); preview.removeAttribute('src'); previewing = null; renderTakes(); }
+function stopPreview(): void {
+  preview.pause(); preview.removeAttribute('src'); previewing = null;
+  if (!djActive() && !samplerActive()) releaseOwnership();
+  renderTakes();
+}
 async function togglePreview(take: Take): Promise<void> {
   if (previewing === take.id) { stopPreview(); return; }
   await takeOver('preview');
   preview.src = `${STUDIO_API}/api/takes/${encodeURIComponent(take.id)}/audio`;
   preview.volume = Number(volume.value); preview.muted = muted; previewing = take.id;
-  try { await preview.play(); } catch (error) { genError.textContent = message(error); previewing = null; }
+  try {
+    await acquireOwnership();
+    if (previewing !== take.id) return;
+    await preview.play();
+  } catch (error) { genError.textContent = message(error); stopPreview(); }
   renderTakes();
 }
-preview.addEventListener('ended', () => { previewing = null; renderTakes(); });
+preview.addEventListener('ended', stopPreview);
 async function patchTake(take: Take, change: Partial<Take>): Promise<void> {
   try { Object.assign(take, await api<Take>(`/api/takes/${encodeURIComponent(take.id)}`, {method: 'PATCH', body: JSON.stringify(change)}), change); }
   catch (error) { genError.textContent = message(error); }
@@ -587,7 +635,7 @@ function takeRow(take: Take, full: boolean): HTMLLIElement {
   }
   if (full) {
     const note = make('span', {className: 'take-meta'});
-    row.append(button('Send to EUTONOS', () => { void exportTake(take, note); }, 'chip', `Export ${take.title ?? take.id} for EUTONOS`), note);
+    row.append(button('Export this take', () => { void exportTake(take, note); }, 'chip', `Export ${take.title ?? take.id} for EUTONOS`), note);
   }
   return row;
 }
@@ -616,7 +664,7 @@ function tick(): void {
   if (currentTab === 'dj') renderDj();
   if (currentTab === 'produce') renderSampler();
   const idle = (s: string | undefined) => !s || ['idle', 'ended', 'closed'].includes(s);
-  if (ownership && idle(dj?.snapshot().player.state) && idle(sampler?.snapshot().state)) releaseOwnership();
+  if (ownership && !previewing && idle(dj?.snapshot().player.state) && idle(sampler?.snapshot().state)) releaseOwnership();
 }
 function frame(): void { tick(); requestAnimationFrame(frame); }
 // Some embedded or occluded windows stop animation frames; keep the clock reconciling anyway.
@@ -628,7 +676,11 @@ async function initialize(): Promise<void> {
     if (!window.isSecureContext || !window.AudioContext || !navigator.locks || !crypto.subtle) throw new Error('Open this page on http://127.0.0.1 in a current browser.');
     if (!packChoice) throw new Error('Unknown pack. Choose one in the top bar.');
     packInput.value = packChoice;
-    const candidate = await loadBrowserPack(new URL(PACKS[packChoice].manifest, location.href), true);
+    if (packChoice === 'rated') { handoffMode = 'direct'; await loadRatedCatalog(); }
+    const manifest = new URL(PACKS[packChoice].manifest, location.href);
+    const candidate = packChoice === 'rated'
+      ? await loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, maxBytes: 128 * 1024 * 1024})
+      : await loadBrowserPack(manifest, true);
     const route = candidate.pack.routes[0];
     const find = (ref: {id: string; revision: number}) => candidate.pack.assets.find(a => a.id === ref.id && a.revision === ref.revision);
     const a = route && find(route.from), b = route && find(route.to);
@@ -636,11 +688,11 @@ async function initialize(): Promise<void> {
     loaded = candidate; deckAssets = {a, b};
     for (const [side, asset] of [['a', a], ['b', b]] as const) {
       setText(`deck-${side}-title`, asset.title);
-      setText(`deck-${side}-meta`, `${asset.timing!.bpm} BPM · ${asset.key ?? 'no key'} · ${asset.timing!.bars} bars`);
+      setText(`deck-${side}-meta`, `${asset.timing!.bpm} ${packChoice === 'rated' ? 'requested BPM · grid unmeasured · unreviewed' : 'BPM'} · ${asset.key ?? 'no key'} · ${asset.timing!.bars} bars`);
       peaks.set(asset.id, computePeaks(asset));
     }
-    setText('sampler-sub', `${PACKS[packChoice].label} · 8 bars · 120 BPM · A minor`);
-    setText('global-status', `${PACKS[packChoice].label} loaded · ${candidate.pack.assets.length} sounds · ${a.timing.bpm} BPM · ${a.key ?? 'no key'}`);
+    setText('sampler-sub', !candidate.pack.recipes.length ? 'No samples or recipes in this pack' : `${PACKS[packChoice].label} · 8 bars · 120 BPM · A minor`);
+    setText('global-status', `${PACKS[packChoice].label} loaded · ${candidate.pack.assets.length} sounds · ${a.timing.bpm} ${packChoice === 'rated' ? 'requested BPM · grid unmeasured · unreviewed audition' : 'BPM'} · ${a.key ?? 'no key'}`);
     renderTracks(); preparePlan();
   } catch (error) {
     if (!packChoice) packInput.selectedIndex = -1;

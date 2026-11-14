@@ -4,15 +4,16 @@ Campaign ID: `campaign-ems-001`
 Short ID: `EMS`  
 Document ID: `EM-D028`  
 Owner document: this file  
-Status: **PLANNED - backlog recorded; no slice assigned**  
+Status: **IN_PROGRESS - EMS-S01 rated export assigned; EMS-S03 complete; EMS-S07 paused on owner A/B**  
 Recorded 2026-11-12, America/Chicago; arranger slices EMS-S07 to S12 added 2026-11-13
 
 Progress estimate: **unknown** (2 of 12 slices built; no owner acceptance yet).
 
-**Slice status (2026-11-13):**
+**Slice status (2026-11-14):**
+- **EMS-S01 IN_PROGRESS.** Owner-assigned rated-takes export, coordinated with EMF-S16 intake. [Current contract](../S16_RATED_TAKES.md); checks and local handoff remain pending.
 - **EMS-S03 COMPLETE.** Bar-grid command in this repository (`eutonos.bar-grid.v1`), with snap-to-bars in Fix a part and Grab a section. [Handoff](../handoffs/EMS-S03-HANDOFF.md).
 - **EMS-S07 PAUSED on owner A/B.** Song Plan, song sheet and helpers built and checked. [Handoff](../handoffs/EMS-S07-HANDOFF.md).
-- All other slices are planned.
+- Other slices remain planned.
 
 ## Outcome
 
@@ -39,7 +40,7 @@ It belongs to the same ecosystem as [EMF](EMF_INITIAL_INFRASTRUCTURE.md) (the DJ
 
 | Slice | Where | Dependency | Checked outcome |
 | --- | --- | --- | --- |
-| **EMS-S01** Rated-takes export | PC | none | One command or button exports every rated take into ❤️ / 👍 / 👎 sets: audio stays local; a manifest per set records recipe, rating, duration, tempo/key when known and hashes. Defines the handoff format EMF reads (see EMF-S16). |
+| **EMS-S01** Rated-takes export (**IN_PROGRESS**) | PC | none | One command or button exports every rated take into ❤️ / 👍 / 👎 sets: audio stays local; a manifest per set records recipe, rating, duration, tempo/key when known and hashes. Defines the [handoff format](../S16_RATED_TAKES.md) EMF-S16 reads; ratings are taste labels, not playback review. |
 | **EMS-S02** ✨ Polish | PC | none | One-click mastering of a finished take (loudness target, gentle EQ and limiting) saved as a new take with lineage. Before/after loudness measured; owner listening judges it. |
 | **EMS-S03** Snap sections to bars | PC (+ repo) | none; shares downbeat work with EMF-S15 | ✂ Grab a section and Fix a part can snap to the take's bar grid. The DJ analysis is exposed as a small Node command that writes JSON and Music Studio calls it (one implementation). Checks show cut points on bar lines and report downbeat confidence. |
 | **EMS-S04** Song analyzer and sound database | PC (+ repo for shared code) | EMS-S01 | Measure every exported take with the repository's analysis code; store features beside ratings; report which measured features differ between ❤️ / 👍 / 👎. Correlation only, labelled as such. |

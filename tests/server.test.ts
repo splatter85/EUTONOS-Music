@@ -73,6 +73,9 @@ test('demo server serves only mapped assets with correct MIME, query and HEAD be
     ['/fixtures/s01/manifest.json', 'fixtures/s01/manifest.json', '{"version":0}', 'application/json; charset=utf-8'],
     ['/fixtures/s01/README.md', 'fixtures/s01/README.md', '# Fixture', 'text/plain; charset=utf-8'],
     ['/fixtures/s01/audio/test.wav', 'fixtures/s01/audio/test.wav', 'RIFF sample bytes', 'audio/wav'],
+    ['/local/s16-rated/catalog.json', 'local/s16-rated/catalog.json', '{}', 'application/json; charset=utf-8'],
+    ['/local/s16-rated/pack/manifest.json', 'local/s16-rated/pack/manifest.json', '{}', 'application/json; charset=utf-8'],
+    ['/local/s16-rated/pack/audio/rated-a.wav', 'local/s16-rated/pack/audio/rated-a.wav', 'RIFF', 'audio/wav'],
     ['/local/s09-fl/pack/manifest.json', 'local/s09-fl/pack/manifest.json', '{"fl":1}', 'application/json; charset=utf-8'],
     ['/local/s09-fl/pack/audio/s09-fl-kick.wav', 'local/s09-fl/pack/audio/s09-fl-kick.wav', 'RIFF fl bytes', 'audio/wav'],
   ] as const;
@@ -100,6 +103,8 @@ test('demo server keeps repo files, node adapters, directories and absent assets
     'dist/scripts/serve.js', 'dist/tests/server.test.js', 'dist/src/node.js',
     'dist/src/unreviewed.js', 'web/index.html', 'web/checks.html', 'web/app.ts',
     'fixtures/s01/secret.txt', 'local/s09-fl/delivery/delivery.json', 'local/s09-fl/workspace/projects/x/x.flp',
+    'local/s16-rated/exports/export.json', 'local/s16-rated/recipes/take.json', 'local/s16-rated/pack/source.flp',
+    'local/s16-rated/private.json', 'local/s16-rated/pack/audio/deep/take.wav',
     'local/s09-fl/pack/notes.txt', 'local/other/pack/manifest.json',
   ];
   for (const path of privatePaths) {
@@ -117,6 +122,7 @@ test('demo server rejects raw and encoded traversal before URL normalization', a
   await put(root, 'fixtures/secret.wav', 'outside s01');
   await put(root, 'web/index.html', 'public');
   const paths = [
+    '/local/s16-rated/pack/../catalog.json', '/local/s16-rated/pack/%2e%2e/catalog.json',
     '/fixtures/s01/../secret.wav', '/fixtures/s01/%2e%2e/secret.wav',
     '/fixtures/s01/%2E%2E/secret.wav', '/fixtures/s01/.%2e/secret.wav',
     '/fixtures/s01/%252e%252e/secret.wav', '/fixtures/s01/%2e%2e%2fsecret.wav',
@@ -137,6 +143,9 @@ test('demo server rejects symlink escapes and aliases to private repository file
   // Windows directory junctions do not require symlink administrator privileges.
   await symlink(outside, join(root, 'fixtures/s01/escape'), 'junction');
   await symlink(join(root, 'private'), join(root, 'fixtures/s01/alias'), 'junction');
+  await mkdir(join(root, 'local/s16-rated/pack'), {recursive: true});
+  await symlink(outside, join(root, 'local/s16-rated/pack/audio'), 'junction');
+  assert.equal((await get(port, '/local/s16-rated/pack/audio/secret.wav')).status, 404);
   assert.equal((await get(port, '/fixtures/s01/escape/secret.wav')).status, 404);
   assert.equal((await get(port, '/fixtures/s01/alias/secret.wav')).status, 404);
 });

@@ -97,7 +97,7 @@ export class DeterministicDj {
       .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     const supported = new Set([renderer.pair.from.id, renderer.pair.to.id]);
     this.available = new Set(this.recordings.filter(a => supported.has(a.id)
-      && loaded.files.has(a.file.path) && eligibleForPlayback(a, loaded.allowFixtures)).map(a => a.id));
+      && loaded.files.has(a.file.path) && eligibleForPlayback(a, loaded.allowFixtures, loaded.allowUnreviewed)).map(a => a.id));
     const genres = [...new Set(this.recordings.flatMap(a => [...a.genres]))].sort();
     this.control = new ControlContract({
       tracks: this.recordings.map(a => ({id: a.id, available: this.available.has(a.id)})),

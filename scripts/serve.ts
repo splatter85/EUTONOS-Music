@@ -50,6 +50,11 @@ function assetPath(requestTarget: string): string | undefined {
   if (/^\/local\/s09-fl\/pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
     return path.slice(1);
   }
+  // S16 exposes only the private inventory and explicitly selected audition pack.
+  if (path === '/local/s16-rated/catalog.json' ||
+    /^\/local\/s16-rated\/pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav)$/.test(path)) {
+    return path.slice(1);
+  }
   return undefined;
 }
 

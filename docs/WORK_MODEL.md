@@ -14,7 +14,7 @@ Status: readable EUTONOS-style convention for this new project, 2026-11-03.
 - [Progress](PROGRESS.md) records meaningful delivered checkpoints and validation limits.
 - Git owns detailed revision history.
 
-This repository has no native EUTONOS board installation. The Markdown records are readable source owners, not generated projections or claims of native registration. Do not add a second machine-readable work store until there is an actual consumer and migration plan.
+This repository has adopted EUTONOS Docs, NAV, RAM and a [native board](WORK_ITEMS.md). Readable Markdown owners remain canonical; the campaign owns stage status and Current Tasks remains hand-written. Change the board only through the EUTONOS boards CLI. See [AGENTS](../AGENTS.md#eutonos-setup-notes) for setup and verification limits.
 
 ## Work units and status
 
@@ -60,4 +60,4 @@ Handoffs are **historical as-of snapshots**; the campaign is not duplicated into
 
 Report practical outcome, checks and limits, position in the current campaign map, overall effort with a basis or unknown, plan unchanged/updated/review due, instruction updates where relevant, and the next stage's purpose/prerequisites. Report only verified delivery states.
 
-The project may later adopt native RAM/boards through supported EUTONOS tooling. Until then, concise source-linked progress records provide continuity without pretending that a native capture occurred.
+Use the adopted EUTONOS workflow for native filing and closeout; source-linked records and actual tool readback establish what was recorded. Do not invent board, RAM, NAV or acceptance receipts.

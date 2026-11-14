@@ -1274,7 +1274,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
         "stage_id": "EMF06"
       },
       "id": "EMF-S16",
-      "status": "planned",
+      "next_action": "Owner assigned 2026-11-14; branch work/rated-takes-20261114. Implement immutable rated snapshot, explicit local two-take audition and reconcile status; verify both ends without publishing private audio.",
+      "status": "active",
       "summary": "Import Music Studio rated takes as owner-local DJ material and labelled taste data through the unchanged pack contract.",
       "title": "S16 Rated-takes intake (PC)",
       "type": "slice"
@@ -1333,7 +1334,8 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
         "campaign_id": "campaign-ems-001"
       },
       "id": "EMS-S01",
-      "status": "planned",
+      "next_action": "Owner assigned 2026-11-14; branch work/rated-takes-20261114. Implement immutable rated snapshot, explicit local two-take audition and reconcile status; verify both ends without publishing private audio.",
+      "status": "active",
       "summary": "Export loved, liked and thumbs-down takes as separate local sets with manifests EMF can read.",
       "title": "S01 Rated-takes export",
       "type": "slice"

@@ -87,7 +87,7 @@ export class SmallPlayer {
 
   constructor(readonly context: AudioContext, private readonly loaded: LoadedBrowserPack,
     routeId: string, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation) {
-    this.pair = checkedRoute(loaded.pack, routeId, loaded.allowFixtures);
+    this.pair = checkedRoute(loaded.pack, routeId, loaded.allowFixtures, loaded.allowUnreviewed);
     this.clock = new WebAudioClock(context);
     this.output = context.createGain();
     this.output.gain.value = 0;
@@ -151,7 +151,7 @@ export class SmallPlayer {
         requireAudio(recording, 'The requested recording is not prepared.');
         const fadeOutFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
         source = new RecordedSource(this.context, recording, this.output,
-          {allowFixtures: this.loaded.allowFixtures, fadeOutFrames});
+          {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed, fadeOutFrames});
         const entry = asset.cues.find(c => c.kind === 'entry');
         requireAudio(entry, 'Recording has no entry cue.');
         entryCueId = entry.id;
@@ -178,19 +178,19 @@ export class SmallPlayer {
     const operation = this.operation;
     const transitionOperation = this.transitionOperation;
     // Check before preparation, then check again immediately before committing.
-    planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock, this.loaded.allowFixtures, this.leadFrames);
+    planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock, this.loaded.allowFixtures, this.leadFrames, this.loaded.allowUnreviewed);
     const recordings = await this.decoded!;
     if (operation !== this.operation || transitionOperation !== this.transitionOperation) return;
     const recording = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision)!;
     const overlapFrames = quartersToFrames(this.pair.route.overlap_quarters, this.pair.from.timing!.bpm, this.clock.sampleRate);
     const incoming = new RecordedSource(this.context, recording, this.output,
-      {allowFixtures: this.loaded.allowFixtures, fadeInFrames: overlapFrames});
+      {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed, fadeInFrames: overlapFrames});
     await incoming.prepare(this.clock);
     if (operation !== this.operation || transitionOperation !== this.transitionOperation) { incoming.release(); return; }
     if (this.plan) { incoming.release(); throw new Error('The A → B transition is already scheduled.'); }
     try {
       const plan = planTransition(this.loaded.pack, this.pair.route.id, from.start, this.clock,
-        this.loaded.allowFixtures, this.leadFrames);
+        this.loaded.allowFixtures, this.leadFrames, this.loaded.allowUnreviewed);
       const start: SourceStart = {at: plan.at, entryCueId: plan.route.entry_cue};
       incoming.scheduleStart(start);
       // Both calls use absolute times on the same context; no callback starts B.
@@ -234,7 +234,7 @@ export class SmallPlayer {
     const recording = recordings.find(r => r.asset.id === this.pair.to.id && r.asset.revision === this.pair.to.revision)!;
     const bridgeSource = new ProceduralSource(this.context, bridge, samples, this.output,
       {allowFixtures: this.loaded.allowFixtures, leadIn: checked.leadIn});
-    const incoming = new RecordedSource(this.context, recording, this.output, {allowFixtures: this.loaded.allowFixtures});
+    const incoming = new RecordedSource(this.context, recording, this.output, {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
     const releaseBoth = (): void => { bridgeSource.release(); incoming.release(); };
     try { await Promise.all([bridgeSource.prepare(this.clock), incoming.prepare(this.clock)]); }
     catch (error) { releaseBoth(); throw error; }
@@ -298,7 +298,7 @@ export class SmallPlayer {
       if (!current()) return;
       if (ready.kind === 'fallback') { await useAuthoredFallback(ready.reason); return; }
       incoming = new RecordedSource(this.context, ready.incoming, this.output,
-        {allowFixtures: this.loaded.allowFixtures});
+        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');

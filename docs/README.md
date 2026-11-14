@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: S01–S09 are in main. **S09 real FL import is complete** ([guide](S09_FL_IMPORT.md), [handoff](handoffs/EMF-S09-HANDOFF.md)). Real FL Studio renders play in the DJ's hybrid handoff and the sampler through the unchanged pack contract; the pack is owner-local. Windows only: 166 Node tests, 24 native offline groups and 16 browser groups passed; macOS/Linux were not run. Physical output and listening are NOT TESTED. The first S11 increment (local library, recipe replay and three recipe studies; [guide](S11_LIBRARY.md), [handoff](handoffs/EMF-S11-HANDOFF.md)) is also in main, with 182 Node tests. Next is S10 owner listening; MVP acceptance remains open.
+Status: S01–S09 and S14/S15 DJ transitions are in main. The first S11 increment is integrated; [Studio](STUDIO_APP.md) uses its pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are assigned and IN_PROGRESS** ([contract](S16_RATED_TAKES.md)). EMS-S03 is complete; EMS-S07 is paused on owner A/B. S10 owner listening follows the rated-takes handoff, then S12 Mission Control. Recent engineering evidence is Windows-only; physical output, listening and MVP acceptance remain open. [Current Tasks](CURRENT_TASKS.md) routes current evidence.
 
 ## Start with the next audible result
 
@@ -23,12 +23,13 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S06 import](S06_IMPORT.md) | The producer delivery format, the importer and its refusals and receipt, the performer palette contract and the mock FL producer (no FL Studio) |
 | [S07 app](S07_APP.md) | Integrated demo, original/imported palette comparison, repeatable gates, review and Windows-only proof limits |
 | [S09 FL import](S09_FL_IMPORT.md) | Real FL renders through the unchanged contract, owner-local rights, fade-cut shaping, per-route hybrid policies and handoff measurements |
+| [Rated-takes handoff](S16_RATED_TAKES.md) | EMS-S01 export and EMF-S16 owner-local catalogue and explicit DJ audition contract |
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
 | [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits; also the bar-grid command (`eutonos.bar-grid.v1`) used for snap-to-bars |
 | [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |
-| [DJ transitions research](proposals/DJ_TRANSITIONS_RESEARCH.md) | Proposal: research synthesis and recommended order for EMF-S15 (nothing implemented or heard) |
+| [DJ transitions research](proposals/DJ_TRANSITIONS_RESEARCH.md) | Proposal: research synthesis and recommended order for EMF-S15; its delivered engineering scope is recorded in the S15 handoff, listening remains untested |
 | [Music Studio arranger](proposals/STUDIO_ARRANGER.md) | Proposal: Song Plan, recipe modes, timeline, region edits, DJ as co-producer and quality passes, with the timeline spike (EMS-S07 to S12) |
 | [Arranger research](proposals/STUDIO_ARRANGER_RESEARCH.md) | Research: product timeline concepts, song-editing tools, stronger local models and ACE-Step quality levers (nothing installed or heard) |
 | [Local generators](proposals/LOCAL_GENERATORS.md) | Proposal: local music-generation candidates (nothing installed or heard by this repo) |

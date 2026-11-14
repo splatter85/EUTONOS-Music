@@ -214,7 +214,7 @@ function route(value: unknown, at: string): CueRoute {
   const o = object(value, at, ['id', 'revision', 'from', 'to', 'exit_cue', 'entry_cue', 'overlap_quarters', 'review']);
   return {...identity(o, at), from: ref(o.from, `${at}.from`), to: ref(o.to, `${at}.to`),
     exit_cue: id(o.exit_cue, `${at}.exit_cue`), entry_cue: id(o.entry_cue, `${at}.entry_cue`),
-    overlap_quarters: number(o.overlap_quarters, `${at}.overlap_quarters`, 4, 16384),
+    overlap_quarters: number(o.overlap_quarters, `${at}.overlap_quarters`, 0, 16384),
     review: choice(o.review, `${at}.review`, ['fixture-only'])};
 }
 
@@ -250,8 +250,9 @@ export function validatePackManifest(value: unknown): AudioPack {
     if (a.timing.bpm !== b.timing.bpm || r.overlap_quarters % 4 !== 0) {
       fail('INCOMPATIBLE_ROUTE', r.id, 'v0 requires equal tempo and whole-bar overlap');
     }
-    if (!a.harmony_pitch_classes || !b.harmony_pitch_classes ||
-        a.harmony_pitch_classes.join(',') !== b.harmony_pitch_classes.join(',')) {
+    // A deliberate cut has no overlapping harmonic material and claims no harmonic match.
+    if (r.overlap_quarters > 0 && (!a.harmony_pitch_classes || !b.harmony_pitch_classes ||
+        a.harmony_pitch_classes.join(',') !== b.harmony_pitch_classes.join(','))) {
       fail('INCOMPATIBLE_ROUTE', r.id, 'matching authored constant harmony is required; key labels alone are insufficient');
     }
     if (exit.position_quarters + r.overlap_quarters > a.timing.bars * 4 ||
@@ -263,7 +264,8 @@ export function validatePackManifest(value: unknown): AudioPack {
 }
 
 /** Fixture mode is explicit. Well-formed metadata alone never admits unreviewed audio. */
-export function eligibleForPlayback(asset: AudioAsset, allowFixtures = false): boolean {
+export function eligibleForPlayback(asset: AudioAsset, allowFixtures = false, allowUnreviewed = false): boolean {
   return asset.rights.allowed_uses.includes('playback') &&
-    (asset.eligibility === 'listening-reviewed' || (allowFixtures && asset.eligibility === 'fixture-only'));
+    (asset.eligibility === 'listening-reviewed' || (allowFixtures && asset.eligibility === 'fixture-only') ||
+      (allowUnreviewed && asset.eligibility === 'unreviewed'));
 }

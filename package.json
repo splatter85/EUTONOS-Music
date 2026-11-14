@@ -16,6 +16,7 @@
     "fixtures:check": "npm run build && node dist/scripts/generate-fixtures.js --check",
     "validate": "npm run build && node dist/scripts/validate-pack.js fixtures/s01",
     "import": "npm run build && node dist/scripts/import-delivery.js",
+    "import:rated": "npm run build && node dist/scripts/import-rated-takes.js",
     "mock:fl": "npm run build && node dist/scripts/mock-fl-producer.js",
     "library:demo": "npm run build && node dist/scripts/s11-library-demo.js",
     "fl:produce": "npm run build && node dist/scripts/fl-producer.js",
