@@ -1252,6 +1252,9 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "evidence_refs": [
         {
           "path": "docs/campaigns/EMF_INITIAL_INFRASTRUCTURE.md"
+        },
+        {
+          "path": "docs/handoffs/EMF-S16-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -1267,15 +1270,27 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-12T21:38:11.471288+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "e23fa88202c8f168d33fd863aa2e0e3693a84f5667b8b4895d65b7b4205315b2",
+              "context": {
+                "app": "codex",
+                "model": null,
+                "session": "01a1b024-eeac-7ae1-a8fc-60f9612cdafe"
+              },
+              "event_id": "dfc189ff-554c-5e07-b5ce-a3fff1fcc5a0",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-14T17:52:50.554130+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "campaign_id": "campaign-emf-001",
         "stage_id": "EMF06"
       },
       "id": "EMF-S16",
-      "next_action": "Owner assigned 2026-11-14; branch work/rated-takes-20261114. Implement immutable rated snapshot, explicit local two-take audition and reconcile status; verify both ends without publishing private audio.",
-      "status": "active",
+      "status": "completed",
       "summary": "Import Music Studio rated takes as owner-local DJ material and labelled taste data through the unchanged pack contract.",
       "title": "S16 Rated-takes intake (PC)",
       "type": "slice"
@@ -1313,6 +1328,9 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       "evidence_refs": [
         {
           "path": "docs/campaigns/EMS_MUSIC_STUDIO.md"
+        },
+        {
+          "path": "docs/handoffs/EMS-S01-HANDOFF.md"
         }
       ],
       "extensions": {
@@ -1328,14 +1346,26 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
             "kind": "created",
             "recorded_at": "2026-11-12T21:38:11.471288+00:00"
           },
-          "events": [],
+          "events": [
+            {
+              "completed_revision": "82346bec75684aae7b8482cb8a3b2c0522b230a573b20daa28c081e0b1cecfc1",
+              "context": {
+                "app": "codex",
+                "model": null,
+                "session": "01a1b024-eeac-7ae1-a8fc-60f9612cdafe"
+              },
+              "event_id": "d1b4c3f7-e97d-53da-95e0-e75fafed5266",
+              "human": null,
+              "kind": "completed",
+              "recorded_at": "2026-11-14T17:52:50.554130+00:00"
+            }
+          ],
           "profile": "eutonos.work-attribution.v1"
         },
         "campaign_id": "campaign-ems-001"
       },
       "id": "EMS-S01",
-      "next_action": "Owner assigned 2026-11-14; branch work/rated-takes-20261114. Implement immutable rated snapshot, explicit local two-take audition and reconcile status; verify both ends without publishing private audio.",
-      "status": "active",
+      "status": "completed",
       "summary": "Export loved, liked and thumbs-down takes as separate local sets with manifests EMF can read.",
       "title": "S01 Rated-takes export",
       "type": "slice"

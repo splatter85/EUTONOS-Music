@@ -1,6 +1,6 @@
 # Slice handoffs
 
-This folder contains historical, source-pinned handoffs for [EMF](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md), [EMS](../campaigns/EMS_MUSIC_STUDIO.md) and later [EMD](../campaigns/EMD_DJ_APP.md) slices. [Work Model](../WORK_MODEL.md) owns the policy; each campaign owns its live status and slice order. Next-step statements below describe the original handoff checkpoint; [Current Tasks](../CURRENT_TASKS.md) routes the current assignment. **EMS-S01 + EMF-S16 are IN_PROGRESS**; final handoffs and evidence are pending.
+This folder contains historical, source-pinned handoffs for [EMF](../campaigns/EMF_INITIAL_INFRASTRUCTURE.md), [EMS](../campaigns/EMS_MUSIC_STUDIO.md) and later [EMD](../campaigns/EMD_DJ_APP.md) slices. [Work Model](../WORK_MODEL.md) owns the policy; each campaign owns its live status and slice order. Next-step statements below describe the original handoff checkpoint; [Current Tasks](../CURRENT_TASKS.md) routes the current assignment. **EMS-S01 + EMF-S16 are built and locally verified**; final full gates and Music target integration are pending. [EMS-S01 handoff](EMS-S01-HANDOFF.md), [EMF-S16 handoff](EMF-S16-HANDOFF.md).
 
 ## Mandatory at every slice stop
 

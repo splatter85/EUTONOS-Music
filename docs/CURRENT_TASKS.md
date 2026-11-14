@@ -2,13 +2,13 @@
 
 Document ID: `EM-D010`
 
-**Assigned checkpoint (2026-11-14): EMS-S01 + EMF-S16 IN_PROGRESS.** The owner assigned rated-takes export, DJ intake and status reconciliation. Working branch: `work/rated-takes-20261114`, starting at `a6d48f9`. Native prechecks found no overlapping work. Build an immutable owner-local snapshot of every rated take, retaining negative examples and recipes; import its taste labels separately from an explicitly selected two-take DJ audition. Ratings do not confer playback review. The pack schema, default eligibility checks and one playback owner remain in force. Next: implement and check both ends with isolated synthetic data, then verify the local handoff without changing ratings or publishing audio.
+**Assigned checkpoint (2026-11-14): EMS-S01 + EMF-S16 COMPLETE for engineering scope; all full gates passed; coordinator local main integration/readback next.** Music source `8e3147814eeb2c2254a1d2c96232a60ad520a40f`, working branch `work/rated-takes-20261114`. Exporter `8b145c218fd776c0fda8505edae9926a398ed064` is integrated into owner-local main; its 18 tests pass. Actual export and intake each retain 43 rated takes: 3 love, 6 like, 34 dislike. All 129 exported files independently match hashes/byte counts (2,244,119,339 bytes). The explicit two-love-take audition uses requested 128 BPM, remains unreviewed and uses a direct zero-overlap cut; its two audio files total 63,504,088 bytes. Independent final review: KEEP after fixes. Publication has not been performed. [EMS-S01 handoff](handoffs/EMS-S01-HANDOFF.md), [EMF-S16 handoff](handoffs/EMF-S16-HANDOFF.md).
 
 **Current map (2026-11-14).** One ecosystem in three campaigns ([EM-DEC036](DECISIONS.md)): [EMF](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns the engine and Mission Control adapter; [EMD](campaigns/EMD_DJ_APP.md) owns the later human-facing DJ app; [EMS](campaigns/EMS_MUSIC_STUDIO.md) owns Music Studio improvements. EMD has no assigned slice. Campaigns own status; the [native board](WORK_ITEMS.md) mirrors it through the boards CLI.
 
 | Work | Current state and evidence |
 | --- | --- |
-| **EMS-S01 + EMF-S16** | **Assigned, IN_PROGRESS.** Immutable owner-local rated export and validated catalogue/intake; only an explicitly selected equal-requested-BPM pair enters the local unreviewed audition. [Contract](S16_RATED_TAKES.md). No current-assignment completion or checks claimed yet. |
+| **EMS-S01 + EMF-S16** | **COMPLETE (engineering scope).** Full export/intake verified; synthetic Studio check 13 checks and server check 7 tests pass. 421 Node tests and full browser gates passed. Actual private pair page load passed 12 assertions without Play or audio. Native board completion was submitted/read back via CLI; campaigns stay active. Coordinator local main integration/readback is next. [Contract](S16_RATED_TAKES.md) and handoffs above own details. |
 | **EMF-S14/S15** | Integrated into main; S15 engineering complete at `17279e5`. Windows main checks: 408 Node tests; browser gate 37 results plus Studio's 10 checks. [S14 guide](DJ_TRANSITIONS.md), [S14 handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md), [S15 handoff](handoffs/EMF-S15-HANDOFF.md). Evaluator remains offline; its 0.4 s low-band gap finding in the S14 bass swap is measured, not heard. |
 | **EMF-S11** | First increment integrated; slice remains in progress. Local library, exact recipe replay, stopped restore and three recipe studies exist. [Studio](STUDIO_APP.md) now saves/restores patterns through it; legacy DJ and sampler pages remain unwired. [S11 guide](S11_LIBRARY.md), [historical handoff](handoffs/EMF-S11-HANDOFF.md). Remaining: legacy-page wiring, playback history, wider genres and transition coverage. |
 | **EMS-S03** | **COMPLETE.** Shared bar-grid command and Music Studio snap-to-bars. Requested 124 BPM measured 125; downbeats/bar 1 remain approximate. [Handoff](handoffs/EMS-S03-HANDOFF.md). |
@@ -21,7 +21,7 @@ Document ID: `EM-D010`
 
 Every slice requires the [detailed repository handoff and mini chat handoff](WORK_MODEL.md#per-slice-handoff-policy). [Progress](PROGRESS.md) owns historical checkpoints; keep current evidence in its original handoff rather than repeating old test inventories here.
 
-**Run the existing demo:** `npm run demo`, then http://127.0.0.1:4173/studio.html. The owner-local real-FL pack is available only where already produced; see the S09 guide. Rated-takes local intake is being implemented under the current assignment.
+**Run the existing demo:** `npm run demo`, then http://127.0.0.1:4173/studio.html. The owner-local real-FL pack is available only where already produced; see the S09 guide. The locally imported pair opens at http://127.0.0.1:4173/studio.html?pack=rated; explicit Play is required.
 
 EUTONOS orientation reads exactly one `tokenslang-work` block. This compatibility entry selects no product slice; the assigned checkpoint and campaigns above own the actual scope.
 

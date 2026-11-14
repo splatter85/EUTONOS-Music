@@ -1,7 +1,7 @@
 # First playable — standalone three-layer MVP
 
 Document ID: `EM-D016`  
-Status: **S01–S09 and S14/S15 are in main; the full three-layer MVP remains incomplete.** Real FL renders play through the unchanged pack contract (owner-local). The first S11 increment and Studio pattern save/restore exist; the legacy pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are assigned and IN_PROGRESS** ([contract](S16_RATED_TAKES.md)). S10 owner listening follows, then S12 Mission Control. Recent checks ran on Windows only. Physical output and listening are NOT TESTED. [Current Tasks](CURRENT_TASKS.md) routes source-pinned evidence.
+Status: **S01–S09 and S14/S15 are in main; the full three-layer MVP remains incomplete.** Real FL renders play through the unchanged pack contract (owner-local). The first S11 increment and Studio pattern save/restore exist; the legacy pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback next under the coordinator** ([contract](S16_RATED_TAKES.md)). S10 owner listening follows, then S12 Mission Control. Recent checks ran on Windows only. Physical output and listening are NOT TESTED. [Current Tasks](CURRENT_TASKS.md) routes source-pinned evidence.
 
 **Platforms:** Windows first for real FL/MCP integration, with Windows, macOS and Linux required for the shared music system. Each host-specific authoring adapter and browser/audio-device path needs its own verification; portable fixture/test execution alone does not establish it.
 

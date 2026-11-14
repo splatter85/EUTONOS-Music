@@ -1,6 +1,6 @@
 # Documentation map
 
-Status: S01–S09 and S14/S15 DJ transitions are in main. The first S11 increment is integrated; [Studio](STUDIO_APP.md) uses its pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are assigned and IN_PROGRESS** ([contract](S16_RATED_TAKES.md)). EMS-S03 is complete; EMS-S07 is paused on owner A/B. S10 owner listening follows the rated-takes handoff, then S12 Mission Control. Recent engineering evidence is Windows-only; physical output, listening and MVP acceptance remain open. [Current Tasks](CURRENT_TASKS.md) routes current evidence.
+Status: S01–S09 and S14/S15 DJ transitions are in main. The first S11 increment is integrated; [Studio](STUDIO_APP.md) uses its pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback next under the coordinator** ([contract](S16_RATED_TAKES.md)). EMS-S03 is complete; EMS-S07 is paused on owner A/B. S10 owner listening follows the rated-takes handoff, then S12 Mission Control. Recent engineering evidence is Windows-only; physical output, listening and MVP acceptance remain open. [Current Tasks](CURRENT_TASKS.md) routes current evidence.
 
 ## Start with the next audible result
 
@@ -23,7 +23,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S06 import](S06_IMPORT.md) | The producer delivery format, the importer and its refusals and receipt, the performer palette contract and the mock FL producer (no FL Studio) |
 | [S07 app](S07_APP.md) | Integrated demo, original/imported palette comparison, repeatable gates, review and Windows-only proof limits |
 | [S09 FL import](S09_FL_IMPORT.md) | Real FL renders through the unchanged contract, owner-local rights, fade-cut shaping, per-route hybrid policies and handoff measurements |
-| [Rated-takes handoff](S16_RATED_TAKES.md) | EMS-S01 export and EMF-S16 owner-local catalogue and explicit DJ audition contract |
+| [Rated-takes handoff](S16_RATED_TAKES.md) | EMS-S01 export and EMF-S16 owner-local catalogue and explicit DJ audition contract; [export evidence](handoffs/EMS-S01-HANDOFF.md), [intake evidence](handoffs/EMF-S16-HANDOFF.md) |
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
