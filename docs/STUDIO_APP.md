@@ -26,7 +26,7 @@ Then open **http://127.0.0.1:4173/studio.html**. Pick the pack in the top bar: S
 
 ## One playback owner
 
-The page holds the same Web Lock as the other pages (`eutonos-music-s02-playback`). Starting the DJ, the sampler or a take preview first stops whichever is playing. Hiding the tab pauses playback. The page uses `requestAnimationFrame` to redraw, with a 250 ms timer as a fallback for windows that stop animation frames.
+The page holds the same Web Lock as the other pages (`eutonos-music-s02-playback`). Starting the DJ, the sampler or a take preview first stops whichever is playing. Hiding the tab pauses the DJ and sampler and stops a take preview; press Play or Preview explicitly to continue. Switching or stopping a preview cancels its pending start. The page uses `requestAnimationFrame` to redraw, with a 250 ms timer as a fallback for windows that stop animation frames.
 
 ## The AI generator (optional)
 
@@ -67,7 +67,7 @@ Generated takes are unreviewed until the owner listens to them. **Send to EUTONO
 5. The sampler plays, stops, rolls a seed and saves.
 6. Starting the DJ stops the sampler.
 7. A saved pattern restores from the Library.
-8. Against an **in-test fake** Music Studio: generate, the takes list, and the ❤️ and 👎 ratings all work. A 👎 take leaves the Recent list.
+8. Against an **in-test fake** Music Studio: generate, the takes list, and the ❤️ and 👎 ratings all work. A 👎 take leaves the Recent list. A pending submission admits only one generation request; a failed submission permits an explicit retry. Switching a pending preview preserves the replacement and its playback lock; mute, stop and pagehide remain effective.
 9. All three tabs fit a 390 px phone width.
 10. There are no page errors.
 

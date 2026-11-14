@@ -32,6 +32,8 @@ const waitText = (page: Page, id: string, pattern: RegExp, timeout = 15000) =>
 // A tiny in-test stand-in for the local Music Studio API (http://127.0.0.1:7870).
 const fake = {online: false, exports: 0, patched: [] as unknown[], generated: [] as unknown[],
   takes: [{id: 'take-1', title: 'Fake take', duration_seconds: 30, bpm: 120, key: 'A minor', starred: false, rejected: false, rating: null as string | null}]};
+let generateGate: Promise<void> | undefined;
+let failGenerate = false;
 async function studioApi(route: Route): Promise<void> {
   if (!fake.online) { await route.abort('connectionrefused'); return; }
   const request = route.request(), url = new URL(request.url()), method = request.method();
@@ -43,7 +45,11 @@ async function studioApi(route: Route): Promise<void> {
   if (url.pathname === '/api/health') return json({engine: 'ready', model: 'fake', version: 'test'});
   if (url.pathname === '/api/takes/take-1/audio') return route.fulfill({contentType: 'audio/wav', body: await readFile(new URL('../../fixtures/s01/audio/s01-recording-a.wav', import.meta.url))});
   if (url.pathname === '/api/takes') return json({takes: fake.takes});
-  if (url.pathname === '/api/generate' && method === 'POST') { fake.generated.push(request.postDataJSON()); return json({job_id: 'job-1'}); }
+  if (url.pathname === '/api/generate' && method === 'POST') {
+    fake.generated.push(request.postDataJSON());
+    await generateGate;
+    return failGenerate ? json({error: 'Synthetic submission failure'}, 503) : json({job_id: 'job-1'});
+  }
   if (url.pathname === '/api/jobs/job-1') return json({status: 'done', progress: 1, take_ids: ['take-1']});
   if (url.pathname === '/api/takes/take-1' && method === 'PATCH') {
     const change = request.postDataJSON(); fake.patched.push(change); Object.assign(fake.takes[0]!, change);
@@ -140,10 +146,27 @@ try {
   // Generator against the in-test fake service.
   fake.online = true;
   await waitText(page, 'gen-status', /Ready/, 12000);
+  let releaseGenerate!: () => void;
+  generateGate = new Promise<void>(resolve => { releaseGenerate = resolve; });
+  failGenerate = true;
+  const submitting = page.waitForRequest(request => request.url().endsWith('/api/generate') && request.method() === 'POST');
+  await page.evaluate(() => {
+    const form = document.getElementById('gen-form') as HTMLFormElement;
+    form.requestSubmit(); form.requestSubmit();
+  });
+  await submitting;
+  assert.equal(await page.locator('#gen-go').isDisabled(), true, 'submission must disable Generate before its response');
+  assert.equal(fake.generated.length, 1, 'repeated submit must not create a second pending generation');
+  await waitText(page, 'gen-status', /Submitting/);
+  releaseGenerate();
+  await waitText(page, 'gen-error', /Synthetic submission failure/);
+  await page.waitForFunction(() => !(document.getElementById('gen-go') as HTMLButtonElement).disabled);
+  assert.equal(fake.generated.length, 1, 'failed submission is not automatically retried');
+  generateGate = undefined; failGenerate = false;
   await page.getByRole('button', {name: 'Generate'}).click();
   await waitText(page, 'gen-takes', /Fake take/, 12000);
   await waitText(page, 'gen-go', /^Generate$/, 12000);
-  assert.equal(fake.generated.length, 1);
+  assert.equal(fake.generated.length, 2);
   assert.equal((fake.generated[0] as {bpm: number}).bpm, 120);
   assert.equal((fake.generated[0] as {thinking: boolean}).thinking, false);
   await page.getByRole('tab', {name: 'Library'}).click();
@@ -156,6 +179,7 @@ try {
   await page.waitForFunction(() => !/Fake take/.test(document.getElementById('gen-takes')?.textContent ?? ''));
   assert.deepEqual(fake.patched, [{rating: 'love'}, {rating: 'dislike'}]);
   report.checks.push('with a fake Music Studio: Generate posts the form, takes list, Love and Nope patch the rating (Nope hides it from Recent)');
+  report.checks.push('deferred generation admits one request, reports submission separately, and recovers from failure only on explicit retry');
 
   await page.getByRole('button', {name: 'Export all rated takes', exact: true}).click();
   await waitText(page, 'export-rated-status', /Private rated snapshot exported/);
@@ -248,6 +272,53 @@ try {
   await page.locator('#dj-stop').click(); await waitText(page, 'dj-now', /^Nothing$/);
   await other.close();
   report.checks.push('take preview and DJ mutually exclude playback across tabs; stopping preview releases ownership');
+  // A rejected old media play promise must not stop its replacement or release its lock.
+  const race = await context.newPage();
+  race.on('pageerror', error => errors.push(error.message));
+  let releaseAlpha!: () => void;
+  let alphaGate = new Promise<void>(resolve => { releaseAlpha = resolve; });
+  await race.route('http://127.0.0.1:7870/api/takes', route => route.fulfill({json: {takes: [
+    {id: 'alpha', title: 'Alpha'}, {id: 'beta', title: 'Beta'},
+  ]}}));
+  await race.route('http://127.0.0.1:7870/api/takes/*/audio', async route => {
+    if (route.request().url().includes('/alpha/')) await alphaGate;
+    await route.fulfill({contentType: 'audio/wav', body: await readFile(new URL('../../fixtures/s01/audio/s01-recording-a.wav', import.meta.url))}).catch(() => undefined);
+  });
+  await race.goto(origin + '/studio.html?tab=library');
+  await waitText(race, 'lib-takes', /Alpha.*Beta/);
+  const alphaRequest = race.waitForRequest('**/api/takes/alpha/audio');
+  await race.getByRole('button', {name: 'Preview Alpha', exact: true}).click();
+  await alphaRequest;
+  await race.locator('#master-mute').click();
+  await race.getByRole('button', {name: 'Preview Beta', exact: true}).click();
+  await race.waitForFunction(() => {
+    const audio = document.getElementById('preview') as HTMLAudioElement;
+    return !audio.paused && audio.src.includes('/beta/audio');
+  });
+  releaseAlpha();
+  await race.getByRole('button', {name: 'Stop Beta', exact: true}).waitFor();
+  assert.equal(await text(race, 'gen-error'), '');
+  await page.locator('#dj-play').click(); await waitText(page, 'dj-error', /Another tab is playing/);
+  assert.equal(await race.locator('#preview').evaluate((audio: HTMLAudioElement) => audio.muted && !audio.paused), true);
+  await race.getByRole('button', {name: 'Stop Beta', exact: true}).click();
+  await page.locator('#dj-play').click(); await waitText(page, 'dj-now', /S01 A/);
+  await page.locator('#dj-stop').click(); await waitText(page, 'dj-now', /^Nothing$/);
+  // Stop and pagehide invalidate a pending start as well as a pending play failure.
+  for (const end of ['stop', 'pagehide']) {
+    alphaGate = new Promise<void>(resolve => { releaseAlpha = resolve; });
+    const pending = race.waitForRequest('**/api/takes/alpha/audio');
+    await race.getByRole('button', {name: 'Preview Alpha', exact: true}).click();
+    await pending;
+    if (end === 'stop') await race.getByRole('button', {name: 'Stop Alpha', exact: true}).click();
+    else await race.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+    releaseAlpha();
+    assert.equal(await race.locator('#preview').evaluate((audio: HTMLAudioElement) => audio.paused && !audio.hasAttribute('src')), true);
+    assert.equal(await text(race, 'gen-error'), '');
+    await page.locator('#dj-play').click(); await waitText(page, 'dj-now', /S01 A/);
+    await page.locator('#dj-stop').click(); await waitText(page, 'dj-now', /^Nothing$/);
+  }
+  await race.close();
+  report.checks.push('switching a pending preview preserves newer audio and its lock after the old play rejects; mute, stop and pagehide remain effective');
   assert.deepEqual(errors, []);
   report.checks.push('no page errors');
   console.log(`Studio browser check passed (${report.checks.length} checks, ${report.browser}).`);

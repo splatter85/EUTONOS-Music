@@ -72,6 +72,7 @@ let pauseReason = '';
 let ownership: Promise<void> | null = null, releaseLock: (() => void) | null = null, leaseEpoch = 0;
 const preview = $<HTMLAudioElement>('preview');
 let previewing: string | null = null;
+let previewEpoch = 0;
 
 function releaseOwnership(): void { ++leaseEpoch; releaseLock?.(); releaseLock = null; ownership = null; }
 function acquireOwnership(): Promise<void> {
@@ -522,6 +523,7 @@ function ratingOf(take: Take): Rating | null { return take.rating ?? (take.starr
 let engine: 'offline' | 'stopped' | 'loading' | 'ready' | 'busy' = 'offline';
 let takes: Take[] = [];
 let jobId: string | null = null;
+let generationPending = false;
 let jobStage = '';
 const genError = $('gen-error');
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -554,6 +556,7 @@ $('gen-engine').addEventListener('click', () => { void (async () => {
 })(); });
 $('gen-form').addEventListener('submit', event => { event.preventDefault(); void generate(); });
 async function generate(): Promise<void> {
+  if (generationPending || jobId !== null) return;
   genError.textContent = '';
   const body = {
     description: $<HTMLTextAreaElement>('gen-description').value.trim(),
@@ -563,8 +566,10 @@ async function generate(): Promise<void> {
     thinking: !$<HTMLInputElement>('gen-quick').checked,
   };
   if (!body.description) { genError.textContent = 'Describe the music first.'; return; }
+  generationPending = true; renderGenerator();
   try {
     const job = await api<{job_id: string}>('/api/generate', {method: 'POST', body: JSON.stringify(body)});
+    generationPending = false;
     jobId = job.job_id; jobStage = 'Queued'; engine = 'busy'; renderGenerator();
     for (;;) {
       await new Promise(r => setTimeout(r, 1500));
@@ -576,37 +581,44 @@ async function generate(): Promise<void> {
     }
     await refreshTakes();
   } catch (error) { genError.textContent = message(error); }
-  finally { jobId = null; jobStage = ''; void pollHealth(); }
+  finally { generationPending = false; jobId = null; jobStage = ''; renderGenerator(); void pollHealth(); }
 }
 function renderGenerator(): void {
   const light = $('gen-light');
   light.className = `light ${engine === 'offline' ? 'off' : engine === 'ready' ? 'ok' : engine === 'stopped' ? '' : 'busy'}`;
-  setText('gen-status', engine === 'offline' ? 'Music Studio not running' : jobId ? (jobStage || 'Generating…') : engine === 'stopped' ? 'Engine off — Generate starts it (about 1½ minutes the first time)' : engine === 'loading' ? 'Engine warming up (about 1½ minutes)…' : engine === 'busy' ? 'Busy with another job…' : 'Ready');
+  setText('gen-status', generationPending ? 'Submitting generation request…' : engine === 'offline' ? 'Music Studio not running' : jobId ? (jobStage || 'Generating…') : engine === 'stopped' ? 'Engine off — Generate starts it (about 1½ minutes the first time)' : engine === 'loading' ? 'Engine warming up (about 1½ minutes)…' : engine === 'busy' ? 'Busy with another job…' : 'Ready');
   $('gen-offline').hidden = engine !== 'offline';
   const engineButton = $<HTMLButtonElement>('gen-engine'); engineButton.hidden = engine !== 'stopped';
-  const canGenerate = (engine === 'ready' || engine === 'stopped') && jobId === null;
+  const canGenerate = (engine === 'ready' || engine === 'stopped') && !generationPending && jobId === null;
   const form = $<HTMLFormElement>('gen-form'); form.classList.toggle('is-disabled', engine === 'offline');
   $<HTMLButtonElement>('gen-go').disabled = !canGenerate;
-  setText('gen-go', jobId ? 'Generating…' : 'Generate');
+  setText('gen-go', generationPending ? 'Submitting…' : jobId ? 'Generating…' : 'Generate');
   $('gen-progress').hidden = jobId === null;
   $<HTMLButtonElement>('export-rated').disabled = engine === 'offline' || exportingRated;
   $('lib-takes-hint').hidden = engine !== 'offline';
 }
 function stopPreview(): void {
+  ++previewEpoch;
   preview.pause(); preview.removeAttribute('src'); previewing = null;
   if (!djActive() && !samplerActive()) releaseOwnership();
   renderTakes();
 }
 async function togglePreview(take: Take): Promise<void> {
   if (previewing === take.id) { stopPreview(); return; }
-  await takeOver('preview');
-  preview.src = `${STUDIO_API}/api/takes/${encodeURIComponent(take.id)}/audio`;
-  preview.volume = Number(volume.value); preview.muted = muted; previewing = take.id;
+  const epoch = ++previewEpoch;
+  preview.pause(); previewing = take.id; renderTakes();
   try {
+    await takeOver('preview');
+    if (epoch !== previewEpoch) return;
+    preview.src = `${STUDIO_API}/api/takes/${encodeURIComponent(take.id)}/audio`;
+    preview.volume = Number(volume.value); preview.muted = muted;
     await acquireOwnership();
-    if (previewing !== take.id) return;
+    if (epoch !== previewEpoch) return;
     await preview.play();
-  } catch (error) { genError.textContent = message(error); stopPreview(); }
+  } catch (error) {
+    if (epoch !== previewEpoch) return;
+    genError.textContent = message(error); stopPreview();
+  }
   renderTakes();
 }
 preview.addEventListener('ended', stopPreview);
@@ -652,7 +664,7 @@ document.addEventListener('visibilitychange', () => {
     pauseReason = 'Paused because the tab was hidden. Press ▶ to continue.'; void send({type: 'transport', action: 'pause'});
   }
   if (sampler && ['loading', 'scheduled', 'playing'].includes(sampler.snapshot().state)) void sampler.pause().catch(() => undefined);
-  if (previewing) preview.pause();
+  if (previewing) stopPreview();
 });
 window.addEventListener('pagehide', () => {
   const a = dj, b = sampler; dj = null; sampler = null;
