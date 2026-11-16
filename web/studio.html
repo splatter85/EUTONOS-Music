@@ -98,6 +98,8 @@
           <div class="phone-box">
             <button id="phone-stream" class="chip" type="button" aria-pressed="false">Stream to phone: off</button>
             <label class="check"><input id="phone-background" type="checkbox" autocomplete="off"> Keep playing when this tab is hidden (only while streaming)</label>
+            <label class="check" hidden><input id="phone-auto" type="checkbox" autocomplete="off" checked> Start automatically when the phone connects</label>
+            <p id="phone-stream-auto" class="dim" role="status"></p>
             <p id="phone-stream-state" class="dim" role="status">Off</p><p id="phone-stream-detail" class="dim"></p><p id="phone-stream-error" class="error" role="alert"></p>
           </div>
         </div>
