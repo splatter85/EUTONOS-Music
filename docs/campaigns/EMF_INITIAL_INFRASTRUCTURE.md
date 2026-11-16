@@ -91,10 +91,11 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF-S21** (new S17) | **PC** (**IN PROGRESS 2026-11-16: Part A MERGED into local main at 982e6f8 after independent review and fixes (601 Node tests, full browser gate, Windows only; not pushed; listening NOT TESTED); Windows gates in [handoff](../handoffs/EMF-S21-HANDOFF.md); Part B not started; [guide](../S21_TRANSITION_PLANNER.md)**) | EMF09/11/13 transition planning | S19–S20 | Transition planner. Part A (first): remove the early-song entry bias, analyse whole songs, make clean cuts a last resort, let Auto choose ramp, filter sweep, loop-extend, brake, echo and tempo meet-in-the-middle for large gaps, and add an EQ choreography library (smooth tone fade-in/out blends and deliberate bass-drop/EQ-silence handovers of one or more bars), with owner-selectable randomised parameters for rating. Part B: structure/section analysis, pairwise candidate scoring, render-measure-rerank with cache and cancellation, vocal and bass clash estimates, three-band LR4 split. Source: owner transition feedback and ChatGPT research 2026-11-16 (leads, not evidence). Listening NOT TESTED until S10. |
 | **EMF-S10** (new S18) | **PC + owner** | EMF05 listening gate; standalone MVP milestone | S07, S09, S14–S16 by owner order | Owner listens and accepts/revises the complete creation→generator→DJ→app flow. Playback works with FL/agents closed. **Does not complete EMF19 full release.** |
 | **EMF-S22** (new S19) | **PC** (PLANNED) | EMF07/08 performance controls | S21 | Beat sync, quantize and nudge, hot cues, beat jump, slip loops and a beat-synced effect rack (echo/reverb throw, beat roll, noise riser, impact) sharing one transport and tempo map with Auto. |
-| **EMF-S23** (new S20) | **PC + owner** (PLANNED) | EMF12/13 selection and feedback | S21–S22 | Transition editor with audition and plan revisions, queue reordering by transition quality, blind A/B listening protocol and rating-driven preference learning (including randomised-parameter exploration). Stems stay in EMS-S05. |
-| **EMF-S11** (new S21) | **CLOUD** (**IN PROGRESS**; first increment in main 2026-11-07, Windows) | Remaining EMF06–13 breadth | S07 | Optional post-proof persistence, genres, recipe/history and expanded transition coverage. Can proceed without PC when scope is disjoint. [S11 guide](../S11_LIBRARY.md): versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies; legacy-page wiring, history and transition coverage remain; Studio pattern save/restore exists. |
-| **EMF-S12** (new S22) | **BOTH — actual MC** | EMF14 | S10, necessary API hardening | Connect Mission Control to the same state/genre/next interface, manual first, optional activity mapping only after verifying signals and overrides. |
-| **EMF-S13** (new S23) | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
+| **EMF-S24** (new S20) | **PC + owner** (PLANNED, added 2026-11-16 at owner request) | EMF07/08/09 autonomous performance | S21 Part B, S22 | Autonomous performance. (1) Section-aware sweetening: from the whole-song structure analysis the DJ gently moves filters/EQ and basic effects while a song plays (open a filter into a build, thin the bass in a breakdown) so long songs stay interesting. (2) Teasers: short bounded snippets of the next track (a few beats, a filtered loop, a vocal chop, a riser) dropped in at chosen moments to prepare the listener, then the real transition. Conservative by default: a small move set, a cap on how often moves fire, every teaser pre-checked for key/tempo/loudness clash with the same safety rules as transitions, an off switch and a Hold override from the phone and the Studio, seeded exploration logged with ratings so S23 can learn from them. Needs S21 Part B structure analysis and S22 effect rack/hot cues; stems stay in EMS-S05. Listening NOT TESTED until built and rated. |
+| **EMF-S23** (new S21) | **PC + owner** (PLANNED) | EMF12/13 selection and feedback | S21–S22 | Transition editor with audition and plan revisions, queue reordering by transition quality, blind A/B listening protocol and rating-driven preference learning (including randomised-parameter exploration). Stems stay in EMS-S05. |
+| **EMF-S11** (new S22) | **CLOUD** (**IN PROGRESS**; first increment in main 2026-11-07, Windows) | Remaining EMF06–13 breadth | S07 | Optional post-proof persistence, genres, recipe/history and expanded transition coverage. Can proceed without PC when scope is disjoint. [S11 guide](../S11_LIBRARY.md): versioned local library, exact recipe replay, stopped restore, bounded renderer history and three recipe studies; legacy-page wiring, history and transition coverage remain; Studio pattern save/restore exists. |
+| **EMF-S12** (new S23) | **BOTH — actual MC** | EMF14 | S10, necessary API hardening | Connect Mission Control to the same state/genre/next interface, manual first, optional activity mapping only after verifying signals and overrides. |
+| **EMF-S13** (new S24) | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
 
 **Renumbering (owner decision 2026-11-16, executed as a docs-only display change).** From S09 onward the owner wants stage numbers to follow execution order. Because stable IDs are referenced by the native board, RAM/NAV records, code comments, tests and historical handoffs, those records keep the **original ID**; the table above shows each stage's **new number** beside it. Historical documents stay under their original names.
 
@@ -103,10 +104,11 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | S14 | S10 | S21 | S17 |
 | S15 | S11 | S10 (owner listening) | S18 |
 | S16 | S12 | S22 | S19 |
-| S17 | S13 | S23 | S20 |
-| S18 | S14 | S11 | S21 |
-| S19 | S15 | S12 | S22 |
-| S20 | S16 | S13 | S23 |
+| S17 | S13 | S24 (autonomous performance) | S20 |
+| S18 | S14 | S23 | S21 |
+| S19 | S15 | S11 | S22 |
+| S20 | S16 | S12 | S23 |
+|  |  | S13 | S24 |
 
 ### Exactly when to involve the PC
 
