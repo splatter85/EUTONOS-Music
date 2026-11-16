@@ -5,6 +5,7 @@
  */
 import type {PhoneCommand, RelayStatus, TransitionInfo} from './phone-protocol.js';
 import {audioPlan, phoneView} from './phone-ui.js';
+import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
 import {StallWatchdog} from './phone-watchdog.js';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -97,21 +98,70 @@ audio.addEventListener('pause', () => {
   }
 });
 
-async function send(command: PhoneCommand): Promise<void> {
+/** Posts one allowlisted command; returns whether the relay accepted it and the sentence shown. */
+async function send(command: PhoneCommand): Promise<{ok: boolean; text: string}> {
   setText('command', `Sending ${command.command}…`);
+  let result: {ok: boolean; text: string};
   try {
     const response = await fetch('/api/control', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(command), cache: 'no-store'});
     const body = await response.json().catch(() => ({})) as {error?: string};
     if (response.ok) commandFailedAt = 0; else commandFailedAt = Date.now();
-    setText('command', response.ok ? `Sent ${command.command} to the PC.`
+    result = {ok: response.ok, text: response.ok ? `Sent ${command.command} to the PC.`
       : body.error === 'dj-not-connected' ? 'The DJ page is not connected. Turn on "Stream to phone" on the PC.'
-      : `The relay refused ${command.command}: ${body.error ?? response.status}.`);
+      : `The relay refused ${command.command}: ${body.error ?? response.status}.`};
   } catch (error) {
     commandFailedAt = Date.now();
-    setText('command', `Could not reach the relay: ${error instanceof Error ? error.message : String(error)}`);
+    result = {ok: false, text: `Could not reach the relay: ${error instanceof Error ? error.message : String(error)}`};
   }
+  setText('command', result.text);
   void poll(false);
+  return result;
+}
+
+// ---------- rate the last transition ----------
+interface PendingRate {readonly rating: string; readonly planId: string | undefined; readonly at: number; failure: string}
+let pendingRate: PendingRate | null = null;
+const selectedTags = new Set<FeedbackTag>();
+const rateTags = element('rate-tags');
+const rateNote = element<HTMLInputElement>('rate-note');
+for (const tag of FEEDBACK_TAGS) {
+  const chip = document.createElement('button');
+  chip.type = 'button'; chip.textContent = FEEDBACK_TAG_LABELS[tag]; chip.dataset.tag = tag; chip.setAttribute('aria-pressed', 'false');
+  chip.addEventListener('click', () => {
+    if (selectedTags.has(tag)) selectedTags.delete(tag); else selectedTags.add(tag);
+    chip.setAttribute('aria-pressed', String(selectedTags.has(tag)));
+  });
+  rateTags.append(chip);
+}
+for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#rate-card [data-rating]'))) {
+  button.addEventListener('click', () => {
+    const rating = button.dataset.rating;
+    if (!isFeedbackRating(rating)) return;
+    const planId = latest?.dj.status?.transitionLast?.planId;
+    const note = rateNote.value.trim();
+    const pending: PendingRate = {rating, planId, at: Date.now(), failure: ''};
+    pendingRate = pending;
+    const command: PhoneCommand = {command: 'rate', rating, tags: [...selectedTags], ...(note ? {note} : {}), ...(planId ? {planId} : {})};
+    selectedTags.clear(); rateNote.value = '';
+    for (const chip of Array.from(rateTags.querySelectorAll('button'))) chip.setAttribute('aria-pressed', 'false');
+    render();
+    void send(command).then(result => { if (!result.ok) pending.failure = result.text; render(); });
+  });
+}
+/** One honest sentence: what the PC has confirmed, never more than the relay status says. */
+function rateStatusText(last: TransitionInfo | null | undefined): string {
+  if (!last) return '';
+  const label = (rating: string): string => isFeedbackRating(rating) ? FEEDBACK_RATING_LABELS[rating] : rating;
+  if (pendingRate && Date.now() - pendingRate.at < 30_000) {
+    if (pendingRate.failure) return pendingRate.failure;
+    if (last.rated === pendingRate.rating) return last.ratedSaved ? `Saved on the PC: ${label(last.rated)}.` : `The PC has your ${label(last.rated)} and is saving it…`;
+    const refused = /rate: ((?:refused|ignored)[^]*)$/.exec(latest?.dj.status?.lastCommand ?? '')?.[1];
+    if (refused && Date.now() - pendingRate.at > 600) return `The PC did not rate it: ${refused}`;
+    return Date.now() - pendingRate.at > 8000 ? 'The PC has not confirmed yet. Check that the DJ page is open.' : `Sent ${label(pendingRate.rating)}; waiting for the PC to confirm…`;
+  }
+  if (last.rated) return `Current rating: ${label(last.rated)}${last.ratedSaved ? ' (saved on the PC)' : ' (not saved on the PC yet)'}. Tap another to change it.`;
+  return 'One tap rates it and saves it on the PC.';
 }
 
 // The tap that follows a "blocked" state starts this phone's sound, wherever it lands.
@@ -231,6 +281,14 @@ function render(): void {
   element('transition-card').hidden = !next && !last;
   setText('transition-next', next ? `Planned: ${next}` : '');
   setText('transition-last', last ? `Last: ${last}` : '');
+  const lastInfo = dj?.transitionLast ?? null;
+  element('rate-card').hidden = !lastInfo;
+  setText('rate-which', lastInfo ? `Rating applies to: ${last}${lastInfo.planId ? ` · plan ${lastInfo.planId}` : ''}` : '');
+  setText('rate-status', rateStatusText(lastInfo));
+  for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#rate-card [data-rating]'))) {
+    button.disabled = !connected;
+    button.setAttribute('aria-pressed', String(lastInfo?.rated === button.dataset.rating));
+  }
   setText('transition-detail', [dj?.transitionNext?.choreography && `EQ choreography: ${dj.transitionNext.choreography}`,
     dj?.transitionLast?.choreography && `Last EQ choreography: ${dj.transitionLast.choreography}`].filter(Boolean).join(' · '));
   setText('dj-state', dj ? `${dj.state}${dj.requested ? ` · ${dj.requested}` : ''}` : 'Waiting for the DJ page');

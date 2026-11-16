@@ -98,7 +98,7 @@ In set mode, Studio shows "Why this handover" under the planned mix:
 - the mode and plan id;
 - the reasons, including the candidates that were rejected.
 
-The same panel has an Explore checkbox with a seed, and Love/Like/Dislike buttons. Ratings are kept in this browser's storage (with try/catch) and can be exported as JSON.
+The same panel has an Explore checkbox with a seed, and Love/Like/OK/Dislike buttons with reason chips and a note, applied to the last completed handover (named in the panel). Ratings go to the PC file through the relay when it is running and are cached in this browser's storage (with try/catch); **Export** downloads JSON. See [Transition feedback and report](#transition-feedback-and-report).
 
 ## Known limits
 
@@ -117,6 +117,16 @@ The same panel has an Explore checkbox with a seed, and Love/Like/Dislike button
 - A failed native parameter call in the deck mixer now also rolls back the echo parameter events, and releasing an echo plan clears them.
 - Replanning a prepared mix keeps its choreography, meeting tempo and tempo return.
 - Meet in the middle checks A's moved key (A's pitch rises or falls with its native rate; the nearest whole semitone is used). A residual detune above 0.4 semitone counts as a limited-harmony pair, which needs a mid-limited choreography.
+
+## Transition feedback and report
+
+Supersedes the older three-value log for new ratings (old browser ratings are migrated once and kept). Local only: nothing here is uploaded, committed or fed back to the planner.
+
+- **Schema `em.transition-feedback.v1`** (`web/transition-feedback.ts`, vocabulary in `web/feedback-vocabulary.ts`): `version`, `planId`, `plan` (the unchanged `TransitionPlanRecord`; the id must match its content), `rating` (`love`, `like`, `ok`, `dislike`), `tags` (multi-select from 15: too-abrupt, too-long, too-short, clashing-beat, clashing-key, bass-clash, vocals-clash, boring, bad-entry-spot, wrong-energy, tempo-change-audible, volume-jump, and the positives great-bass-handover, great-blend, great-surprise), `note` (text, at most 200 characters, control characters removed), `device` (`pc` or `phone`), `at` (ISO UTC time) and `measured` (pre-check status, a short reason and the number of failed checks it fell back from, or null). It holds song ids and SHA-256 hashes only: no audio, no absolute paths, no personal data. Unknown fields are refused, on write and on read.
+- **Which transition.** A rating attaches to the **last completed** handover (`player.transition === 'complete'`), never the one being prepared. Studio and phone say which one. The phone sends the plan id it saw so a stale view is refused.
+- **File.** `local/transition-ratings/ratings.jsonl`, written only by the phone relay (see [S17](S17_PHONE_LISTENING.md)); append-only, so a re-rating adds a line and readers use the latest line per plan. The `local/` folder is gitignored. Without the relay the Studio keeps the browser cache only and says so.
+- **Report.** `npm run transitions:report` prints plain text and writes `local/transition-ratings/report.json`. It counts rated plans by rating, recipe, tempo-gap band, choreography, overlap bars, skipped-fraction bucket, fallback after a failed pre-check, explore vs auto, pre-check verdict and device; lists the most common complaint tags per recipe; and shows the best and worst plans with their parameters. Fewer than 20 rated plans in total, or 5 in a group, is labelled too small. No significance test is run and nothing is extrapolated. It is analysis only and does not change the planner (S23 is where learning would start, after listening).
+- A phone rating is the owner's opinion of a lossy phone stream; judge mixing defects on the PC. Real phone use and listening are NOT TESTED.
 
 ## Not addressed (known gaps after review)
 

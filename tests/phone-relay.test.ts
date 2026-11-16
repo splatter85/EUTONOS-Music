@@ -98,7 +98,7 @@ async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: ()
   await writeFile(join(root, 'dist', 'web', 'phone-ui.js'), 'export {};');
   await writeFile(join(root, 'package.json'), '{"private":true}');
   const encoders: FakeEncoder[] = [];
-  const created = createPhoneRelay({root, token: TOKEN, allowHosts: options.allowHosts ?? [], ...(options.now ? {now: options.now} : {}),
+  const created = createPhoneRelay({root, feedbackRoot: root, token: TOKEN, allowHosts: options.allowHosts ?? [], ...(options.now ? {now: options.now} : {}),
     spawnEncoder: options.spawn ?? (() => { const encoder = new FakeEncoder(); encoders.push(encoder); return encoder; })});
   t.after(async () => { await created.close(); await rm(root, {recursive: true, force: true}); });
   created.server.listen(0, '127.0.0.1');

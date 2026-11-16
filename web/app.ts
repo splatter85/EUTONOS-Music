@@ -214,6 +214,7 @@ function runPhoneCommand(command: PhoneCommand): string {
     case 'play': return press(buttons.play, 'Play');
     case 'stop': return press(buttons.stop, 'Stop');
     case 'next': return press(buttons['next-song'], 'Next Song');
+    case 'rate': return 'ignored: rating needs the Studio set page (studio.html?pack=set)';
     case 'auto': return 'ignored: Auto needs the Studio set page (studio.html?pack=set)';
     case 'set-next': return 'ignored: choosing the next song needs the Studio set page (studio.html?pack=set)';
     case 'hold': {

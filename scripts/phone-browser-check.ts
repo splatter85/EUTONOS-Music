@@ -5,7 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdir, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {request, type IncomingMessage} from 'node:http';
 import {PassThrough} from 'node:stream';
 import {fileURLToPath} from 'node:url';
@@ -70,7 +72,7 @@ function phoneCommand(port: number, body: unknown): Promise<number | undefined> 
 try {
   const demoPort = await listen(demo);
   const origin = `http://127.0.0.1:${demoPort}`;
-  relay = createPhoneRelay({spawnEncoder, djOrigins: [origin]});
+  relay = createPhoneRelay({spawnEncoder, djOrigins: [origin], feedbackRoot: await mkdtemp(join(tmpdir(), 'eutonos-feedback-'))});
   const relayPort = await listen(relay.server);
   const relayOrigin = `http://127.0.0.1:${relayPort}`;
   const running = relay;
@@ -211,7 +213,7 @@ try {
     queue: [{id: 'song-two', title: 'Song Two'}, {id: 'song-three', title: 'Song Three'}, {id: 'song-four', title: 'Song Four'}],
     nextStatus: 'Ready — handover prepared', canSetNext: true,
     transitionNext: {recipe: 'Bass swap', overlap: '8 bars', choreography: 'bass-swap-classic', tempo: '+1.0%', entry: 'enters at 1:12', fallback: ''},
-    transitionLast: {recipe: 'Clean cut (last resort)', overlap: '', choreography: '', tempo: '0.0%', entry: 'enters at 0:00', fallback: 'Fallback after 2 failed pre-check(s)'}}},
+    transitionLast: {recipe: 'Clean cut (last resort)', overlap: '', choreography: '', tempo: '0.0%', entry: 'enters at 0:00', fallback: 'Fallback after 2 failed pre-check(s)', planId: 'tp-0123abcd'}}},
   stream: {ingesting: true, listeners: 0, encoder: 'running', chunksIn: 1, bytesOut: 1, sessions: 1, lastError: null}, delayNote: 'about 2-5 seconds'};
   await mock.route('**/api/status', route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(fakeStatus)}));
   await mock.route('**/live.mp3*', route => route.abort());
@@ -226,6 +228,17 @@ try {
   assert.deepEqual(await mock.locator('#picker-list button').allInnerTexts(), ['Song Two (next)', 'Song Three', 'Song Four']);
   await mock.locator('#picker-list button', {hasText: 'Song Four'}).click();
   await until(() => posted.some(body => JSON.stringify(body) === '{"command":"set-next","songId":"song-four"}'), 'set-next posted');
+  // Rate the last transition: the card names the handover, one tap sends one allowlisted command, and the
+  // confirmation only claims what the PC reported back.
+  await mock.locator('#rate-card').waitFor({state: 'visible'});
+  await waitText(mock, '#rate-which', /Clean cut \(last resort\)/);
+  assert.equal(await mock.locator('#rate-card button[data-rating]').count(), 4);
+  await mock.locator('#rate-love').click();
+  await until(() => posted.some(body => JSON.stringify(body) === '{"command":"rate","rating":"love","tags":[],"planId":"tp-0123abcd"}'), 'rate posted');
+  const djStatus = fakeStatus.dj.status as Record<string, unknown>;
+  (djStatus.transitionLast as Record<string, unknown>).rated = 'love';
+  (djStatus.transitionLast as Record<string, unknown>).ratedSaved = true;
+  await waitText(mock, '#rate-status', /Saved on the PC/i, 15_000);
   assert.ok(await mock.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mock phone layout overflows');
   await mock.screenshot({path: fileURLToPath(new URL('phone-simple.png', output)), fullPage: true});
   await mock.close();

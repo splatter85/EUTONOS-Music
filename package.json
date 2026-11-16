@@ -22,6 +22,7 @@
     "library:demo": "npm run build && node dist/scripts/s11-library-demo.js",
     "fl:produce": "npm run build && node dist/scripts/fl-producer.js",
     "phone": "npm run build && node dist/scripts/phone-relay.js",
+    "transitions:report": "npm run build && node dist/scripts/transitions-report.js",
     "phone:host": "npm run build && node dist/scripts/mock-fl-producer.js && node dist/scripts/phone-host.js",
     "check:phone": "npm run build && node dist/scripts/phone-browser-check.js && node dist/scripts/set-browser-check.js && node dist/scripts/deck-browser-check.js",
     "check:set": "npm run build && node dist/scripts/set-browser-check.js",

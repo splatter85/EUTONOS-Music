@@ -7,7 +7,8 @@
  * to the song's entry, and the phone Auto command shape. Not listening or device evidence.
  */
 import assert from 'node:assert/strict';
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -103,7 +104,7 @@ try {
       stdin.pipe(stdout);
       return {stdin, stdout, kill: () => { stdin.unpipe(stdout); stdout.end(); }, on: () => undefined};
     };
-    const relay = createPhoneRelay({spawnEncoder: fakeEncoder, djOrigins: [origin]});
+    const relay = createPhoneRelay({spawnEncoder: fakeEncoder, djOrigins: [origin], feedbackRoot: await mkdtemp(join(tmpdir(), 'eutonos-feedback-'))});
     await new Promise<void>((resolve, reject) => { relay.server.once('error', reject); relay.server.listen(0, '127.0.0.1', resolve); });
     const relayAddress = relay.server.address();
     assert.ok(relayAddress && typeof relayAddress !== 'string');
@@ -182,13 +183,29 @@ try {
   assert.ok((await page.locator('#set-why-choreo').textContent())!.length > 10, 'choreography described');
   assert.match((await page.locator('#set-why-mode').textContent())!, /^auto · plan tp-[0-9a-f]{8}$/);
   await page.locator('#set-why summary').click();
+  // A rating never attaches to the planned (not yet heard) handover: nothing has finished, so it is refused.
   await page.locator('#set-why [data-rate="like"]').click();
-  await waitText(page, 'set-why-rating', /Saved "like" for plan tp-[0-9a-f]{8} \(1 rated\)/, 5000);
-  report.checks.push('S21 readout shows recipe, tempo band, choreography, B entry and plan id; a rating attaches to that exact plan');
+  await waitText(page, 'set-why-rating', /no handover has finished yet, so there is nothing to rate/, 5000);
+  report.checks.push('S21 readout shows recipe, tempo band, choreography, B entry and plan id; rating before any handover has finished is refused');
   await page.locator('#set-explore-seed').fill('7'); await page.locator('#set-explore').check();
   assert.match(await text(page, 'dj-next-title'), /synthetic-174-b/);
   await waitText(page, 'dj-now', /^Synthetic 174 BPM \(synthetic-174-b\)$/, 40000);
   report.checks.push(`Next moves 174-c -> 174-b (not catalogue order) on bar ${exitBar} of the outgoing song; recipe and tempo change shown`);
+  // Rate the LAST COMPLETED handover (same code path as the phone): the panel names which one, and re-rating replaces it.
+  await waitText(page, 'set-rate-which', /last handover that finished: .* \(.*, plan tp-[0-9a-f]{8}\)/, 60000);
+  await page.locator('#set-rate-tags [data-tag="great-blend"]').click();
+  await page.locator('#set-rate-note').fill('smooth enough');
+  await page.locator('#set-why [data-rate="like"]').click();
+  await waitText(page, 'set-why-rating', /Rated "like": .*plan tp-[0-9a-f]{8}\)\. Saved in this browser only/, 5000);
+  await waitText(page, 'set-rate-which', /Current rating: Like \(this browser only\)/, 5000);
+  const cache = async () => JSON.parse(await page.evaluate(() => localStorage.getItem('eutonos-music.transition-feedback.v1') ?? '{}')) as {entries: {rating: string; tags: string[]; note: string; device: string; plan: {id: string}}[]};
+  const stored = await cache();
+  assert.equal(stored.entries.length, 1);
+  assert.deepEqual([stored.entries[0]!.rating, stored.entries[0]!.tags, stored.entries[0]!.note, stored.entries[0]!.device], ['like', ['great-blend'], 'smooth enough', 'pc']);
+  await page.locator('#set-why [data-rate="dislike"]').click();
+  await waitText(page, 'set-why-rating', /Rated "dislike": /, 5000);
+  assert.deepEqual((await cache()).entries.map(e => [e.rating, e.plan.id]), [['dislike', stored.entries[0]!.plan.id]], 're-rating the same plan replaces the rating');
+  report.checks.push('Studio rating applies to the last completed handover (named in the panel), keeps tags and note, and a re-rating replaces the earlier one');
 
   // One Auto step: anchored to where 174-b came in, 16 bars later.
   await page.selectOption('#set-auto-bars', '16');

@@ -44,6 +44,23 @@
       </details>
     </section>
 
+    <section id="rate-card" class="card rate-card" aria-label="Rate the last transition" hidden>
+      <p class="label">Rate the last transition</p>
+      <p id="rate-which" class="small"></p>
+      <div class="rate-grid">
+        <button id="rate-love" type="button" data-rating="love">Love</button>
+        <button id="rate-like" type="button" data-rating="like">Like</button>
+        <button id="rate-ok" type="button" data-rating="ok">OK</button>
+        <button id="rate-dislike" type="button" data-rating="dislike">Dislike</button>
+      </div>
+      <details id="rate-more" class="rate-more">
+        <summary>Why? (optional, pick before you tap)</summary>
+        <div id="rate-tags" class="tag-chips" role="group" aria-label="Reasons"></div>
+        <input id="rate-note" class="rate-note" type="text" maxlength="200" autocomplete="off" placeholder="Short note (optional)">
+      </details>
+      <p id="rate-status" class="muted small" role="status"></p>
+    </section>
+
     <details id="more" class="card more">
       <summary>More</summary>
       <div class="remote-grid">

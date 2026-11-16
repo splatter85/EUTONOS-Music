@@ -17,6 +17,7 @@ import {readFile, realpath, stat} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import type {Readable, Writable} from 'node:stream';
 import {fileURLToPath} from 'node:url';
+import {FeedbackFile, FeedbackFileError} from './transition-feedback-file.js';
 import {parseControlCommand, sanitizeDjStatus, type DjStatus, type RelayStatus,
   type RelayedCommand} from '../web/phone-protocol.js';
 
@@ -30,7 +31,10 @@ export const FFMPEG_ARGS = ['-hide_banner', '-loglevel', 'error', '-fflags', 'no
 export const LIMITS = {
   ingestBytes: 1024 * 1024,
   statusBytes: 16 * 1024,
-  controlBytes: 1024,
+  /** A rate command carries up to a 200-character note and 15 tags. */
+  controlBytes: 2048,
+  /** One transition rating (plan record, tags, note). */
+  ratingBytes: 24 * 1024,
   /** About two seconds of 256 kbit/s MP3, sent first to a new listener for fast start. */
   recentBytes: 64 * 1024,
   /** A listener whose unsent backlog exceeds this is dropped instead of buffered. */
@@ -67,6 +71,8 @@ export interface PhoneRelayOptions {
   readonly log?: (message: string) => void;
   /** Per-run DJ secret; generated (16 random bytes, hex) when omitted. */
   readonly token?: string;
+  /** Folder whose `local/transition-ratings/` holds the ratings file; defaults to the repository root. Tests pass a temp folder. */
+  readonly feedbackRoot?: string;
   /** Clock in ms; injectable so tests can age phone activity without waiting. */
   readonly now?: () => number;
 }
@@ -115,6 +121,7 @@ const PHONE_FILES: Readonly<Record<string, {file: string; type: string}>> = {
   '/phone.js': {file: 'dist/web/phone.js', type: 'text/javascript; charset=utf-8'},
   '/phone-watchdog.js': {file: 'dist/web/phone-watchdog.js', type: 'text/javascript; charset=utf-8'},
   '/phone-ui.js': {file: 'dist/web/phone-ui.js', type: 'text/javascript; charset=utf-8'},
+  '/feedback-vocabulary.js': {file: 'dist/web/feedback-vocabulary.js', type: 'text/javascript; charset=utf-8'},
 };
 
 /** Raw-target path check in the same discipline as scripts/serve.ts; returns the decoded path. */
@@ -175,6 +182,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   const root = resolve(options.root ?? repositoryRoot);
   const log = options.log ?? (() => undefined);
   const now = options.now ?? Date.now;
+  const feedbackFile = new FeedbackFile(options.feedbackRoot);
   /** Time of the last phone-side request (status, live stream, control); DJ requests never set it. */
   let phoneSeenAt: number | null = null;
 
@@ -293,6 +301,19 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     };
   }
 
+  /** Refusals the owner can act on; filesystem details and paths never leave the relay. */
+  function feedbackError(response: ServerResponse, error: unknown): void {
+    if (error instanceof FeedbackFileError) {
+      fail(`ratings store: ${error.message}`);
+      json(response, error.code === 'full' ? 507 : error.code === 'line-too-large' ? 413 : 409, {error: `ratings-${error.code}`});
+    } else if (error instanceof Error && error.message.startsWith('Invalid transition feedback')) {
+      json(response, 400, {error: 'invalid-feedback', detail: error.message.slice(0, 160)});
+    } else {
+      fail(`ratings store failed: ${error instanceof Error ? error.message : String(error)}`);
+      json(response, 500, {error: 'ratings-store-failed'});
+    }
+  }
+
   async function handleDj(request: IncomingMessage, response: ServerResponse, path: string, url: URL): Promise<void> {
     const origin = djOrigin(request);
     if (!origin) { plain(response, 403, 'DJ endpoints accept only the local DJ page'); return; }
@@ -331,7 +352,25 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       log('Relay: DJ page connected for control events.');
       return;
     }
+    if (path === '/api/dj/ratings') {
+      if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      try {
+        const {entries, lines, skipped} = await feedbackFile.read();
+        json(response, 200, {version: 'em.transition-feedback-log.v1', entries, lines, skipped});
+      } catch (error) { feedbackError(response, error); }
+      return;
+    }
     if (request.method !== 'POST') { response.setHeader('Allow', 'POST, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+    if (path === '/api/dj/rating') {
+      const body = await readBody(request, LIMITS.ratingBytes);
+      let parsed: unknown;
+      try { parsed = JSON.parse(body.toString('utf8')); } catch { json(response, 400, {error: 'invalid-json'}); return; }
+      try {
+        const result = await feedbackFile.append(parsed);
+        json(response, 200, {ok: true, duplicate: result.duplicate, lines: result.lines});
+      } catch (error) { feedbackError(response, error); }
+      return;
+    }
     if (path === '/api/dj/status') {
       const body = await readBody(request, LIMITS.statusBytes);
       let parsed: unknown;
@@ -466,7 +505,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === undefined) { plain(response, 404, 'Not found'); return; }
     const url = new URL(request.url ?? '/', 'http://relay.invalid');
     const handler = path.startsWith('/api/dj/')
-      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
+      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
       : isPhoneHost(request.headers.host, allowHosts)
         ? handlePhone(request, response, path)
         : Promise.resolve(plain(response, 400, 'Invalid host'));
