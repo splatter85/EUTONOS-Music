@@ -300,3 +300,99 @@ export class PhoneStream {
     this.retryTimer = setTimeout(() => { this.retryTimer = null; this.startRecorder(); }, RETRY_MS);
   }
 }
+
+// ---------- auto-start when the phone page opens ----------
+export const AUTO_POLL_MS = 2000;
+/** After the owner turns streaming off, the phone must be absent this long before it can start it again. */
+export const AUTO_RESUME_ABSENT_MS = 20_000;
+export const AUTO_STORAGE_KEY = 'eutonos-music-phone-auto-start';
+
+export interface AutoStartState { readonly pausedByOwner: boolean; readonly absentSince: number | null }
+export interface AutoStartInput {
+  readonly now: number;
+  readonly wanted: boolean;
+  readonly streaming: boolean;
+  readonly option: boolean;
+  readonly hasToken: boolean;
+}
+export const AUTO_START_INITIAL: AutoStartState = {pausedByOwner: false, absentSince: null};
+/** The owner turned streaming off: stay off until the phone has gone away for 20 s and comes back. */
+export const AUTO_START_OWNER_STOPPED: AutoStartState = {pausedByOwner: true, absentSince: null};
+
+/** Pure decision for one poll result; the caller starts streaming when `start` is true. */
+export function autoStartStep(state: AutoStartState, input: AutoStartInput): {start: boolean; state: AutoStartState} {
+  if (!input.option || !input.hasToken || input.streaming) return {start: false, state};
+  if (input.wanted) {
+    // A phone that never left cannot re-arm a paused auto-start.
+    if (state.pausedByOwner) return {start: false, state: {pausedByOwner: true, absentSince: null}};
+    return {start: true, state: AUTO_START_INITIAL};
+  }
+  const absentSince = state.absentSince ?? input.now;
+  const rearmed = state.pausedByOwner && input.now - absentSince >= AUTO_RESUME_ABSENT_MS;
+  return {start: false, state: {pausedByOwner: state.pausedByOwner && !rearmed, absentSince}};
+}
+
+export function loadAutoStartOption(): boolean {
+  try { return localStorage.getItem(AUTO_STORAGE_KEY) !== 'off'; } catch { return true; }
+}
+export function saveAutoStartOption(value: boolean): void {
+  try { localStorage.setItem(AUTO_STORAGE_KEY, value ? 'on' : 'off'); } catch { /* storage blocked */ }
+}
+
+/**
+ * Polls the relay's token-protected /api/dj/wanted while streaming is off and starts it when a
+ * phone shows up. Never throws; fetch errors are ignored and polling simply continues.
+ */
+export class PhoneAutoStart {
+  private state: AutoStartState = AUTO_START_INITIAL;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private busy = false;
+  /** True while the current stream was started by this class. */
+  startedAutomatically = false;
+  option: boolean;
+
+  constructor(private readonly relay: string, private readonly token: string | null,
+    private readonly stream: {readonly enabled: boolean; start(): void},
+    private readonly canStart: () => boolean, private readonly onChange: () => void,
+    private readonly clock: () => number = Date.now) {
+    this.option = loadAutoStartOption();
+  }
+
+  get available(): boolean { return this.token !== null; }
+
+  begin(): void {
+    if (this.timer || !this.token) return;
+    this.timer = setInterval(() => { void this.poll(); }, AUTO_POLL_MS);
+    void this.poll();
+  }
+  end(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
+
+  setOption(value: boolean): void { this.option = value; saveAutoStartOption(value); this.state = AUTO_START_INITIAL; this.onChange(); }
+  /** Call after the owner's own toggle click, with the new streaming state. */
+  ownerToggled(nowStreaming: boolean): void {
+    this.startedAutomatically = false;
+    this.state = nowStreaming ? AUTO_START_INITIAL : AUTO_START_OWNER_STOPPED;
+    this.onChange();
+  }
+  /** Streaming ended for another reason (for example the stream failed and stopped itself). */
+  streamEnded(): void { this.startedAutomatically = false; }
+
+  async poll(): Promise<void> {
+    if (this.busy || !this.token || this.stream.enabled || !this.option) return;
+    this.busy = true;
+    try {
+      const response = await fetch(`${this.relay}/api/dj/wanted`, {headers: {'X-Relay-Token': this.token}, mode: 'cors',
+        cache: 'no-store', credentials: 'omit'});
+      if (!response.ok) return;
+      const body = await response.json() as {wanted?: unknown};
+      const step = autoStartStep(this.state, {now: this.clock(), wanted: body.wanted === true, streaming: this.stream.enabled,
+        option: this.option, hasToken: true});
+      this.state = step.state;
+      if (step.start && this.canStart()) {
+        this.stream.start();
+        this.startedAutomatically = this.stream.enabled;
+        this.onChange();
+      }
+    } catch { /* relay not reachable: keep polling quietly */ } finally { this.busy = false; }
+  }
+}

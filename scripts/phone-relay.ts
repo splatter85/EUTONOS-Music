@@ -39,6 +39,8 @@ export const LIMITS = {
   maxListeners: 8,
   heartbeatMs: 15_000,
 } as const;
+/** A phone request this recent (or any open live listener) means a phone is looking. */
+export const PHONE_SEEN_WINDOW_MS = 8_000;
 export const DELAY_NOTE = 'The phone hears the PC about 2-5 seconds late. Controls act on the PC immediately.';
 
 /** The part of a child process the relay uses; tests inject a fake encoder. */
@@ -65,6 +67,8 @@ export interface PhoneRelayOptions {
   readonly log?: (message: string) => void;
   /** Per-run DJ secret; generated (16 random bytes, hex) when omitted. */
   readonly token?: string;
+  /** Clock in ms; injectable so tests can age phone activity without waiting. */
+  readonly now?: () => number;
 }
 
 export interface PhoneRelay {
@@ -169,6 +173,9 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   const allowHosts = options.allowHosts ?? [];
   const root = resolve(options.root ?? repositoryRoot);
   const log = options.log ?? (() => undefined);
+  const now = options.now ?? Date.now;
+  /** Time of the last phone-side request (status, live stream, control); DJ requests never set it. */
+  let phoneSeenAt: number | null = null;
 
   let session: Session | null = null;
   const listeners = new Set<ServerResponse>();
@@ -278,7 +285,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
 
   function status(): RelayStatus {
     return {
-      dj: {connected: djEvents !== null, ageMs: djStatus ? Date.now() - djStatus.at : null, status: djStatus?.status ?? null},
+      dj: {connected: djEvents !== null, ageMs: djStatus ? now() - djStatus.at : null, status: djStatus?.status ?? null},
       stream: {ingesting: session !== null, listeners: listeners.size, encoder: encoderState, chunksIn, bytesOut,
         sessions, lastError},
       delayNote: DELAY_NOTE,
@@ -300,6 +307,13 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       return;
     }
     if (!tokenMatches(request)) { json(response, 401, {error: 'relay-token-required'}); return; }
+    if (path === '/api/dj/wanted') {
+      if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      const phoneSeenMs = phoneSeenAt === null ? null : Math.max(0, now() - phoneSeenAt);
+      json(response, 200, {wanted: listeners.size > 0 || (phoneSeenMs !== null && phoneSeenMs <= PHONE_SEEN_WINDOW_MS),
+        phoneSeenMs, listeners: listeners.size});
+      return;
+    }
     if (path === '/api/dj/events') {
       if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
       // One DJ page owns remote control; a second one is refused while the first is open.
@@ -323,7 +337,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       try { parsed = JSON.parse(body.toString('utf8')); } catch { json(response, 400, {error: 'invalid-json'}); return; }
       const clean = sanitizeDjStatus(parsed);
       if (!clean) { json(response, 400, {error: 'invalid-status'}); return; }
-      djStatus = {status: clean, at: Date.now()};
+      djStatus = {status: clean, at: now()};
       json(response, 200, {ok: true});
       return;
     }
@@ -381,6 +395,8 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
 
   async function handlePhone(request: IncomingMessage, response: ServerResponse, path: string): Promise<void> {
     const head = request.method === 'HEAD';
+    if ((path === '/api/control' || path === '/api/status' || path === '/live.mp3')
+      && request.headers['sec-fetch-site'] !== 'cross-site' && sameOriginOrAbsent(request)) phoneSeenAt = now();
     if (path === '/api/control') {
       if (request.method !== 'POST') { response.setHeader('Allow', 'POST'); plain(response, 405, 'Method not allowed'); return; }
       // JSON content type forces a CORS preflight for any foreign page; none is ever granted here.
@@ -449,7 +465,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === undefined) { plain(response, 404, 'Not found'); return; }
     const url = new URL(request.url ?? '/', 'http://relay.invalid');
     const handler = path.startsWith('/api/dj/')
-      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
+      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
       : isPhoneHost(request.headers.host, allowHosts)
         ? handlePhone(request, response, path)
         : Promise.resolve(plain(response, 400, 'Invalid host'));
@@ -545,7 +561,7 @@ function startRelay(args: string[]): void {
     console.log('     Or, for the S18 any-to-any set (Next, reorder, Auto), open the Studio set page instead:');
     console.log(`       ${studioSetPageUrl(parsed.djOrigins?.[0] ?? DEFAULT_DJ_ORIGINS[0], port, relay.token)}`);
     console.log('     The token changes every time the relay starts; reopen the new address after a restart.');
-    console.log('  2. On the DJ page switch on "Stream to phone". Press Play there once (or from the phone).');
+    console.log('  2. "Stream to phone" turns on by itself when the phone page opens (or switch it on by hand). Press Play there once (or from the phone).');
     console.log(`  3. To reach this relay from your phone, run this yourself on the PC (this relay does not run it):`);
     console.log(`       tailscale serve --bg ${port}`);
     console.log('     Check it with `tailscale serve status`; remove it later with `tailscale serve reset` (clears all serve config).');

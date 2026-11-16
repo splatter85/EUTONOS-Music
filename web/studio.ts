@@ -19,7 +19,7 @@ import {decodeWav} from '../src/audio-analysis.js';
 import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, transitionReadout, type AutoBars, type NextBars} from './set-mode.js';
 import {emptyTransitionRatings, rateTransition, validateTransitionRatingLog, type TransitionPlanRecord, type TransitionRating,
   type TransitionRatingLog} from './transition-policy.js';
-import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
+import {PhoneAutoStart, PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
 import {SetSongList} from './set-song-list.js';
@@ -555,21 +555,29 @@ const phoneStream = isSet ? new PhoneStream({
       canHandoff: false, auto: autoOn, canAuto: !!loaded};
   },
 }, phoneRelay, phoneToken, () => { renderPhoneStream(); }) : null;
+const phoneAuto = phoneStream && phoneToken ? new PhoneAutoStart(phoneRelay, phoneToken, phoneStream, () => loaded !== null, () => { renderPhoneStream(); }) : null;
+const phoneAutoBox = $<HTMLInputElement>('phone-auto');
+phoneAutoBox.parentElement!.hidden = !phoneAuto;
+if (phoneAuto) { phoneAutoBox.checked = phoneAuto.option; phoneAuto.begin(); }
+phoneAutoBox.addEventListener('change', () => { phoneAuto?.setOption(phoneAutoBox.checked); });
 function renderPhoneStream(): void {
   if (!phoneStream) return;
   const view = phoneStream.snapshot();
+  if (!view.enabled) phoneAuto?.streamEnded();
   phoneButton.disabled = loaded === null;
   phoneButton.setAttribute('aria-pressed', String(view.enabled));
   phoneButton.textContent = view.enabled ? 'Stream to phone: on' : 'Stream to phone: off';
   setText('phone-stream-state', view.enabled
     ? `relay ${view.relay} · control ${view.control} · recorder ${view.recorder} · ${view.chunksSent} chunks sent (${Math.round(view.bytesSent / 1024)} KiB) · session ${view.sessions}${view.commands ? ` · ${view.commands} phone commands` : ''}`
     : 'Off');
+  setText('phone-stream-auto', view.enabled && phoneAuto?.startedAutomatically ? 'Phone connected - streaming started automatically' : '');
   if (view.lastCommand) setText('phone-stream-detail', `Last phone command ${view.lastCommand}`);
   setText('phone-stream-error', view.error);
 }
 phoneButton.addEventListener('click', () => {
   if (!phoneStream) return;
   if (phoneStream.enabled) phoneStream.stop(); else phoneStream.start();
+  phoneAuto?.ownerToggled(phoneStream.enabled);
   renderPhoneStream();
 });
 
@@ -922,6 +930,7 @@ document.addEventListener('visibilitychange', () => {
   if (previewing) stopPreview();
 });
 window.addEventListener('pagehide', () => {
+  phoneAuto?.end();
   phoneStream?.stop();
   const a = dj, b = sampler; dj = null; djPlayer = null; sampler = null;
   void a?.dispose().catch(() => undefined); void b?.dispose().catch(() => undefined);

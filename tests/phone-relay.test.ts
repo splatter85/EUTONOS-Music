@@ -13,6 +13,7 @@ import {createPhoneRelay, djPageUrl, studioSetPageUrl, ffmpegEncoder, firstFrame
   parseRelayArgs, safeRequestPath, type EncoderProcess, type PhoneRelay} from '../scripts/phone-relay.js';
 import {parseControlCommand, sanitizeDjStatus, STATUS_TEXT_LIMIT} from '../web/phone-protocol.js';
 import {StallWatchdog} from '../web/phone-watchdog.js';
+import {AUTO_RESUME_ABSENT_MS, AUTO_START_INITIAL, AUTO_START_OWNER_STOPPED, autoStartStep, type AutoStartInput} from '../web/phone-stream.js';
 
 const execFileAsync = promisify(execFile);
 const DJ = 'http://127.0.0.1:4173';
@@ -86,7 +87,7 @@ function control(port: number, body: unknown, headers: Record<string, string> = 
 }
 const mp3ish = (size: number, fill = 0x11): Buffer => { const value = Buffer.alloc(size, fill); value[0] = 0xff; value[1] = 0xfb; return value; };
 
-async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: () => EncoderProcess} = {}): Promise<{relay: PhoneRelay; port: number; encoders: FakeEncoder[]; root: string}> {
+async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: () => EncoderProcess; now?: () => number} = {}): Promise<{relay: PhoneRelay; port: number; encoders: FakeEncoder[]; root: string}> {
   const root = await mkdtemp(join(tmpdir(), 'eutonos phone relay '));
   await mkdir(join(root, 'web'), {recursive: true});
   await mkdir(join(root, 'dist', 'web'), {recursive: true});
@@ -96,7 +97,7 @@ async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: ()
   await writeFile(join(root, 'dist', 'web', 'phone-watchdog.js'), 'export {};');
   await writeFile(join(root, 'package.json'), '{"private":true}');
   const encoders: FakeEncoder[] = [];
-  const created = createPhoneRelay({root, token: TOKEN, allowHosts: options.allowHosts ?? [],
+  const created = createPhoneRelay({root, token: TOKEN, allowHosts: options.allowHosts ?? [], ...(options.now ? {now: options.now} : {}),
     spawnEncoder: options.spawn ?? (() => { const encoder = new FakeEncoder(); encoders.push(encoder); return encoder; })});
   t.after(async () => { await created.close(); await rm(root, {recursive: true, force: true}); });
   created.server.listen(0, '127.0.0.1');
@@ -493,4 +494,76 @@ test('the phone stall watchdog reconnects only after a sustained stall while lis
   assert.equal(stalls, 1, 'no reconnect after the listener paused');
   watchdog.starved();
   assert.equal(pending.size, 0, 'not armed while not listening');
+});
+
+test('/api/dj/wanted is token and DJ-origin protected and reports a recent phone request', async t => {
+  let clock = 1_000_000;
+  const {port} = await relay(t, {now: () => clock});
+  const wanted = (headers: Record<string, string>): Promise<HttpResult> => http(port, '/api/dj/wanted', {headers});
+  assert.equal((await wanted({})).status, 403, 'no Origin');
+  assert.equal((await wanted({origin: 'https://pc.tail1.ts.net', 'x-relay-token': TOKEN})).status, 403, 'phone Origin');
+  assert.equal((await wanted({origin: DJ})).status, 401, 'no token');
+  assert.equal((await wanted({origin: DJ, 'x-relay-token': 'f'.repeat(32)})).status, 401, 'wrong token');
+  assert.equal((await http(port, '/api/dj/wanted', {method: 'POST', headers: djHeaders()})).status, 405);
+  const first = await wanted(djHeaders());
+  assert.equal(first.status, 200);
+  assert.equal(first.headers['access-control-allow-origin'], DJ);
+  assert.deepEqual(JSON.parse(first.body.toString()), {wanted: false, phoneSeenMs: null, listeners: 0});
+  // The DJ page's own requests (including this one) are not phone activity.
+  await http(port, '/api/dj/status', {method: 'POST', headers: djHeaders({'content-type': 'application/json'}), body: '{}'});
+  assert.equal(JSON.parse((await wanted(djHeaders())).body.toString()).wanted, false);
+  // A cross-site status fetch does not count either.
+  assert.equal((await http(port, '/api/status', {headers: {'sec-fetch-site': 'cross-site'}})).status, 403);
+  assert.equal(JSON.parse((await wanted(djHeaders())).body.toString()).wanted, false);
+  assert.equal((await http(port, '/api/status')).status, 200);
+  clock += 3000;
+  const seen = JSON.parse((await wanted(djHeaders())).body.toString()) as {wanted: boolean; phoneSeenMs: number};
+  assert.equal(seen.wanted, true);
+  assert.equal(seen.phoneSeenMs, 3000);
+  clock += 6000;
+  const expired = JSON.parse((await wanted(djHeaders())).body.toString()) as {wanted: boolean; phoneSeenMs: number};
+  assert.equal(expired.wanted, false, 'phone silent for more than 8 s');
+  assert.equal(expired.phoneSeenMs, 9000);
+  // Opening the live stream counts and keeps wanted true while the listener stays connected.
+  const live = await stream(port, '/live.mp3');
+  assert.equal(live.incoming.statusCode, 200);
+  clock += 60_000;
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const listening = JSON.parse((await wanted(djHeaders())).body.toString()) as {wanted: boolean; listeners: number};
+  assert.equal(listening.listeners, 1);
+  assert.equal(listening.wanted, true);
+  live.close();
+});
+
+test('a phone control request counts as the phone looking', async t => {
+  let clock = 5_000;
+  const {port} = await relay(t, {now: () => clock});
+  assert.equal((await control(port, {command: 'next'})).status, 503);
+  const body = JSON.parse((await http(port, '/api/dj/wanted', {headers: djHeaders()})).body.toString()) as {wanted: boolean};
+  assert.equal(body.wanted, true);
+});
+
+test('auto-start decision: starts on a phone, pauses after the owner turns it off until 20 s absent and back', () => {
+  const base: AutoStartInput = {now: 0, wanted: true, streaming: false, option: true, hasToken: true};
+  assert.equal(autoStartStep(AUTO_START_INITIAL, base).start, true);
+  assert.equal(autoStartStep(AUTO_START_INITIAL, {...base, wanted: false}).start, false);
+  assert.equal(autoStartStep(AUTO_START_INITIAL, {...base, option: false}).start, false);
+  assert.equal(autoStartStep(AUTO_START_INITIAL, {...base, hasToken: false}).start, false);
+  assert.equal(autoStartStep(AUTO_START_INITIAL, {...base, streaming: true}).start, false);
+  // Owner switched streaming off while the phone is still there: stays off.
+  let step = autoStartStep(AUTO_START_OWNER_STOPPED, {...base, now: 1000});
+  assert.equal(step.start, false);
+  step = autoStartStep(step.state, {...base, now: 3000});
+  assert.equal(step.start, false);
+  // Phone leaves; before 20 s it is still paused even if it flickers back.
+  step = autoStartStep(step.state, {...base, now: 4000, wanted: false});
+  step = autoStartStep(step.state, {...base, now: 4000 + AUTO_RESUME_ABSENT_MS - 1, wanted: false});
+  assert.equal(step.state.pausedByOwner, true);
+  const flicker = autoStartStep(step.state, {...base, now: 4000 + AUTO_RESUME_ABSENT_MS, wanted: true});
+  assert.equal(flicker.start, false, 'a return resets the absence timer while paused');
+  // Absent for a full 20 s, then the phone reappears: starts.
+  step = autoStartStep(flicker.state, {...base, now: 30_000, wanted: false});
+  step = autoStartStep(step.state, {...base, now: 30_000 + AUTO_RESUME_ABSENT_MS, wanted: false});
+  assert.equal(step.state.pausedByOwner, false);
+  assert.equal(autoStartStep(step.state, {...base, now: 60_000}).start, true);
 });
