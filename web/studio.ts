@@ -25,7 +25,9 @@ import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
 import {SetSongList} from './set-song-list.js';
 import {browserMixPrecheck} from './mix-precheck.js';
 import {precheckLabel} from './mix-precheck-data.js';
-import type {PhoneCommand} from './phone-protocol.js';
+import {QUEUE_LIMIT, type PhoneCommand, type TransitionInfo} from './phone-protocol.js';
+import {AudioGate} from './audio-gate.js';
+import {phoneTransition} from './phone-transition.js';
 
 const PACKS = {
   rated: {manifest: '/local/s16-rated/pack/manifest.json', label: 'Rated takes (local audition)'},
@@ -534,6 +536,16 @@ function runPhoneCommand(command: PhoneCommand): string {
     }
     case 'handoff':
       return command.mode === 'mix' ? 'handoff already automatic mix' : 'ignored: a set uses automatic mix only';
+    case 'set-next': {
+      if (!isSet || !dj) return 'ignored: choosing the next song needs the Studio set page';
+      const queue = dj.snapshot().control.queue;
+      const at = queue.findIndex(entry => entry.trackId === command.songId);
+      if (at < 0) return `refused: ${command.songId} is not in the queue`;
+      if (at === 0) return `${titleOf(command.songId)} is already next`;
+      // The same reorder the Studio queue uses; an armed Next re-targets and re-prepares for the new head.
+      void send({type: 'reorderQueue', queueCommandId: queue[at]!.commandId, toIndex: 0});
+      return `moved ${titleOf(command.songId)} to the front of the queue`;
+    }
     case 'auto': {
       const want = command.enabled ?? !autoOn;
       if (want === autoOn) return `auto already ${autoOn ? 'on' : 'off'}`;
@@ -541,18 +553,37 @@ function runPhoneCommand(command: PhoneCommand): string {
     }
   }
 }
+const gate = new AudioGate(() => djPlayer?.context.resume());
+let lastTransitionInfo: TransitionInfo | null = null;
 const phoneStream = isSet ? new PhoneStream({
   tapSource: () => { getDj(); if (!djPlayer) throw new Error('The player is not ready.'); return djPlayer; },
   run: runPhoneCommand,
   status: () => {
     renderDj();
     const text = (id: string): string => $(id).textContent ?? '';
-    return {state: dj?.snapshot().player.state ?? 'idle', now: text('dj-now'), next: text('dj-next-title'), detail: text('set-mix'),
+    const snap = dj?.snapshot(), player = snap?.player, queue = snap?.control.queue ?? [];
+    const playerState = player?.state ?? 'idle';
+    // A remote Play that the autoplay policy is holding back is reported, not left as "loading".
+    const needsClick = gate.observe(playerState, player?.contextState ?? djPlayer?.context.state ?? 'running');
+    const summary = player?.mix?.summary ?? null;
+    const info: TransitionInfo | null = summary?.set ? phoneTransition(summary, player?.mix?.fallbackAfterFailedPrecheck) : null;
+    if (info && player?.transition === 'complete') lastTransitionInfo = info;
+    const head = queue[0] ? titleOf(queue[0].trackId) : '';
+    const nextStatus = !player?.next && !head ? ''
+      : player?.mix?.phase === 'preparing' ? 'Preparing the handover…'
+      : summary?.set && player?.transition !== 'complete' ? 'Ready — handover prepared'
+      : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
+      : autoOn ? 'Queued — Auto prepares it once this song is in' : 'Queued — prepared when you press Next';
+    return {state: needsClick ? 'needs-click' : playerState, now: text('dj-now'), next: player?.next ? titleOf(player.next) : head || 'Nothing scheduled',
+      detail: text('set-mix'),
       status: text('mix-status'), requested: text('dj-requested'), execution: text('dj-error'),
-      hold: dj?.snapshot().control.requested.hold ?? false, handoff: 'mix',
+      hold: snap?.control.requested.hold ?? false, handoff: 'mix',
       canPlay: !$<HTMLButtonElement>('dj-play').disabled, canStop: !$<HTMLButtonElement>('dj-stop').disabled,
       canNext: !$<HTMLButtonElement>('dj-next').disabled, canHold: !$<HTMLButtonElement>('dj-hold').disabled,
-      canHandoff: false, auto: autoOn, canAuto: !!loaded};
+      canHandoff: false, auto: autoOn, canAuto: !!loaded,
+      queue: queue.slice(0, QUEUE_LIMIT).map(entry => ({id: entry.trackId, title: titleOf(entry.trackId)})),
+      nextStatus, canSetNext: queue.length > 0,
+      transitionNext: info && player?.transition !== 'complete' ? info : null, transitionLast: lastTransitionInfo};
   },
 }, phoneRelay, phoneToken, () => { renderPhoneStream(); }) : null;
 const phoneAuto = phoneStream && phoneToken ? new PhoneAutoStart(phoneRelay, phoneToken, phoneStream, () => loaded !== null, () => { renderPhoneStream(); }) : null;

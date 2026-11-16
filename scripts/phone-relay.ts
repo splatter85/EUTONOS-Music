@@ -114,6 +114,7 @@ const PHONE_FILES: Readonly<Record<string, {file: string; type: string}>> = {
   '/phone.css': {file: 'web/phone.css', type: 'text/css; charset=utf-8'},
   '/phone.js': {file: 'dist/web/phone.js', type: 'text/javascript; charset=utf-8'},
   '/phone-watchdog.js': {file: 'dist/web/phone-watchdog.js', type: 'text/javascript; charset=utf-8'},
+  '/phone-ui.js': {file: 'dist/web/phone-ui.js', type: 'text/javascript; charset=utf-8'},
 };
 
 /** Raw-target path check in the same discipline as scripts/serve.ts; returns the decoded path. */

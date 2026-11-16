@@ -1,3 +1,4 @@
+import {AudioGate} from './audio-gate.js';
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {SmallPlayer} from '../src/player.js';
 import {DeterministicDj, type DjCommandResult, type DjHandoff} from '../src/dj.js';
@@ -214,6 +215,7 @@ function runPhoneCommand(command: PhoneCommand): string {
     case 'stop': return press(buttons.stop, 'Stop');
     case 'next': return press(buttons['next-song'], 'Next Song');
     case 'auto': return 'ignored: Auto needs the Studio set page (studio.html?pack=set)';
+    case 'set-next': return 'ignored: choosing the next song needs the Studio set page (studio.html?pack=set)';
     case 'hold': {
       const held = dj?.snapshot().control.requested.hold ?? false;
       if (command.enabled !== undefined && command.enabled === held) return `Hold already ${held ? 'on' : 'off'}`;
@@ -230,12 +232,14 @@ function runPhoneCommand(command: PhoneCommand): string {
 const phoneButton = element<HTMLButtonElement>('phone-stream');
 const phoneBackground = element<HTMLInputElement>('phone-background');
 const phoneRelay = relayFromLocation(location.search);
+const gate = new AudioGate(() => player?.context.resume());
 const phoneStream = new PhoneStream({
   tapSource: () => { getDj(); if (!player) throw new Error('The player is not ready.'); return player; },
   run: runPhoneCommand,
   status: () => {
     render();
-    const state = dj?.snapshot().player.state ?? 'idle';
+    const snapshotState = dj?.snapshot().player.state ?? 'idle';
+    const state = gate.observe(snapshotState, player?.context.state ?? 'running') ? 'needs-click' : snapshotState;
     const text = (id: string): string => element(id).textContent ?? '';
     return {state, now: text('now-title'), next: text('next-title'), detail: text('now-detail'), status: text('status'),
       requested: text('requested-target'), execution: text('execution'), hold: dj?.snapshot().control.requested.hold ?? false,

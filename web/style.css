@@ -218,3 +218,6 @@ button[aria-pressed="true"] { border-color: #eda58c; color: #eda58c; }
 .phone-row { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
 .phone-option { color: var(--muted); font-size: 0.79rem; display: flex; gap: 8px; align-items: center; }
 #phone-stream-state { font-size: 0.8rem; overflow-wrap: anywhere; }
+
+.gesture-gate:not([hidden]) { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; background: rgba(8, 10, 14, 0.92); color: #fff; }
+.gesture-gate-button { font: inherit; font-size: 1.4rem; padding: 18px 28px; border-radius: 14px; border: 2px solid #fbbf24; background: #fbbf24; color: #201700; cursor: pointer; }
