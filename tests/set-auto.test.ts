@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {autoDecision, describeSetMix, moveTarget, tempoPercent, type AutoInput} from '../web/set-mode.js';
+import {autoDecision, describeSetMix, moveTarget, SongEntries, tempoPercent, type AutoInput} from '../web/set-mode.js';
 
 const base: AutoInput = {enabled: true, loop: false, playerState: 'playing', transition: 'none', armed: false, pending: false,
   voiceKey: 'song-a@100', handledKey: null, queueLength: 2};
@@ -50,4 +50,15 @@ test('the set handover description names the recipe, the bar and the tempo chang
   assert.match(text, /grids: requested → requested/);
   assert.match(describeSetMix({...summary, recipe: 'blend', set: {...summary.set, anchor: 'entry', boundaryBars: 32,
     fromGrid: 'measured', toGrid: 'measured'}}), /Beatmatched blend .*Auto every 32 bars.*measured beat grids/);
+});
+
+test('Auto keys each song entry, not the voice clock stamp', () => {
+  const entries = new SongEntries();
+  assert.equal(entries.observe(['a'], true), 'a#1');
+  assert.equal(entries.observe(['a'], true), 'a#1', 'pause/resume or a re-stamped voice keeps the key');
+  assert.equal(entries.observe(['a', 'b'], true), null, 'two songs during a handover');
+  assert.equal(entries.observe(['b'], true), 'b#2');
+  assert.equal(entries.observe(['a'], true), 'a#3', 'the same song entering again gets a new step');
+  assert.equal(entries.observe([], false), null);
+  assert.equal(entries.observe(['a'], true), 'a#4', 'Stop then Play is a new entry');
 });

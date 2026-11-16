@@ -172,7 +172,8 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
  * Session-local, bounded analysis cache. The key binds the audited audio hash, the analysis
  * version, the output rate, the mono downmix and the requested-BPM hint, so a changed song,
  * analyser or rate never reuses an old result. A cancelled caller does not cancel a shared
- * analysis; failures are cached as explicit unavailable results.
+ * analysis. A failure is returned as an explicit unavailable result to every caller that shared
+ * it, then dropped, so the next request retries.
  */
 export class MixAnalysisCache {
   private readonly entries = new Map<string, Promise<SongAnalysisResult>>();
@@ -210,6 +211,8 @@ export class MixAnalysisCache {
         }
       })();
       this.entries.set(key, entry);
+      const settled = entry;
+      void settled.then(result => { if (!result.ok && this.entries.get(key) === settled) this.entries.delete(key); });
       while (this.entries.size > this.maxEntries) this.entries.delete(this.entries.keys().next().value!);
     }
     return raceAbort(entry, signal);

@@ -378,11 +378,15 @@ export class DeterministicDj {
       this.outcome(replaced.queueCommandId, 'queued', 'Still queued; another entry now plays next.', replaced.source.id);
     }
     if (!choice.asset) {
+      // S18: nothing to move to, so no Next stays armed (a later queue edit must not hand over).
+      this.armed = false;
       if (!waiting) this.outcome(commandId, 'no-match', choice.reason);
       this.preparing = null;
       return;
     }
     if (!current) {
+      // S18: a Next while stopped or ended is not carried into the next Play.
+      this.armed = false;
       if (!waiting) this.outcome(commandId, 'queued', 'Selected for the next explicit Play; no audio has started.', choice.asset.id);
       this.preparing = null;
       return;

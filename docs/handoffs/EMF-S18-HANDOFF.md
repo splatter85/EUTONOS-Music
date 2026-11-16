@@ -64,7 +64,7 @@ UI (increment 3):
 
 Tests and gate:
 
-- `tests/set-mode.test.ts` (11 tests), `tests/set-auto.test.ts` (4) and `tests/helpers/synthetic-set.ts`.
+- `tests/set-mode.test.ts` (13 tests), `tests/set-auto.test.ts` (5) and `tests/helpers/synthetic-set.ts`.
 - Additions to `tests/phone-relay.test.ts` and `tests/mix-prepare.test.ts`.
 - `scripts/set-browser-check.ts`, added to `npm run check:browser` and runnable alone as `npm run check:set`.
 
@@ -74,7 +74,7 @@ All set media in tests and the gate is generated kick/bass/triad tone, imported 
 
 | Test command or listening check | Actual result | Evidence/limit |
 | --- | --- | --- |
-| `npm run check` (Windows) | PASS | 467/467 Node tests (452 before S18 inc 2/3, +11 set-mode, +4 set-auto), fixtures check, pack validation and S11 library demo. |
+| `npm run check` (Windows) | PASS | 470/470 Node tests (452 before S18 inc 2/3, +13 set-mode, +5 set-auto; re-run after the review fixes), fixtures check, pack validation and S11 library demo. |
 | `npm run check:browser` (Windows) | PASS | See the browser results below. |
 | `node dist/scripts/set-browser-check.js` | PASS, 5 checks | Details below. |
 | macOS / Linux | NOT RUN | Unverified on those OSes. |
@@ -101,7 +101,7 @@ Decisions:
 
 - **Where the set lives.** `serve.ts` only serves `local/s16-rated/`, so `pack=set` reads the same folder as `pack=rated`. The owner swaps folders by renaming. One folder holds either a pair or a set.
 - **Auto source.** The control contract allows Next only from a manual source, so Auto sends `nextSong` as the owner's armed repeat of Next (source `manual`). This is documented in the contract.
-- **Auto pacing.** Auto runs from the page's snapshot tick (the existing `requestAnimationFrame` loop plus the 250 ms reconcile interval), not a music timer. It sends one Next per playing song, anchored to that song's entry. It never retries a failed step for the same song.
+- **Auto pacing.** Auto runs from the page's snapshot tick (the existing `requestAnimationFrame` loop plus the 250 ms reconcile interval), not a music timer. It sends one Next per song entry (keyed by asset ID plus an entry count, so pause/resume never repeats a step), anchored to that song's entry. It never retries a failed step for the same entry.
 - **End of set.** By default the last song plays out and the set stops. With loop on, the page re-queues the set, skipping the playing song.
 - **Queue edits.** They never move the music. Only Next or Auto does. A reorder while a Next is outstanding re-targets it before its effect.
 - **Choice order.** Analyzed blend (only if B fits the time-stretch budget), then analyzed cut, then route-free crossfade (4 bars at equal tempo, 1 bar within 8%), then a clean cut on the bar. A cut or fallback plays native B audio, never a stretched copy.

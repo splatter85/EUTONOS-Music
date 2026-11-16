@@ -634,6 +634,8 @@ export class SmallPlayer {
         ? this.analyses.analyze(fromSet.mapping ? {asset: fromSet.asset, buffer: outgoing.recording.buffer} : outgoing.recording,
           this.mixRuntime, controller.signal)
         : this.decodeSetSong(fromSet.asset.id).then(native => this.analyses.analyze(native, this.mixRuntime, controller.signal));
+      // An early return below must not leave this started analysis as an unhandled rejection.
+      fromAnalysis.catch(() => undefined);
       const toRecording = await this.decodeSetSong(targetId);
       if (!current()) return;
       const [a, b] = await Promise.all([fromAnalysis, this.analyses.analyze(toRecording, this.mixRuntime, controller.signal)]);
@@ -723,7 +725,11 @@ export class SmallPlayer {
         throw error;
       }
     } finally {
+      // Release the prepared decode on success, abort, unavailable and failure alike; a newer
+      // scheduleMixTo (which replaced mixAbort) owns the retained set from then on.
+      const superseded = this.mixAbort !== controller && this.mixAbort !== null;
       if (this.mixAbort === controller) this.mixAbort = null;
+      if (!superseded) this.retainSetSongs([]);
     }
   }
 

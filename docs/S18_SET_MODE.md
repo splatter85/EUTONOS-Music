@@ -54,7 +54,7 @@ Let the owner play a DJ **set** made from every take they rated love or like, no
 - **Grids.** A song's grid is **measured** when tempo and downbeat confidence are both at least 0.65. Otherwise its **requested** grid is used and the plan labels it `requested`.
 - **Analysis cache.**
   - One analysis per song, keyed by the audio's SHA-256, the analysis version, the sample rate and the requested BPM.
-  - At most 64 entries; failures are cached too.
+  - At most 64 entries. A failed analysis is reported to every caller that shared it, then dropped, so the next request retries.
   - Analysis runs in the existing mix worker on a mono copy (`analyze-one` job).
   - The cache lives in memory only and is lost on reload.
 - **DJ.**
@@ -75,7 +75,7 @@ Open `studio.html?pack=set`. The DJ Booth shows a **Set** card:
   - "Queue the whole set" re-queues every song after the playing one.
   - Play starts the song at the head of the queue.
 - **Next.** Moves to the head of the queue at the next **4- or 8-bar boundary** of the playing song. A selector picks 4 or 8.
-- **Auto.** When on, Auto sends one Next per song, landing **16, 32 or 64 bars** after that song came in.
+- **Auto.** When on, Auto sends one Next per song entry, landing **16, 32 or 64 bars** after that song came in. An entry is keyed by the song and an entry count, so pause/resume never repeats a step, while the same song entering again later (loop, or Stop then Play) gets a new one.
   - It runs from the page's snapshot tick, never from a timer, so it pauses with the player.
   - At the end of the queue it stops: the last song plays out and the set ends.
   - With **Loop the set** on, it re-queues the set and continues.

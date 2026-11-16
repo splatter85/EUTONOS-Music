@@ -15,7 +15,7 @@ import {MusicLibrary, type MusicLibrarySnapshot} from '../src/library.js';
 import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
-import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, type AutoBars, type NextBars} from './set-mode.js';
+import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, type AutoBars, type NextBars} from './set-mode.js';
 import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import type {PhoneCommand} from './phone-protocol.js';
 
@@ -390,11 +390,11 @@ $('set-requeue').addEventListener('click', () => {
   const player = dj?.snapshot().player;
   void queueWholeSet(player && ACTIVE.includes(player.state) ? player.now.at(-1) ?? null : null);
 });
+const songEntries = new SongEntries();
 function voiceKey(): string | null {
   const player = dj?.snapshot().player;
-  if (!player || player.voices.length !== 1) return null;
-  const voice = player.voices[0]!;
-  return `${voice.source.id}@${voice.start.frame}`;
+  if (!player) return null;
+  return songEntries.observe(player.voices.map(v => v.source.id), ACTIVE.includes(player.state));
 }
 /** Auto step, called from the snapshot tick (no timers schedule music). */
 function runAuto(): void {
@@ -464,6 +464,8 @@ function renderSet(): void {
 // ---------- phone (S17 relay, Studio set page) ----------
 const phoneButton = $<HTMLButtonElement>('phone-stream'), phoneBackground = $<HTMLInputElement>('phone-background');
 const phoneRelay = relayFromLocation(location.search);
+// Read (and strip from the address bar) a relay token on every Studio page, not only the set page.
+const phoneToken = takeRelayToken(phoneRelay);
 function runPhoneCommand(command: PhoneCommand): string {
   renderDj();
   const press = (id: string, label: string): string => {
@@ -502,7 +504,7 @@ const phoneStream = isSet ? new PhoneStream({
       canNext: !$<HTMLButtonElement>('dj-next').disabled, canHold: !$<HTMLButtonElement>('dj-hold').disabled,
       canHandoff: false, auto: autoOn, canAuto: !!loaded};
   },
-}, phoneRelay, takeRelayToken(phoneRelay), () => { renderPhoneStream(); }) : null;
+}, phoneRelay, phoneToken, () => { renderPhoneStream(); }) : null;
 function renderPhoneStream(): void {
   if (!phoneStream) return;
   const view = phoneStream.snapshot();

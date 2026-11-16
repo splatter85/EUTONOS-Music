@@ -21,7 +21,7 @@ export interface AutoInput {
   readonly armed: boolean;
   /** The DJ has a pending start or transition plan. */
   readonly pending: boolean;
-  /** Identity of the single playing voice (`id@startFrame`), or null while more than one plays. */
+  /** Identity of the playing song's entry (`SongEntries.observe`), or null while more than one plays. */
   readonly voiceKey: string | null;
   /** The voice Auto already acted on, if any. */
   readonly handledKey: string | null;
@@ -55,6 +55,24 @@ export function autoDecision(input: AutoInput): AutoDecision {
       : {kind: 'finish', reason: 'End of the set: this song plays out and the set stops.'};
   }
   return {kind: 'next', voiceKey: input.voiceKey, reason: 'Auto: next song is scheduled.'};
+}
+
+/**
+ * Counts song entries so Auto acts once per song *entry*: the key is the asset ID plus an entry
+ * number, so pause/resume (which may re-stamp the voice) never re-triggers Auto, while the same
+ * song entering again later (loop, or Stop then Play) gets a fresh step.
+ */
+export class SongEntries {
+  private last: string | null = null;
+  private count = 0;
+  /** `ids`: the player's voice asset IDs; `active`: loading/scheduled/playing/paused. */
+  observe(ids: readonly string[], active: boolean): string | null {
+    if (!active) { this.last = null; return null; }
+    if (ids.length !== 1) return null;
+    const id = ids[0]!;
+    if (id !== this.last) { this.last = id; this.count++; }
+    return `${id}#${this.count}`;
+  }
 }
 
 /** Target index for moving queue entry `index` by `delta`, or null when it cannot move. */

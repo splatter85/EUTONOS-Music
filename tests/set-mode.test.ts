@@ -115,11 +115,22 @@ test('analysis cache keys by audio hash, analysis version, rate and requested BP
     const plain = new MixAnalysisCache(), counted = countingRuntime(), {analyzeOne: _, ...pairOnly} = counted.runtime;
     assert.ok((await plain.analyze(recording, pairOnly)).ok);
     assert.equal(counted.calls.analyze, 1);
-    // A failure is a cached, explicit unavailable result.
-    const failing: MixPreparationRuntime = {...runtime, analyzeOne: async () => { throw new Error('synthetic failure'); }};
+    // A failure is an explicit unavailable result, then dropped so the next request retries.
+    let fail = true, attempts = 0;
+    const flaky: MixPreparationRuntime = {...runtime, analyzeOne: async (audio, signal, options) => {
+      attempts++;
+      if (fail) throw new Error('synthetic failure');
+      return analyzeMixAudio(audio, options);
+    }};
     const failed = new MixAnalysisCache();
-    const result = await failed.analyze(recording, failing);
-    assert.equal(result.ok, false);
+    const [r1, r2] = await Promise.all([failed.analyze(recording, flaky), failed.analyze(recording, flaky)]);
+    assert.equal(r1.ok, false); assert.equal(r2.ok, false);
+    assert.equal(attempts, 1, 'concurrent callers share one failed run');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(failed.has(asset, 16000), false, 'the failure is not cached');
+    fail = false;
+    assert.equal((await failed.analyze(recording, flaky)).ok, true);
+    assert.equal(attempts, 2);
     assert.equal(failed.has(asset, 16000), true);
   } finally { await set.cleanup(); }
 });
@@ -292,6 +303,61 @@ test('set DJ: any-to-any in mix only, queue edits wait for Next, reorder re-targ
     assert.match(refused.execution.reason, /no authored routes/);
     assert.equal(dj.nextArmed, false);
     await dj.dispose();
+  } finally { await set.cleanup(); }
+});
+
+test('set DJ: a Next while stopped is not carried into the next Play; a later queue edit does not hand over', async () => {
+  const set = await buildSyntheticSet();
+  try {
+    const loaded = await loadSet(set), context = new SetContext(), {runtime} = countingRuntime();
+    const player = new SmallPlayer(context.audio, loaded, null, runtime);
+    const dj = new DeterministicDj(player, loaded, 'explore', {handoff: 'mix'});
+    const ids = SYNTHETIC_SET.map(s => set.idFor(s.id));
+    const rev = () => dj.snapshot().control.revision;
+    const early = await dj.request(req({type: 'nextSong'}, rev()));
+    assert.equal(early.execution.status, 'queued', early.execution.reason);
+    assert.equal(dj.nextArmed, false, 'nothing is playing, so the Next is not armed');
+    assert.equal((await dj.request(req({type: 'transport', action: 'play'}, rev()))).execution.status, 'scheduled');
+    context.advance(0.5); dj.snapshot();
+    const playing = dj.snapshot().player.now[0]!;
+    const other = ids.find(id => id !== playing)!;
+    const q = req({type: 'queueTrack', trackId: other}, rev());
+    assert.equal((await dj.request(q)).execution.status, 'queued');
+    const moved = await dj.request(req({type: 'reorderQueue', queueCommandId: q.commandId, toIndex: 0}, rev()));
+    assert.equal(moved.execution.status, 'applied', moved.execution.reason);
+    assert.equal(dj.snapshot().player.transition, 'none', 'no handover without a fresh Next');
+    assert.equal(dj.snapshot().pending, null);
+    assert.equal(dj.nextArmed, false);
+    await dj.dispose();
+  } finally { await set.cleanup(); }
+});
+
+test('set player releases the prepared decode when scheduleMixTo is cancelled or fails', async () => {
+  const set = await buildSyntheticSet();
+  try {
+    const loaded = await loadSet(set), context = new SetContext(), {runtime} = countingRuntime();
+    const player = new SmallPlayer(context.audio, loaded, null, runtime);
+    const retained = () => (player as unknown as {setDecoded: Map<string, unknown>}).setDecoded.size;
+    const [s128a, s122, s90] = SYNTHETIC_SET.map(s => set.idFor(s.id));
+    await player.playAsset(s90!);
+    context.advance(0.5);
+    const decodesBefore = context.decodes;
+    // Cancelled: a stop during preparation leaves nothing retained.
+    const cancelled = player.scheduleMixTo(s128a!);
+    player.cancelPendingTransition();
+    player.stop();
+    await cancelled.catch(() => undefined);
+    assert.equal(retained(), 0, 'cancelled preparation released its decode');
+    // Failed: a render failure on every attempt rejects and still releases the decode.
+    await player.playAsset(s90!);
+    context.advance(0.5);
+    (player as unknown as {prepareSetIncoming: () => Promise<never>}).prepareSetIncoming = async () => { throw new Error('synthetic render failure'); };
+    await assert.rejects(player.scheduleMixTo(s122!), /synthetic render failure/);
+    assert.equal(retained(), 0, 'failed preparation released its decode');
+    assert.equal(player.snapshot().mix?.phase, 'unavailable');
+    assert.equal(player.snapshot().voices.length, 1, 'the playing song is unchanged');
+    assert.ok(context.decodes > decodesBefore);
+    player.stop();
   } finally { await set.cleanup(); }
 });
 
