@@ -1,6 +1,6 @@
 # S20 — Studio set decks
 
-Status: decks built on `work/emf-s20-decks`, with the set analysis/cache follow-up on dependent `work/emf-s20-set-analysis`; see the [source-pinned handoff](handoffs/EMF-S20-HANDOFF.md) for actual verification and delivery state. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current status. This extends [S18 set mode](S18_SET_MODE.md) and [S19 transitions](S19_TRANSITIONS.md).
+Status: decks on `work/emf-s20-decks`, set analysis/cache on dependent `work/emf-s20-set-analysis`, and the live pre-check on dependent `work/emf-s20-live-precheck`; see the [source-pinned handoff](handoffs/EMF-S20-HANDOFF.md) for actual verification and delivery state. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current status. This extends [S18 set mode](S18_SET_MODE.md) and [S19 transitions](S19_TRANSITIONS.md).
 
 ## Owner controls
 
@@ -36,6 +36,20 @@ The cache validates versioned evidence, full-song coordinates, array bounds, nat
 
 Storage is bounded to 64 records, one MiB per payload and a conservative 16 MiB total budget, evicting the least recently used records. The in-session front cache and canonical cache are each bounded to 64 entries. Deadlines bound storage and display work only; they never schedule music. Saved waveform objects are immutable. The saved results remain engineering estimates, not listening judgments or new transition-selection rules.
 
+## Live transition pre-check
+
+The dependent `work/emf-s20-live-precheck` slice runs the existing offline evaluator before the Studio set player schedules an incoming song. It checks the one plan already chosen and prepared by the current set path. It never ranks alternatives, chooses a different recipe or entry, or relaxes `mix-evaluation-thresholds@1`. PASS and WARN admit the plan. FAIL, an unavailable worker, an invalid result or a resource refusal leave the playing song and unstarted queue entries intact. The readout explains the result, including unjudged beat phase.
+
+The player checks the same preparation identity and audio-clock deadline again after the result. Cancellation, reorder, pause and Stop invalidate the pending work. A late result cannot schedule audio or select a later bar; use Next again to request a fresh plan. Hold, Auto, phone commands and the shared output tap continue through the existing owner.
+
+The model uses the actual prepared pitch-preserving B entry, its native continuation if it enters the checked window, the actual prepared outgoing loop, and the fixed source gains already carried by the voices. Its window remains the evaluator's three seconds before S through three seconds after E, shortened at the beginning of a song. A native join after that window is explicitly labelled outside this check. Native tempo ramps remain a nominal model, not captured browser output.
+
+This is a check of the automatic DJ plan. Manual EQ, filter and crossfader settings, master level and mute are outside its scope and remain owned by you until handback. A passing result is not a listening judgment or a guarantee about device output.
+
+The pure evaluator runs in a fresh module worker without an AudioContext. Native playback buffers are never transferred. Cropped inputs travel as private chunks of at most 1,048,576 channel-samples, one acknowledged chunk at a time. The worker bounds input to 12,000,000 channel-samples and its rendered window to 4,000,000; an eight-second preparation deadline releases stuck workers. These are preparation resource limits, not music timers.
+
+Studio set mode always supplies this gate; there is no bypass switch. Existing authored-pair, hybrid and legacy demo paths retain their prior behavior. The Node evaluator API re-exports the same shared implementation served to the browser worker.
+
 ## Verification and limits
 
-The handoff records each branch's exact Windows Node and browser checks, independent review and native offline sample comparisons. No real phone, owner songs, physical output, touch hardware, macOS, Linux or listening is qualified by these slices. The live evaluator pre-check is the next assigned slice. No stems or transition selection changes are included.
+The handoff records each branch's exact Windows Node and browser checks, independent review and native offline sample comparisons. No real phone, owner songs, physical output, touch hardware, macOS, Linux or listening is qualified by these slices. No stems or transition selection changes are included.

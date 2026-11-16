@@ -1,6 +1,6 @@
-# EMF-S20 — Studio set decks and analysis handoff
+# EMF-S20 — Studio set decks, analysis and live pre-check handoff
 
-The original deck checkpoint below is source-pinned historical evidence. The [set analysis/cache follow-up](#set-analysiscache-follow-up--complete) records the latest completed branch and next assignment.
+The deck and analysis/cache checkpoints below are source-pinned historical evidence. The [live evaluator pre-check](#live-evaluator-pre-check--complete) records the latest completed branch. All three owner-assigned slices are complete for branch-only engineering scope; main integration and listening remain separate.
 
 **Campaign:** EMF / `campaign-emf-001`  
 **Slice:** EMF-S20, first bounded slice: two-deck Studio set interface  
@@ -121,3 +121,74 @@ No human listening occurred. Synthetic waveform/tempo/key/transport measurements
 Native batch `emf-s20-set-analysis-register-20261116` registered `EM-F-S20-SET-ANALYSIS` with complete/verified readback. Checkpoint batch `emf-s20-set-analysis-checkpoint-20261116` also completed with verified readback. `workflow prepare closeout` and `workflow run closeout` completed; native memory capture landed without required queued writes. A transient Desktop Commander connection failure was reconciled before retrying the same operation. Documentation checks verified 131 local Markdown file links, the new handoff anchor and exactly one Current Tasks RAM fence. The existing adoption-finalize block remains: the prior attempt returned `stale: Managed adoption needs an upgrade plan from this runtime.` No unchanged retry, installer, upgrade, permission reset or settings change was attempted. Acceptance therefore remains unrefreshed; the app gates above pass independently.
 
 **Exactly one next slice:** live evaluator pre-check, PC/Windows, on dependent `work/emf-s20-live-precheck` after this handoff commit. Apply the existing offline evaluator to the already selected transition before live scheduling; keep `mix-evaluation-thresholds@1`, recipe choice and entry selection unchanged. It is already assigned; no owner action is needed to continue that branch-only work. Main merge/push, listening/device qualification and other OS checks remain separate.
+
+
+## Live evaluator pre-check — COMPLETE
+
+**Recorded:** 2026-11-16, Windows only
+
+**Branch:** `work/emf-s20-live-precheck`, based on analysis/cache handoff `d257849f6489ddaf54e141e6d3c68f0b62045b3e`
+
+**Tested runtime/test source:** `cc7422ac5dcf15c112631f1ad4eb2778e6059572`
+
+**Disposition:** COMPLETE for the third assigned branch-only engineering slice. The two earlier sections and their next-step statements are historical. All three assigned slices are now built, checked and locally committed on dependent branches; main integration, push and listening remain separate.
+
+**Working checkout:** `C:\Users\splat\source\repos\eutonos-music-s20-decks`. The owner checkout remains on main `124b000ee2a0ed0a70dccede4c307b044cdce55e`, with only the pre-existing untracked `.claude/` folder.
+
+### Delivered behavior and files
+
+- `web/mix-evaluator.ts` is the existing pure offline evaluator shared with the browser; `src/mix-evaluate.ts` re-exports it for existing Node callers. The threshold object, measurement/judgment functions and offline choice helpers retain their behavior. Optional captured fixed source gains account for a voice already carrying a prior loudness match. Optional actual outgoing-loop PCM prevents the check from silently rebuilding a different loop. Gains apply once. The live gate never calls the candidate chooser.
+- `web/mix-precheck-data.ts` builds bounded source windows around the existing S/T/E timeline, rebases measured beat coordinates, includes interpolation endpoints and carries the actual prepared B entry/native continuation. A's pre-context follows the existing prepared/native voice when necessary. The actual prepared outgoing loop is a separate fourth stream. Source identity, coordinates, shapes, rate and budgets are checked before copying PCM.
+- `web/mix-precheck-worker.ts` runs one evaluation without an AudioContext. `web/mix-precheck.ts` transfers private cropped Float32 chunks, one acknowledged chunk at a time, and releases the worker on completion, failure, cancellation or deadline. Native playback buffers are never transferred. Replies must have complete finite measurements, coherent beat/flux semantics, the expected source mode and coverage, and a judgment reproducible under the frozen thresholds.
+- `src/player.ts` invokes the injected gate after the unchanged selection/preparation path, before constructing the incoming source or changing A's automation. PASS/WARN admit that exact plan. FAIL/unavailable refuse without a new selection attempt. Operation identity and the original audio-clock deadline are rechecked after the await. A late result cannot move the handover to another bar.
+- `web/studio.ts` always supplies the browser gate for Studio set mode. `web/studio.html` explains its scope. Preparing, admitted and refused results are shown, including unjudged beat phase and a later native join outside coverage. No bypass switch was added. Queue reorder, Next, Auto, Hold, Stop, pause, manual deck ownership, phone controls and the master stream tap keep their existing owner.
+- `tests/mix-evaluation-sharing.test.ts` (7), `tests/mix-precheck.test.ts` (12) and `tests/mix-precheck-player.test.ts` (11) cover sharing, exact threshold values, actual PCM/crop parity, malformed replies, failure/cancellation/deadlines, queue/transport lifecycle, fixed gains and loop ownership.
+- `scripts/mix-precheck-browser-check.ts` adds seven actual browser groups to `package.json`'s full browser gate. `scripts/set-browser-check.ts` and `scripts/deck-browser-check.ts` use matched-tempo, distinct-key control fixtures so successful transport is tested separately from the new gate's real unequal-tempo refusal. The set harness now includes actual readout text in timeout diagnostics.
+
+`src/mix-planner.ts`, `src/mix-transition.ts`, `src/dj.ts`, `web/set-mode.ts` and protected `scripts/serve.ts` are unchanged from main across these slices. No recipe/entry choice, threshold, stems, installer, editor settings or owner media changed. New served modules are under `web/`. No owner audio or `local/` material was copied or committed.
+
+### Executed verification
+
+| Check | Actual Windows result |
+| --- | --- |
+| Build plus focused shared-evaluator/adapter/player tests | **30/30 PASS**, 0 failures/cancellations/skips, exit 0; 3359.9869 ms Node duration |
+| Focused updated set browser gate | **16/16 PASS**, exit 0; 77.86 s including build |
+| Focused updated deck gate following the 30 tests | **7/7 PASS**, exit 0; 19.76 s combined build/Node/deck command |
+| `npm.cmd run check` at `cc7422a` | **577/577 PASS**, 0 failures/cancellations/skips; exit 0; 30398.3502 ms Node duration; 41.10 s full command |
+| `npm.cmd run check:browser` at `cc7422a` | **PASS, exit 0**, 242.22 s |
+| Final full browser inventory | 24 native offline; 16 browser; 4 S11 groups / 24 native replay cases; 15 Studio; 21 mix; 8 phone; 16 set; 7 deck; 7 analysis/cache; **7 live pre-check** groups. No report errors. |
+| Independent bounded source review | **KEEP** after complete-reply validation was strengthened; no remaining actionable finding |
+| Desktop and 390 px pre-check screenshots | Visually inspected; actual refusal and ownership remain readable; no horizontal overflow |
+| Owner songs, real phone, physical output, touch hardware, human listening, macOS/Linux | **NOT TESTED** |
+
+The real Chromium worker exactly matched the full, uncropped canonical evaluation for its native fixture. Four stereo chunks crossed the 1,048,576-sample boundary with one in flight; native PCM stayed intact and one worker was created and terminated. Synthetic prepared/native continuation jobs passed both inside-window and explicitly after-window coverage cases. An introduced gap between active sources failed at 700 ms against the unchanged 250 ms failure threshold. Worker creation failure remained unavailable; cancellation after a real chunk produced AbortError and terminated exactly one worker.
+
+The actual Studio unequal-tempo fixture produced a real beat-phase FAIL (0.10813077929328463 against 0.10). A strong/quiet fixture produced loudness FAIL (7.717690996855394 against 3 LU) plus phase failure. Both kept A, the queue and source count unchanged, retained manual ownership, used one live context and scheduled zero premature incoming sources. These are measured engineering results, not listening judgments.
+
+Positive continuation is also executed: the full set gate completed Next at the four-bar boundary and Auto at the entry-anchored 16-bar boundary under WARN. Actual selected filter sweep, loudness match, tempo ramp, loop extension and brake were admitted with unchanged thresholds. Longer synthetic 180/181-second stereo sources retained their bounded prepared entry/native join tests. Brake disclosed unjudged beat phase. Existing phone/control, cache/reload and native deck signal checks remained in the full gate.
+
+Ignored evidence is in `artifacts/s20-precheck-checks/check.log`, `browser.log`, their result JSON files, native filing JSON, and `artifacts/mix-precheck-browser/report.json` with desktop/mobile screenshots. The final browser reports pin the runtime commit above. No generated media was committed.
+
+### Findings, decisions and limits
+
+The first native-rate crop comparison differed only through floating-point coordinate rebasing. Its test compares numeric measurements within 1e-9 while requiring the same verdict, metric categories and exact thresholds. Inverse filter-display arithmetic similarly required a floating-point comparison. These are test tolerances; no evaluator acceptance threshold changed. Strict optional-property typing in the new missing-loop test was corrected without weakening the guard.
+
+An initially all-silent browser fixture was rejected by the existing intake guard and would not test an introduced gap relative to active references. It was replaced with a real automation gap for the worker and a strong/quiet imported pair for Studio. The old set transport fixture then correctly failed the newly enabled beat-phase guard. Requesting the cut preset still followed the unchanged route-free fallback when no analyzed boundary cue existed. The control fixture now uses matching tempos; a distinct real unequal-tempo FAIL stays explicitly covered by the new browser gate. No production evidence, choice or threshold was overridden to obtain green checks.
+
+The gate models the automatic DJ plan, including actual prepared PCM and persistent fixed source gains. Manual EQ/filter/crossfader, master volume and mute are outside that model and remain under their existing ownership. The check covers the evaluator's unchanged three seconds before S through three seconds after E, shortened at song start. A later native join is labelled outside coverage. Native-rate ramps use the existing nominal integration model; they are not captured Web Audio/device PCM.
+
+Resource bounds are 4,000,000 rendered channel-samples, 12,000,000 input channel-samples, private chunks of at most 1,048,576 samples and an eight-second worker deadline. Resource failure or a missed audio-clock deadline refuses rather than choosing another recipe or bar. Another explicit Next requests a fresh plan; it does not bypass the check. The existing Auto once-per-voice retry policy was not changed.
+
+This integration covers **Studio set mode**. Existing authored-pair, hybrid and legacy demo paths keep their prior behavior. The thresholds remain experimental and not listening-calibrated. Some transitions that previously played are now refused. Real-song choice improvements remain a separate assigned future slice; no stems work began.
+
+### Native filing and delivery
+
+The existing runtime registered `EM-F-S20-LIVE-PRECHECK` through native batch `emf-s20-live-precheck-register-20261116`, with complete/verified readback. Checkpoint batch `emf-s20-live-precheck-checkpoint-20261116` completed with verified readback. `workflow prepare closeout` returned prepared/ready-to-run with verified catalog/work assessments and no pending items; `workflow run closeout` returned completed with a landed receipt and no required queued write. Native RAM capture landed through that workflow. Documentation readback verified 141 local file links, three current/new anchors and exactly one Current Tasks RAM fence.
+
+The previously observed adoption-finalize block remains: `stale: Managed adoption needs an upgrade plan from this runtime.` No unchanged retry, installer, upgrade, permission reset, settings change or hand-authored acceptance record was attempted. Acceptance remains unrefreshed; the app gates above pass independently.
+
+Local branch commits are the authorized delivery. Main remains at the inspected owner SHA; there was no merge, push or remote publication. The documentation/native-record commit containing this section is supplied in chat to avoid a self-referential SHA.
+
+### Exactly one next slice
+
+**Next PC slice:** owner/coordinator review and explicitly authorized integration of the three dependent S20 branches. Review this source-pinned handoff and the unchanged protected/choice paths before any merge instruction. No further implementation is selected here. S10 owner listening and other-OS/device qualification remain separately assigned work; main merge and push require the owner's instruction.
