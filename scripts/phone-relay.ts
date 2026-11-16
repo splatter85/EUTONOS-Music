@@ -11,6 +11,7 @@
  * This is not a production host and is never bound to the LAN.
  */
 import {spawn, execFile} from 'node:child_process';
+import {createHash, randomBytes, timingSafeEqual} from 'node:crypto';
 import {createServer, type IncomingMessage, type Server, type ServerResponse} from 'node:http';
 import {readFile, realpath, stat} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
@@ -23,7 +24,8 @@ const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export const DEFAULT_RELAY_PORT = 4180;
 export const DEFAULT_DJ_ORIGINS = ['http://127.0.0.1:4173', 'http://localhost:4173'] as const;
-export const FFMPEG_ARGS = ['-hide_banner', '-loglevel', 'error', '-f', 'webm', '-i', 'pipe:0', '-vn',
+export const FFMPEG_ARGS = ['-hide_banner', '-loglevel', 'error', '-fflags', 'nobuffer', '-probesize', '32', '-analyzeduration', '0',
+  '-f', 'webm', '-i', 'pipe:0', '-vn',
   '-ac', '2', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '256k', '-flush_packets', '1', '-f', 'mp3', 'pipe:1'] as const;
 export const LIMITS = {
   ingestBytes: 1024 * 1024,
@@ -61,10 +63,14 @@ export interface PhoneRelayOptions {
   /** Root holding web/phone.html, web/phone.css and dist/web/phone.js. */
   readonly root?: string;
   readonly log?: (message: string) => void;
+  /** Per-run DJ secret; generated (16 random bytes, hex) when omitted. */
+  readonly token?: string;
 }
 
 export interface PhoneRelay {
   readonly server: Server;
+  /** Required as X-Relay-Token on every /api/dj/* request except the CORS preflight. */
+  readonly token: string;
   status(): RelayStatus;
   close(): Promise<void>;
 }
@@ -103,6 +109,7 @@ const PHONE_FILES: Readonly<Record<string, {file: string; type: string}>> = {
   '/phone.html': {file: 'web/phone.html', type: 'text/html; charset=utf-8'},
   '/phone.css': {file: 'web/phone.css', type: 'text/css; charset=utf-8'},
   '/phone.js': {file: 'dist/web/phone.js', type: 'text/javascript; charset=utf-8'},
+  '/phone-watchdog.js': {file: 'dist/web/phone-watchdog.js', type: 'text/javascript; charset=utf-8'},
 };
 
 /** Raw-target path check in the same discipline as scripts/serve.ts; returns the decoded path. */
@@ -176,6 +183,15 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   let encoderState: 'idle' | 'running' | 'error' = 'idle';
   let lastError: string | null = null;
   let closing = false;
+  const token = options.token ?? randomBytes(16).toString('hex');
+  if (!/^[0-9a-f]{32,128}$/.test(token)) throw new Error('The relay token must be 32-128 lowercase hex characters.');
+  const tokenDigest = createHash('sha256').update(token).digest();
+  /** Constant-time comparison of equal-length digests. */
+  function tokenMatches(request: IncomingMessage): boolean {
+    const supplied = request.headers['x-relay-token'];
+    if (typeof supplied !== 'string') return false;
+    return timingSafeEqual(createHash('sha256').update(supplied).digest(), tokenDigest);
+  }
 
   function fail(message: string): void { lastError = message; log(`Relay: ${message}`); }
 
@@ -276,17 +292,18 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (request.method === 'OPTIONS') {
       response.writeHead(204, {
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Relay-Token',
         'Access-Control-Max-Age': '600',
         ...(request.headers['access-control-request-private-network'] === 'true' ? {'Access-Control-Allow-Private-Network': 'true'} : {}),
       });
       response.end();
       return;
     }
+    if (!tokenMatches(request)) { json(response, 401, {error: 'relay-token-required'}); return; }
     if (path === '/api/dj/events') {
       if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
-      // One DJ page owns remote control; a newer connection replaces the older one.
-      djEvents?.end();
+      // One DJ page owns remote control; a second one is refused while the first is open.
+      if (djEvents) { json(response, 409, {error: 'another-dj-connected'}); return; }
       response.writeHead(200, {'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive'});
       response.write('retry: 2000\n\n: connected\n\n');
       djEvents = response;
@@ -382,11 +399,16 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       return;
     }
     if (request.method !== 'GET' && !head) { response.setHeader('Allow', 'GET, HEAD'); plain(response, 405, 'Method not allowed'); return; }
+    if ((path === '/api/status' || path === '/live.mp3') && request.headers['sec-fetch-site'] === 'cross-site') {
+      plain(response, 403, 'Cross-site requests are refused', head); return;
+    }
     if (path === '/api/status') { json(response, 200, status()); return; }
     if (path === '/live.mp3') {
       if (listeners.size >= LIMITS.maxListeners) { plain(response, 503, 'Too many listeners', head); return; }
-      // An endless live stream: Range requests are answered with the whole (live) body.
-      response.writeHead(200, {'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', 'Accept-Ranges': 'none'});
+      // An endless live stream, Icecast style: any Range (e.g. iOS bytes=0-1 probes) gets 200 with
+      // the live body and no Content-Length.
+      response.writeHead(200, {'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-cache, no-store', 'Accept-Ranges': 'none',
+        'icy-name': 'EUTONOS Music DJ (live from the PC)'});
       if (head) { response.end(); return; }
       response.flushHeaders();
       const fast = Buffer.concat(recent);
@@ -453,7 +475,12 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     });
   }
 
-  return {server, status, close};
+  return {server, token, status, close};
+}
+
+/** The DJ page address the owner opens; the token rides in the fragment, not the request. */
+export function djPageUrl(djOrigin: string, relayPort: number, token: string): string {
+  return `${djOrigin}/?relay=${encodeURIComponent(`http://127.0.0.1:${relayPort}`)}#relayToken=${token}`;
 }
 
 function usage(): string {
@@ -507,7 +534,10 @@ function startRelay(args: string[]): void {
     console.log(`EUTONOS Music phone relay: http://127.0.0.1:${port}/  (loopback only)`);
     console.log('');
     console.log('Phone listening (S17):');
-    console.log('  1. In another terminal keep `npm run demo` running and open http://127.0.0.1:4173/ in Edge or Chrome on this PC.');
+    console.log('  1. In another terminal keep `npm run demo` running, then open THIS address in Edge or Chrome on this PC');
+    console.log('     (it carries this run\'s secret relay token in the # fragment, which is never sent over the network):');
+    console.log(`       ${djPageUrl(parsed.djOrigins?.[0] ?? DEFAULT_DJ_ORIGINS[0], port, relay.token)}`);
+    console.log('     The token changes every time the relay starts; reopen the new address after a restart.');
     console.log('  2. On the DJ page switch on "Stream to phone". Press Play there once (or from the phone).');
     console.log(`  3. To reach this relay from your phone, run this yourself on the PC (this relay does not run it):`);
     console.log(`       tailscale serve --bg ${port}`);

@@ -3,7 +3,7 @@ import {SmallPlayer} from '../src/player.js';
 import {DeterministicDj, type DjCommandResult, type DjHandoff} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import type {MusicState} from '../src/pack-types.js';
-import {PhoneStream, relayFromLocation} from './phone-stream.js';
+import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import type {PhoneCommand} from './phone-protocol.js';
 
 /** The DJ plays one pack per page load; switching navigates, so pagehide disposes the old player. */
@@ -228,6 +228,7 @@ function runPhoneCommand(command: PhoneCommand): string {
 }
 const phoneButton = element<HTMLButtonElement>('phone-stream');
 const phoneBackground = element<HTMLInputElement>('phone-background');
+const phoneRelay = relayFromLocation(location.search);
 const phoneStream = new PhoneStream({
   tapSource: () => { getDj(); if (!player) throw new Error('The player is not ready.'); return player; },
   run: runPhoneCommand,
@@ -241,7 +242,7 @@ const phoneStream = new PhoneStream({
       canPlay: !buttons.play.disabled, canStop: !buttons.stop.disabled, canNext: !buttons['next-song'].disabled,
       canHold: !buttons.hold.disabled, canHandoff: !handoffInput.disabled};
   },
-}, relayFromLocation(location.search), () => { renderPhoneStream(); });
+}, phoneRelay, takeRelayToken(phoneRelay), () => { renderPhoneStream(); });
 function renderPhoneStream(): void {
   const view = phoneStream.snapshot();
   phoneButton.disabled = loaded === null;

@@ -11,7 +11,7 @@ import {PassThrough} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {chromium, type Browser, type Page} from 'playwright';
 import {createDemoServer} from './serve.js';
-import {createPhoneRelay, ffmpegEncoder, type EncoderProcess, type PhoneRelay, type SpawnEncoder} from './phone-relay.js';
+import {createPhoneRelay, djPageUrl, ffmpegEncoder, type EncoderProcess, type PhoneRelay, type SpawnEncoder} from './phone-relay.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const output = new URL('../../artifacts/s17-phone/', import.meta.url);
@@ -80,9 +80,23 @@ try {
   page.on('pageerror', error => errors.push(`dj: ${error.message}`));
   checks.push({name: stage, status: 'PASS'});
 
-  stage = 'Streaming is off by default and the DJ page loads normally';
-  await page.goto(`${origin}/?relay=${encodeURIComponent(relayOrigin)}`);
+  stage = 'Without the relay token streaming refuses and explains how to get it';
+  const tokenless = await context.newPage();
+  tokenless.on('pageerror', error => errors.push(`tokenless: ${error.message}`));
+  await tokenless.goto(`${origin}/?relay=${encodeURIComponent(relayOrigin)}`);
+  await tokenless.waitForFunction(() => !document.querySelector<HTMLButtonElement>('#phone-stream')!.disabled);
+  await tokenless.locator('#phone-stream').click();
+  await waitText(tokenless, '#phone-stream-error', /No valid relay token\. Open the DJ address that `npm run phone` printed/);
+  assert.equal(await tokenless.locator('#phone-stream').getAttribute('aria-pressed'), 'false');
+  assert.equal(running.status().dj.connected, false);
+  await tokenless.close();
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'Streaming is off by default, the DJ page loads normally and the token leaves the address bar';
+  await page.goto(djPageUrl(origin, relayPort, running.token));
   await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('#play')!.disabled);
+  assert.equal(await page.evaluate(() => location.hash), '', 'token fragment removed');
+  assert.ok(!page.url().includes(running.token), 'token not left in the URL');
   assert.equal(await page.locator('#phone-stream').getAttribute('aria-pressed'), 'false');
   assert.equal(await page.locator('#phone-stream-state').innerText(), 'Off');
   assert.equal(running.status().dj.connected, false);
@@ -115,6 +129,21 @@ try {
   }
   assert.equal(running.status().stream.sessions, 1);
   assert.equal(running.status().stream.lastError, null);
+  checks.push({name: stage, status: 'PASS'});
+
+  stage = 'A second DJ tab is refused and cannot replace the streaming session';
+  const second = await context.newPage();
+  second.on('pageerror', error => errors.push(`second: ${error.message}`));
+  await second.goto(djPageUrl(origin, relayPort, running.token));
+  await second.waitForFunction(() => !document.querySelector<HTMLButtonElement>('#phone-stream')!.disabled);
+  await second.locator('#phone-stream').click();
+  await waitText(second, '#phone-stream-error', /Another DJ tab is streaming to the phone/);
+  await waitText(second, '#phone-stream-state', /control refused · recorder waiting · 0 chunks sent/);
+  const chunksBefore = running.status().stream.chunksIn;
+  await until(() => running.status().stream.chunksIn > chunksBefore + 2, 'first tab keeps streaming');
+  assert.equal(running.status().stream.sessions, 1, 'the second tab started no audio session');
+  await second.locator('#phone-stream').click();
+  await second.close();
   checks.push({name: stage, status: 'PASS'});
 
   stage = 'DJ status reaches the phone page and phone commands use the DJ page controls';

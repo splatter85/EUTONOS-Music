@@ -4,6 +4,7 @@
  * its own buttons. The page never claims what is audible: it reports stream and DJ state.
  */
 import type {PhoneCommand, RelayStatus} from './phone-protocol.js';
+import {StallWatchdog} from './phone-watchdog.js';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -32,6 +33,9 @@ function setText(id: string, value: string): void {
   if (target.textContent !== value) target.textContent = value;
 }
 function setStream(message: string): void { setText('stream', message); }
+// A live stream that stays starved (waiting/stalled) for ~8 s is torn down and rejoined.
+const watchdog = new StallWatchdog(() => wantListening && reconnectTimer === null,
+  () => { scheduleReconnect('The live stream stalled.'); });
 
 function connect(): void {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -44,6 +48,7 @@ function connect(): void {
   });
 }
 function disconnect(): void {
+  watchdog.fed();
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
@@ -74,8 +79,10 @@ function renderListen(): void {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = wantListening ? 'playing' : 'paused';
 }
 
-audio.addEventListener('playing', () => { reconnectDelay = 1000; setStream('Listening — about 2–5 s behind the PC.'); });
-audio.addEventListener('waiting', () => { if (wantListening) setStream('Buffering… (the DJ may be stopped or paused on the PC)'); });
+audio.addEventListener('playing', () => { watchdog.fed(); reconnectDelay = 1000; setStream('Listening — about 2–5 s behind the PC.'); });
+audio.addEventListener('timeupdate', () => { if (!audio.paused) watchdog.fed(); });
+audio.addEventListener('waiting', () => { watchdog.starved(); if (wantListening) setStream('Buffering… (the DJ may be stopped or paused on the PC)'); });
+audio.addEventListener('stalled', () => { watchdog.starved(); });
 audio.addEventListener('error', () => { scheduleReconnect('The live stream dropped.'); });
 audio.addEventListener('ended', () => { scheduleReconnect('The live stream ended.'); });
 // The OS can pause the element (call, other app); reflect it rather than fighting it.

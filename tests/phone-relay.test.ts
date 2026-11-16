@@ -9,12 +9,14 @@ import {join} from 'node:path';
 import {PassThrough} from 'node:stream';
 import {test, type TestContext} from 'node:test';
 import {promisify} from 'node:util';
-import {createPhoneRelay, ffmpegEncoder, firstFrameOffset, isLoopbackHost, isPhoneHost, LIMITS,
+import {createPhoneRelay, djPageUrl, ffmpegEncoder, firstFrameOffset, isLoopbackHost, isPhoneHost, LIMITS,
   parseRelayArgs, safeRequestPath, type EncoderProcess, type PhoneRelay} from '../scripts/phone-relay.js';
 import {parseControlCommand, sanitizeDjStatus, STATUS_TEXT_LIMIT} from '../web/phone-protocol.js';
+import {StallWatchdog} from '../web/phone-watchdog.js';
 
 const execFileAsync = promisify(execFile);
 const DJ = 'http://127.0.0.1:4173';
+const TOKEN = '0123456789abcdef0123456789abcdef';
 
 /** An echoing stand-in for ffmpeg: whatever is written to stdin comes out of stdout. */
 class FakeEncoder implements EncoderProcess {
@@ -74,7 +76,7 @@ async function until(check: () => boolean, label: string, timeout = 5000): Promi
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
-const djHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({origin: DJ, ...extra});
+const djHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({origin: DJ, 'x-relay-token': TOKEN, ...extra});
 function ingest(port: number, session: string, seq: number, body: Buffer, headers = djHeaders()): Promise<HttpResult> {
   return http(port, `/api/dj/ingest?session=${session}&seq=${seq}`, {method: 'POST',
     headers: {'content-type': 'application/octet-stream', ...headers}, body});
@@ -91,9 +93,10 @@ async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: ()
   await writeFile(join(root, 'web', 'phone.html'), '<!doctype html><title>phone</title>');
   await writeFile(join(root, 'web', 'phone.css'), 'body{}');
   await writeFile(join(root, 'dist', 'web', 'phone.js'), 'export {};');
+  await writeFile(join(root, 'dist', 'web', 'phone-watchdog.js'), 'export {};');
   await writeFile(join(root, 'package.json'), '{"private":true}');
   const encoders: FakeEncoder[] = [];
-  const created = createPhoneRelay({root, allowHosts: options.allowHosts ?? [],
+  const created = createPhoneRelay({root, token: TOKEN, allowHosts: options.allowHosts ?? [],
     spawnEncoder: options.spawn ?? (() => { const encoder = new FakeEncoder(); encoders.push(encoder); return encoder; })});
   t.after(async () => { await created.close(); await rm(root, {recursive: true, force: true}); });
   created.server.listen(0, '127.0.0.1');
@@ -167,12 +170,22 @@ test('DJ endpoints require loopback Host, the DJ Origin and no proxy headers, wi
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers['access-control-allow-origin'], DJ);
   assert.match(String(preflight.headers['access-control-allow-headers']), /Content-Type/);
+  assert.match(String(preflight.headers['access-control-allow-headers']), /X-Relay-Token/);
+  // Host and Origin are forgeable by non-browser clients; the per-run token is the real gate.
+  const forged = {host: `127.0.0.1:${port}`, origin: DJ};
+  assert.equal((await ingest(port, 'session-aaaa', 0, chunk, forged)).status, 401, 'forged Host + Origin without token');
+  assert.equal((await ingest(port, 'session-aaaa', 0, chunk, {...forged, 'x-relay-token': 'f'.repeat(32)})).status, 401, 'wrong token');
+  assert.equal((await ingest(port, 'session-aaaa', 0, chunk, {...forged, 'x-relay-token': TOKEN.slice(0, 31)})).status, 401, 'short token');
+  assert.equal((await http(port, '/api/dj/events', {headers: forged})).status, 401);
+  assert.equal((await http(port, '/api/dj/status', {method: 'POST', headers: {...forged, 'content-type': 'application/json'}, body: '{}'})).status, 401);
+  assert.equal((await http(port, '/api/dj/events?token=' + TOKEN, {headers: forged})).status, 401, 'no query-string token');
+  assert.equal(encoders.length, 0);
   const accepted = await ingest(port, 'session-aaaa', 0, chunk);
   assert.equal(accepted.status, 200);
   assert.equal(accepted.headers['access-control-allow-origin'], DJ);
   assert.equal(encoders.length, 1);
   assert.equal((await http(port, '/api/dj/other', {headers: djHeaders()})).status, 404);
-  const localhostOrigin = await http(port, '/api/dj/status', {method: 'POST', headers: {origin: 'http://localhost:4173', 'content-type': 'application/json'}, body: '{}'});
+  const localhostOrigin = await http(port, '/api/dj/status', {method: 'POST', headers: {origin: 'http://localhost:4173', 'x-relay-token': TOKEN, 'content-type': 'application/json'}, body: '{}'});
   assert.equal(localhostOrigin.status, 200);
 });
 
@@ -288,10 +301,15 @@ test('phone commands reach the connected DJ page over Server-Sent Events, and DJ
   const text = events.bytes().toString();
   assert.match(text, /event: command\ndata: \{"command":"next","id":1\}\n\n/);
   assert.match(text, /event: command\ndata: \{"command":"handoff","mode":"hybrid","id":2\}\n\n/);
-  // A newer DJ connection replaces the older one.
-  const replaced = new Promise<void>(resolve => { events.incoming.on('close', () => { resolve(); }); });
+  // A second DJ connection is refused while the first is open; after it closes, a new one is accepted.
+  const second = await http(port, '/api/dj/events', {headers: djHeaders()});
+  assert.equal(second.status, 409);
+  assert.equal(JSON.parse(second.body.toString()).error, 'another-dj-connected');
+  assert.equal(second.headers['access-control-allow-origin'], DJ, 'the DJ page can read the refusal');
+  events.close();
+  await until(() => !running.status().dj.connected, 'first DJ connection closed');
   const newer = await stream(port, '/api/dj/events', djHeaders());
-  await replaced;
+  assert.equal(newer.incoming.statusCode, 200);
   assert.equal((await control(port, {command: 'stop'})).status, 202);
   await until(() => newer.bytes().toString().includes('"command":"stop"'), 'newer connection got the command');
   const posted = await http(port, '/api/dj/status', {method: 'POST', headers: djHeaders({'content-type': 'application/json'}),
@@ -374,7 +392,7 @@ test('real ffmpeg smoke: WebM/Opus chunks in, consecutive 44.1 kHz 256 kbit/s MP
   });
   assert.ok(generated.length > 1000);
   assert.equal(generated.readUInt32BE(0), 0x1a45dfa3, 'EBML/WebM header');
-  const created = createPhoneRelay({spawnEncoder: ffmpegEncoder('ffmpeg')});
+  const created = createPhoneRelay({token: TOKEN, spawnEncoder: ffmpegEncoder('ffmpeg')});
   t.after(() => created.close());
   created.server.listen(0, '127.0.0.1');
   await once(created.server, 'listening');
@@ -402,4 +420,59 @@ test('real ffmpeg smoke: WebM/Opus chunks in, consecutive 44.1 kHz 256 kbit/s MP
   }
   assert.equal(created.status().stream.encoder, 'running');
   listener.close();
+});
+
+test('each relay run gets its own random hex token and a DJ address that carries it only in the fragment', () => {
+  const first = createPhoneRelay(), second = createPhoneRelay();
+  assert.match(first.token, /^[0-9a-f]{32}$/);
+  assert.notEqual(first.token, second.token);
+  assert.throws(() => createPhoneRelay({token: 'short'}), /token/);
+  const url = new URL(djPageUrl('http://127.0.0.1:4173', 4180, TOKEN));
+  assert.equal(url.searchParams.get('relay'), 'http://127.0.0.1:4180');
+  assert.equal(url.hash, `#relayToken=${TOKEN}`);
+  assert.equal(url.search.includes(TOKEN), false, 'the token is not in the request target');
+});
+
+test('live MP3 is Icecast-style for Range probes, and cross-site status or audio fetches are refused', async t => {
+  const {port} = await relay(t);
+  const probe = await stream(port, '/live.mp3', {range: 'bytes=0-1'});
+  assert.equal(probe.incoming.statusCode, 200);
+  assert.equal(probe.incoming.headers['accept-ranges'], 'none');
+  assert.equal(probe.incoming.headers['cache-control'], 'no-cache, no-store');
+  assert.match(String(probe.incoming.headers['icy-name']), /EUTONOS/);
+  assert.equal(probe.incoming.headers['content-length'], undefined);
+  probe.close();
+  assert.equal((await http(port, '/live.mp3', {headers: {'sec-fetch-site': 'cross-site'}})).status, 403);
+  assert.equal((await http(port, '/api/status', {headers: {'sec-fetch-site': 'cross-site'}})).status, 403);
+  assert.equal((await http(port, '/api/status', {headers: {'sec-fetch-site': 'same-origin'}})).status, 200);
+  assert.equal((await http(port, '/', {headers: {'sec-fetch-site': 'cross-site'}})).status, 200, 'opening the phone page from a link still works');
+  assert.equal((await http(port, '/phone-watchdog.js')).headers['content-type'], 'text/javascript; charset=utf-8');
+});
+
+test('the phone stall watchdog reconnects only after a sustained stall while listening', () => {
+  let wants = true;
+  let stalls = 0;
+  const pending = new Map<number, () => void>();
+  let next = 0;
+  const timers = {set: (callback: () => void) => { pending.set(++next, callback); return next; },
+    clear: (handle: unknown) => { pending.delete(handle as number); }};
+  const fire = (): void => { for (const [id, callback] of [...pending]) { pending.delete(id); callback(); } };
+  const watchdog = new StallWatchdog(() => wants, () => { stalls++; }, 8000, timers);
+  watchdog.starved();
+  watchdog.starved();
+  assert.equal(pending.size, 1, 'repeated waiting events keep one timer');
+  watchdog.fed();
+  assert.equal(pending.size, 0, 'playing again cancels the stall');
+  fire();
+  assert.equal(stalls, 0);
+  watchdog.starved();
+  fire();
+  assert.equal(stalls, 1, 'a sustained stall triggers one reconnect');
+  assert.equal(watchdog.armed, false);
+  watchdog.starved();
+  wants = false;
+  fire();
+  assert.equal(stalls, 1, 'no reconnect after the listener paused');
+  watchdog.starved();
+  assert.equal(pending.size, 0, 'not armed while not listening');
 });

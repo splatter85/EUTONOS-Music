@@ -14,6 +14,9 @@ const TIMESLICE_MS = 250;
 const MAX_PENDING_CHUNKS = 40;
 const RETRY_MS = 3000;
 const STATUS_MS = 1000;
+const BUSY_RETRY_MS = 5000;
+const TOKEN_PATTERN = /^[0-9a-f]{32,128}$/;
+export const TOKEN_HELP = 'No valid relay token. Open the DJ address that `npm run phone` printed (it ends with #relayToken=…); the token changes each time the relay starts.';
 
 export interface StreamTapSource {
   createStreamTap(): MediaStream;
@@ -29,7 +32,7 @@ export interface PhoneStreamHost {
 export interface PhoneStreamView {
   readonly enabled: boolean;
   readonly relay: string;
-  readonly control: 'off' | 'connecting' | 'connected' | 'reconnecting';
+  readonly control: 'off' | 'connecting' | 'connected' | 'reconnecting' | 'refused';
   readonly recorder: 'off' | 'waiting' | 'recording' | 'unsupported' | 'retrying';
   readonly chunksSent: number;
   readonly bytesSent: number;
@@ -46,6 +49,33 @@ export function relayFromLocation(search: string): string {
   return DEFAULT_RELAY;
 }
 
+/**
+ * Reads the per-run relay token from the #relayToken= fragment (never sent in requests), keeps
+ * it in sessionStorage for this tab and removes it from the address bar. Falls back to storage.
+ */
+export function takeRelayToken(relay: string): string | null {
+  const key = `eutonos-music-relay-token:${relay}`;
+  const match = /(?:^#|&)relayToken=([^&]*)/.exec(location.hash);
+  if (match) {
+    const candidate = match[1] ?? '';
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch { /* keep going */ }
+    if (TOKEN_PATTERN.test(candidate)) {
+      try { sessionStorage.setItem(key, candidate); } catch { /* storage blocked: token lives for this page only */ }
+      return candidate;
+    }
+  }
+  try {
+    const stored = sessionStorage.getItem(key);
+    return stored && TOKEN_PATTERN.test(stored) ? stored : null;
+  } catch { return null; }
+}
+
+function errorText(code: string | undefined, status: number): string {
+  if (code === 'relay-token-required') return `The relay refused the token. ${TOKEN_HELP}`;
+  if (code === 'another-dj-connected') return 'Another DJ tab is streaming to the phone. Turn Stream to phone off there first; retrying.';
+  return `Relay refused (${code ?? status}).`;
+}
+
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 
 export class PhoneStream {
@@ -56,12 +86,13 @@ export class PhoneStream {
   private seq = 0;
   private pending = 0;
   private chain: Promise<void> = Promise.resolve();
-  private events: EventSource | null = null;
+  private eventsAbort: AbortController | null = null;
   private statusTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private view: {-readonly [K in keyof PhoneStreamView]: PhoneStreamView[K]};
 
-  constructor(private readonly host: PhoneStreamHost, readonly relay: string, private readonly onChange: () => void) {
+  constructor(private readonly host: PhoneStreamHost, readonly relay: string, private readonly token: string | null,
+    private readonly onChange: () => void) {
     this.view = {enabled: false, relay, control: 'off', recorder: 'off', chunksSent: 0, bytesSent: 0, sessions: 0,
       commands: 0, lastCommand: '', error: ''};
   }
@@ -75,6 +106,8 @@ export class PhoneStream {
     this.enabledState = true;
     this.view.enabled = true;
     this.view.error = '';
+    if (!this.token) { this.fail(TOKEN_HELP); this.stop(); return; }
+    this.view.recorder = 'waiting';
     try {
       this.source = this.host.tapSource();
     } catch (error) {
@@ -82,9 +115,10 @@ export class PhoneStream {
       this.stop();
       return;
     }
-    this.openEvents();
+    // Audio starts only once this tab owns the relay's control connection, so a second DJ tab
+    // (refused with 409) can never replace the streaming tab's audio session.
+    void this.runEvents();
     this.statusTimer = setInterval(() => { this.postStatus(); }, STATUS_MS);
-    this.startRecorder();
     this.postStatus();
     this.changed();
   }
@@ -101,8 +135,8 @@ export class PhoneStream {
     if (wasEnabled && session) this.post(`/api/dj/ingest?session=${session}&final=1`, new Blob([]), 'application/octet-stream').catch(() => undefined);
     try { this.source?.releaseStreamTap(); } catch { /* player already disposed */ }
     this.source = null;
-    this.events?.close();
-    this.events = null;
+    this.eventsAbort?.abort();
+    this.eventsAbort = null;
     this.view.control = 'off';
     this.view.recorder = 'off';
     this.changed();
@@ -112,37 +146,83 @@ export class PhoneStream {
   private fail(text: string): void { this.view.error = text; this.changed(); }
 
   private post(path: string, body: Blob | string, type: string): Promise<Response> {
-    return fetch(`${this.relay}${path}`, {method: 'POST', body, headers: {'Content-Type': type}, mode: 'cors',
-      cache: 'no-store', credentials: 'omit'});
+    return fetch(`${this.relay}${path}`, {method: 'POST', body, headers: {'Content-Type': type, 'X-Relay-Token': this.token ?? ''},
+      mode: 'cors', cache: 'no-store', credentials: 'omit'});
   }
 
-  private openEvents(): void {
+  /**
+   * Control events as a fetch-streamed Server-Sent Events response (EventSource cannot send the
+   * X-Relay-Token header or expose 401/409). Reconnects until streaming is turned off.
+   */
+  private async runEvents(): Promise<void> {
+    const abort = new AbortController();
+    this.eventsAbort = abort;
+    const pause = (ms: number): Promise<void> => new Promise(resolve => {
+      const timer = setTimeout(resolve, ms);
+      abort.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, {once: true});
+    });
     this.view.control = 'connecting';
-    const events = new EventSource(`${this.relay}/api/dj/events`);
-    this.events = events;
-    events.addEventListener('open', () => { if (this.events === events) { this.view.control = 'connected'; this.changed(); this.postStatus(); } });
-    events.addEventListener('error', () => {
-      if (this.events !== events) return;
-      // EventSource retries by itself (the relay sends retry: 2000).
-      this.view.control = 'reconnecting';
-      this.changed();
-    });
-    events.addEventListener('command', event => {
-      if (this.events !== events || !this.enabledState) return;
-      let parsed: unknown;
-      try { parsed = JSON.parse((event as MessageEvent<string>).data); } catch { return; }
-      const id = typeof parsed === 'object' && parsed !== null ? (parsed as {id?: unknown}).id : undefined;
-      if (typeof parsed === 'object' && parsed !== null) delete (parsed as {id?: unknown}).id;
-      const command = parseControlCommand(parsed);
-      if (!command) return;
-      let outcome: string;
-      try { outcome = this.host.run(command); } catch (error) { outcome = `failed: ${message(error)}`; }
-      this.view.commands++;
-      this.view.lastCommand = `#${typeof id === 'number' ? id : '?'} ${command.command}${command.command === 'handoff' ? ` ${command.mode}` : ''}: ${outcome}`;
-      this.changed();
-      // Status after the command's synchronous part; the DJ request itself may settle later.
-      setTimeout(() => { this.postStatus(); }, 50);
-    });
+    while (this.enabledState && !abort.signal.aborted) {
+      let wait = RETRY_MS;
+      try {
+        const response = await fetch(`${this.relay}/api/dj/events`, {headers: {'X-Relay-Token': this.token ?? ''},
+          mode: 'cors', cache: 'no-store', credentials: 'omit', signal: abort.signal});
+        if (!response.ok || !response.body) {
+          const code = (await response.json().catch(() => ({})) as {error?: string}).error;
+          this.view.control = 'refused';
+          if (code === 'another-dj-connected') { wait = BUSY_RETRY_MS; this.stopRecorder(); this.view.recorder = 'waiting'; }
+          this.fail(errorText(code, response.status));
+        } else {
+          this.view.control = 'connected';
+          this.view.error = '';
+          this.changed();
+          this.postStatus();
+          if (!this.recorder && !this.retryTimer) this.startRecorder();
+          const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+          let buffer = '';
+          for (;;) {
+            const {value, done} = await reader.read();
+            if (done) break;
+            buffer += value;
+            if (buffer.length > 65_536) buffer = buffer.slice(-65_536);
+            for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
+              this.handleEvent(buffer.slice(0, end));
+              buffer = buffer.slice(end + 2);
+            }
+          }
+          if (!abort.signal.aborted) { this.view.control = 'reconnecting'; this.changed(); }
+        }
+      } catch {
+        if (abort.signal.aborted) return;
+        this.view.control = 'reconnecting';
+        this.fail(`Relay unreachable at ${this.relay}. Is \`npm run phone\` running?`);
+      }
+      await pause(wait);
+    }
+  }
+
+  private handleEvent(block: string): void {
+    if (!this.enabledState) return;
+    let name = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) name = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (name !== 'command' || !data.length) return;
+    let parsed: unknown;
+    try { parsed = JSON.parse(data.join('\n')); } catch { return; }
+    const id = typeof parsed === 'object' && parsed !== null ? (parsed as {id?: unknown}).id : undefined;
+    if (typeof parsed === 'object' && parsed !== null) delete (parsed as {id?: unknown}).id;
+    const command = parseControlCommand(parsed);
+    if (!command) return;
+    let outcome: string;
+    try { outcome = this.host.run(command); } catch (error) { outcome = `failed: ${message(error)}`; }
+    this.view.commands++;
+    this.view.lastCommand = `#${typeof id === 'number' ? id : '?'} ${command.command}${command.command === 'handoff' ? ` ${command.mode}` : ''}: ${outcome}`;
+    this.changed();
+    // Status after the command's synchronous part; the DJ request itself may settle later.
+    setTimeout(() => { this.postStatus(); }, 50);
   }
 
   private postStatus(): void {
@@ -198,7 +278,7 @@ export class PhoneStream {
         if (this.sessionId !== session) return;
         if (!response.ok) {
           const body = await response.json().catch(() => ({})) as {error?: string};
-          this.retry(`Relay refused audio (${body.error ?? response.status}).`);
+          this.retry(`Audio not accepted: ${errorText(body.error, response.status)}`);
           return;
         }
         this.pending--;

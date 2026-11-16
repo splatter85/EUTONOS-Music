@@ -42,8 +42,8 @@
       <div class="execution-row"><p class="section-label">Latest execution</p><p id="execution" role="status">No command yet. Acceptance and playback are separate steps.</p></div><p id="error" class="error-message" role="alert"></p>
       <div class="phone-panel" aria-label="Stream to phone">
         <div class="phone-row"><button id="phone-stream" type="button" aria-pressed="false" disabled>Stream to phone: off</button><span id="phone-stream-state" class="muted" role="status">Off</span></div>
-        <label class="phone-option"><input id="phone-background" type="checkbox" autocomplete="off" checked> Keep playing while this tab is hidden (only while streaming; background playback is not qualified)</label>
-        <p id="phone-stream-detail" class="control-help">Off by default. Start <code>npm run phone</code> in a second terminal, then switch this on. The phone hears about 2–5 s late through a lossy MP3 copy. Stream failures never stop playback here.</p>
+        <label class="phone-option"><input id="phone-background" type="checkbox" autocomplete="off" checked> Keep playing while this tab is hidden — an exception to the S02 hidden-tab pause, only while streaming; hidden-tab timing is NOT TESTED</label>
+        <p id="phone-stream-detail" class="control-help">Off by default. Start <code>npm run phone</code> in a second terminal and open the DJ address it prints (it carries a per-run relay token after <code>#relayToken=</code>), then switch this on. The phone hears about 2–5 s late through a lossy MP3 copy. Stream failures never stop playback here.</p>
         <p id="phone-stream-error" class="error-message" role="alert"></p>
       </div>
     </section>
