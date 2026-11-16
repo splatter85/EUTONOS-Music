@@ -1,4 +1,6 @@
-# EMF-S20 — Studio set decks handoff
+# EMF-S20 — Studio set decks and analysis handoff
+
+The original deck checkpoint below is source-pinned historical evidence. The [set analysis/cache follow-up](#set-analysiscache-follow-up--complete) records the latest completed branch and next assignment.
 
 **Campaign:** EMF / `campaign-emf-001`  
 **Slice:** EMF-S20, first bounded slice: two-deck Studio set interface  
@@ -68,3 +70,54 @@ Main merge, public push and integration are intentionally outside this branch-on
 **First action:** inspect the existing analysis result/cache API, then add display-only analyzed BPM/key, song waveform summaries and a validated IndexedDB adapter keyed by audio SHA256, analysis version, decoded rate and every existing effective analysis option/window dimension.  
 **Owner action:** none needed for the next authorized branch slice. Main merge/push require separate owner instruction.  
 **Still not done:** analysis persistence/display, live evaluator pre-check (third slice, thresholds unchanged), owner listening/real-device qualification, macOS/Linux checks and main integration.
+
+## Set analysis/cache follow-up — COMPLETE
+
+**Recorded:** 2026-11-16, Windows only
+
+**Branch:** `work/emf-s20-set-analysis`, based on deck handoff `aa40b9fad2c015da1ce86562ed36e2065d36067e`
+
+**Tested runtime/test source:** `8ccad81663da8d10ef4f483ef9e3cab78b88663d`
+
+**Disposition:** COMPLETE for the assigned branch-only engineering scope; no main merge or push. The earlier deck checkpoint and its next-step statement above are historical.
+
+### Delivered behavior and files
+
+- `web/set-song-list.ts`, `web/studio.ts/html/css`: set rows retain requested BPM and add measured BPM/key estimates, the analyzed interval and full-song waveform summaries. Ambiguous keys and insufficient rhythm remain uncertain. Analyze uses the existing preparation path while idle/paused/ended and never starts transport or changes the queue. The waveform playhead reads the deck clock. Rows remain readable at 390 px.
+- `web/set-waveform.ts`, `web/set-waveform-worker.ts`: 512 exact absolute peak bins over every native frame and both channels. One browser worker receives sequential private chunks of at most 1,048,576 total samples; native buffers are never detached. At most one running and one queued song are retained. Bounded failure/cancellation cleanup leaves playback unaffected.
+- `web/analysis-storage.ts`: separate disposable IndexedDB store, 64-record LRU limit, one MiB payload limit and conservative 16 MiB total budget. Transaction completion is awaited by the storage operation; playback does not await writes. Blocked/unavailable/quota failures fall back to session analysis.
+- `web/set-analysis-cache.ts`: adapter around the unchanged `MixAnalysisCache`, preserving its complete SHA256/version/rate/window/BPM-hint key. Checksum plus schema/coordinate/dimension validation protects restored evidence. Only successful analysis persists. Shared work is deduplicated while cancellation remains per caller. Small records restore on reload without fetching WAV files; actual reuse checks exact decoded frames/channels. Native coordinates remain unchanged.
+- `src/player.ts`: optional analysis-cache injection and a display-only decoded-song observer. The default canonical cache and single live player/context/clock remain intact.
+- `tests/set-analysis-cache.test.ts` (18 tests), `tests/set-waveform.test.ts` (18 tests), `scripts/set-analysis-browser-check.ts` (7 browser groups), `package.json`: cache/worker regressions and actual browser persistence verification, included in the full gate.
+
+`src/mix-transition.ts`, `src/mix-planner.ts`, `src/dj.ts`, `web/set-mode.ts` and protected `scripts/serve.ts` are unchanged from the preceding branch. No recipe or entry-point choice, evaluator threshold, stems, editor settings, installer or owner media was changed. All test songs were generated fixtures, including media served at intercepted owner-local routes.
+
+### Executed verification
+
+| Check | Actual Windows result |
+| --- | --- |
+| TypeScript build plus focused cache/waveform tests | 36/36 PASS; 0 failures/cancellations/skips; exit 0; 2029.6007 ms Node test duration |
+| `npm.cmd run check` at `8ccad81` | **547/547 PASS**, 0 failures/cancellations/skips; exit 0; 30516.9303 ms Node duration; 41.47 s complete command |
+| `npm.cmd run check:browser` at `8ccad81` | **PASS, exit 0**, 224.90 s |
+| Full browser inventory | 24 native offline; 16 browser; 4 S11 groups / 24 native replay cases; 15 Studio; 21 mix; 8 phone; 16 set; 7 deck; **7 analysis/cache** checks. No report errors. |
+| Independent bounded persistence review | KEEP after the four fixes below; review was source inspection, not a separate execution claim |
+| Desktop and 390 px screenshots | Visually inspected; no horizontal overflow, measured labels and waveform rows readable |
+| Owner songs, real phone, physical output, touch hardware, listening, macOS/Linux | **NOT TESTED** |
+
+The actual IndexedDB reload produced identical measured labels and waveform pixels with **zero WAV requests**. A fresh cache reused full-coordinate analysis and the same planner result with **zero analysis and waveform computations**. Hash, rate, window and requested-BPM changes missed. A rechecksummed string-coordinate payload triggered the real canonical worker and was repaired. The browser waveform worker scanned 1,048,649 stereo frames in three chunks, one in flight, preserving raw peaks through the final frame and leaving 4,194,596 native bytes per channel intact. Actual storage retained 64 LRU rows; the byte-budget probe retained 13 large rows accounting for 15,626,624 bytes, below 16,777,216.
+
+Ignored local evidence: `artifacts/s20-analysis-checks/check.log`, `browser.log`, native filing JSON, and `artifacts/set-analysis-browser/report.json` plus desktop/mobile screenshots. Runtime reports pin `8ccad81`; any dirty flag during the gates refers to the documentation closeout only.
+
+### Review fixes, decisions and limits
+
+The independent review found four defects before final verification: display restore needed the decoder's ±1 resampling tolerance; coordinate rebasing needed integer validation before subtraction; saved waveform validation needed to return its frozen copy; and stale conditional deletion needed key/identity comparisons as well as payload/digest. All four were fixed and covered by Node or actual browser regressions. Actual decoded analysis reuse remains exact, including native frame count.
+
+Persistence is an optimization, with the canonical analyzer as the miss path. The display is honest about a bounded analysis window (up to 60 s); its separate overview covers the full song. Session front and canonical caches each retain at most 64 entries. Waveform/storage deadlines bound non-musical work only. IndexedDB belongs to the browser origin, so changing origin/port/profile or clearing browser data starts a new disposable cache. No saved audio, continuous background library scan or timing/selection policy was added.
+
+No human listening occurred. Synthetic waveform/tempo/key/transport measurements do not establish musical quality, real-device behavior or broad browser qualification. Main remains separate; branch stacking is not integration.
+
+### Native filing and next slice
+
+Native batch `emf-s20-set-analysis-register-20261116` registered `EM-F-S20-SET-ANALYSIS` with complete/verified readback. Checkpoint batch `emf-s20-set-analysis-checkpoint-20261116` also completed with verified readback. `workflow prepare closeout` and `workflow run closeout` completed; native memory capture landed without required queued writes. A transient Desktop Commander connection failure was reconciled before retrying the same operation. Documentation checks verified 131 local Markdown file links, the new handoff anchor and exactly one Current Tasks RAM fence. The existing adoption-finalize block remains: the prior attempt returned `stale: Managed adoption needs an upgrade plan from this runtime.` No unchanged retry, installer, upgrade, permission reset or settings change was attempted. Acceptance therefore remains unrefreshed; the app gates above pass independently.
+
+**Exactly one next slice:** live evaluator pre-check, PC/Windows, on dependent `work/emf-s20-live-precheck` after this handoff commit. Apply the existing offline evaluator to the already selected transition before live scheduling; keep `mix-evaluation-thresholds@1`, recipe choice and entry selection unchanged. It is already assigned; no owner action is needed to continue that branch-only work. Main merge/push, listening/device qualification and other OS checks remain separate.

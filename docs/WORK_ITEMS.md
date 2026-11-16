@@ -16,6 +16,31 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
               "model": null,
               "session": "chatgpt-emf-s20-20261116"
             },
+            "event_id": "f321b93b-94fb-5d21-8163-b704e0ce7440",
+            "human": null,
+            "kind": "created",
+            "recorded_at": "2026-11-16T14:35:54.904661+00:00"
+          },
+          "events": [],
+          "profile": "eutonos.work-attribution.v1"
+        },
+        "category": "Music"
+      },
+      "id": "EM-F-S20-SET-ANALYSIS",
+      "status": "active",
+      "summary": "Branch-only engineering scope complete at 8ccad81663da8d10ef4f483ef9e3cab78b88663d: measured BPM/key estimates and analyzed windows, exact full-song waveforms, validated bounded IndexedDB canonical analysis persistence. Windows 547/547 Node tests and full browser gate pass, including 7 actual cache/worker/storage checks. Independent review KEEP; main integration and listening remain separate.",
+      "title": "Set analysis, song overviews and persistent cache",
+      "type": "feature"
+    },
+    {
+      "extensions": {
+        "attribution": {
+          "creator": {
+            "context": {
+              "app": "ChatGPT",
+              "model": null,
+              "session": "chatgpt-emf-s20-20261116"
+            },
             "event_id": "6080946a-8d9f-577f-b760-6675ab4b8af5",
             "human": null,
             "kind": "created",
@@ -27,7 +52,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF-S20",
       "status": "active",
-      "summary": "Deck slice complete for assigned branch-only engineering scope at 201a4f5: 511 Node tests and full Windows browser gate pass. Main merge/push excluded; listening and other OSes untested. Next assigned separate branches: set display/cache gaps, then live evaluator pre-check with unchanged thresholds.",
+      "summary": "Owner-assigned branch-only sequence: decks checked at 201a4f5 (511 Node tests); set analysis/cache follow-up checked at 8ccad81 (547 Node tests, full browser exit 0 including 7 new cache checks). Next is live evaluator pre-check with frozen thresholds and unchanged recipe/entry choice. No main merge/push, owner media or listening; Windows only. See EMF-S20 handoff.",
       "title": "S20 Studio set decks and manual mixer ownership",
       "type": "slice"
     },
@@ -2008,5 +2033,5 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
 
 
 ```tokenslang-ram-links
-{"links":[{"memories":["RAM/record-bb09bae7158ecf21d0c1a754d4b6f10a242046b6ecf2680b51ac9156544ad532.json","RAM/record-1a463f03b65565f40e97afcfb2a7fb9bfcef274cb1ce4ac15e094ce216cf9aa8.json"],"work_id":"EMF-S15"},{"memories":["RAM/record-01af7dfe980c3f50c6fb3caae9b7906440a5b7fb197a3f31b825b732d378f60b.json"],"work_id":"EMF-S20"},{"memories":["RAM/record-1832a8d258f20b1d7071d4237cf99251614a8074e831e1689a260d65fbeb1eab.json","RAM/record-f6a28e736aaa0298f4d0d7fd2746a34864b99c2fe7e0e519d778eb203fc203f9.json","RAM/record-68497dc0b0639546d055e696b663d89a9392e334a20894cd71ad365ad1cf8e24.json","RAM/record-83f1dbcd33adbeac9a6c39e62aee4f33468c9e581c0ecf189b4f4748a2a3b62c.json","RAM/record-620a5cd0265d7e1afd7a4f1cd6e4790c5d988b805f518dda5285fd8a171c1b81.json"],"work_id":"campaign-emf-001"},{"memories":["RAM/record-b3e174fc6113aff835318a9f61807fd6a46226e8f80b29cbe0b86afb4a03c521.json","RAM/record-667e686f3265cabaf41c58fee595d3a42380f7e8a63b9c5fa681b7ad98e878ba.json"],"work_id":"campaign-ems-001"}],"profile":"eutonos.tokenslang.ram-links.v2"}
+{"links":[{"memories":["RAM/record-bb09bae7158ecf21d0c1a754d4b6f10a242046b6ecf2680b51ac9156544ad532.json","RAM/record-1a463f03b65565f40e97afcfb2a7fb9bfcef274cb1ce4ac15e094ce216cf9aa8.json"],"work_id":"EMF-S15"},{"memories":["RAM/record-01af7dfe980c3f50c6fb3caae9b7906440a5b7fb197a3f31b825b732d378f60b.json","RAM/record-77ac75c20eed75fa8d1a0f908c65ad0b6ebd4020c9647a36c60e7d5a96006432.json"],"work_id":"EMF-S20"},{"memories":["RAM/record-1832a8d258f20b1d7071d4237cf99251614a8074e831e1689a260d65fbeb1eab.json","RAM/record-f6a28e736aaa0298f4d0d7fd2746a34864b99c2fe7e0e519d778eb203fc203f9.json","RAM/record-68497dc0b0639546d055e696b663d89a9392e334a20894cd71ad365ad1cf8e24.json","RAM/record-83f1dbcd33adbeac9a6c39e62aee4f33468c9e581c0ecf189b4f4748a2a3b62c.json","RAM/record-620a5cd0265d7e1afd7a4f1cd6e4790c5d988b805f518dda5285fd8a171c1b81.json"],"work_id":"campaign-emf-001"},{"memories":["RAM/record-b3e174fc6113aff835318a9f61807fd6a46226e8f80b29cbe0b86afb4a03c521.json","RAM/record-667e686f3265cabaf41c58fee595d3a42380f7e8a63b9c5fa681b7ad98e878ba.json"],"work_id":"campaign-ems-001"}],"profile":"eutonos.tokenslang.ram-links.v2"}
 ```
