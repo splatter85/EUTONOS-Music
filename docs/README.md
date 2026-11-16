@@ -26,6 +26,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [Rated-takes handoff](S16_RATED_TAKES.md) | EMS-S01 export and EMF-S16 owner-local catalogue and explicit DJ audition contract; [export evidence](handoffs/EMS-S01-HANDOFF.md), [intake evidence](handoffs/EMF-S16-HANDOFF.md) |
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
+| [Phone listening](S17_PHONE_LISTENING.md) | EMF-S17 (in progress): streaming the live PC DJ to a phone through the loopback relay and Tailscale serve, phone remote commands, security split and limits; [evidence](handoffs/EMF-S17-HANDOFF.md) |
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
 | [Audio analysis](AUDIO_ANALYSIS.md) | Offline WAV/pack measurement command: loudness, levels and spectral balance, with its limits; also the bar-grid command (`eutonos.bar-grid.v1`) used for snap-to-bars |
 | [S10 listening scorecard](S10_LISTENING_SCORECARD.md) | Blank owner scorecard for the S10 listening session |

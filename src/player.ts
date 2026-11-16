@@ -67,6 +67,7 @@ export class SmallPlayer {
   readonly clock: WebAudioClock;
   readonly pair: CheckedRoute;
   private readonly output: GainNode;
+  private streamTap: MediaStreamAudioDestinationNode | null = null;
   private decoded: Promise<DecodedRecording[]> | null = null;
   private decodedPalette: Promise<DecodedRecording[]> | null = null;
   private paletteBinding: string | null = null;
@@ -467,11 +468,36 @@ export class SmallPlayer {
       muted: this.muted, volume: this.volume};
   }
 
+  /**
+   * S17 phone streaming: an observational extra connection from the single master output
+   * into a MediaStream. The output → destination path is unchanged, so the tap cannot
+   * alter what the PC plays; repeated calls return the same stream.
+   */
+  createStreamTap(): MediaStream {
+    requireAudio(this.state !== 'closed' && this.context.state !== 'closed', 'Player is closed. Reload the page.');
+    if (!this.streamTap) {
+      const tap = this.context.createMediaStreamDestination();
+      this.output.connect(tap);
+      this.streamTap = tap;
+    }
+    return this.streamTap.stream;
+  }
+
+  /** Removes only the S17 tap connection; safe to call when no tap exists. */
+  releaseStreamTap(): void {
+    const tap = this.streamTap;
+    if (!tap) return;
+    this.streamTap = null;
+    try { this.output.disconnect(tap); } catch { /* already disconnected by dispose */ }
+    for (const track of tap.stream.getTracks()) track.stop();
+  }
+
   async dispose(): Promise<void> {
     if (this.state === 'closed') return;
     this.stop();
     this.state = 'closed';
     this.context.removeEventListener('statechange', this.stateChanged);
+    this.releaseStreamTap();
     this.output.disconnect();
     this.decodedPalette = null;
     this.decoded = null;

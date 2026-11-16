@@ -40,7 +40,19 @@ export class NodeDouble {
   disconnectCalls = 0;
   constructor(readonly context: BaseAudioContext) {}
   connect(target: AudioNode): AudioNode { this.connections.push(target); return target; }
-  disconnect(): void { this.disconnectCalls++; this.connections.length = 0; }
+  disconnect(target?: AudioNode): void {
+    this.disconnectCalls++;
+    if (target === undefined) { this.connections.length = 0; return; }
+    const index = this.connections.indexOf(target);
+    if (index < 0) throw new Error('InvalidAccessError: not connected to that node.');
+    this.connections.splice(index, 1);
+  }
+}
+
+/** S17: a MediaStreamAudioDestinationNode stand-in whose stream tracks record stop(). */
+export class StreamTapDouble extends NodeDouble {
+  readonly stoppedTracks: number[] = [];
+  readonly stream = {getTracks: () => [{stop: () => { this.stoppedTracks.push(0); }}]} as unknown as MediaStream;
 }
 
 export class GainDouble extends NodeDouble {
@@ -89,6 +101,12 @@ export class ContextDouble extends EventTarget {
     const node = new GainDouble(this.audio);
     this.gains.push(node);
     return node as unknown as GainNode;
+  }
+  readonly streamTaps: StreamTapDouble[] = [];
+  createMediaStreamDestination(): MediaStreamAudioDestinationNode {
+    const node = new StreamTapDouble(this.audio);
+    this.streamTaps.push(node);
+    return node as unknown as MediaStreamAudioDestinationNode;
   }
   createBufferSource(): AudioBufferSourceNode {
     const node = new SourceDouble(this.audio);

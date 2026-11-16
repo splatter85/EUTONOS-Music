@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>EUTONOS Music · Phone</title>
+  <link rel="stylesheet" href="/phone.css">
+</head>
+<body>
+  <main class="phone-shell">
+    <header class="top"><span class="brand">EUTONOS <span class="brand-product">Music</span></span><span id="connection" class="pill pill-wait" role="status">Connecting…</span></header>
+
+    <section class="card now-card" aria-label="Now playing on the PC">
+      <p class="label">Now on the PC</p>
+      <h1 id="now">Nothing playing</h1>
+      <p id="state" class="muted">idle</p>
+      <p class="label next-label">Next</p>
+      <p id="next" class="next">Nothing scheduled</p>
+      <p id="dj-status" class="muted small"></p>
+    </section>
+
+    <section class="card listen-card" aria-label="Listening on this phone">
+      <button id="listen" class="listen" type="button" aria-pressed="false">Listen</button>
+      <p id="stream" class="muted" role="status">Not listening on this phone.</p>
+      <p class="note">This phone hears the PC about 2–5 seconds late. Listen/Pause only affects this phone; the DJ keeps playing.</p>
+    </section>
+
+    <section class="card remote-card" aria-label="DJ remote">
+      <p class="label">DJ remote (acts on the PC)</p>
+      <div class="remote-grid">
+        <button id="next-song" class="primary" type="button" disabled>Next Song</button>
+        <button id="hold" type="button" aria-pressed="false" disabled>Hold</button>
+        <button id="dj-play" type="button" disabled>Play (DJ)</button>
+        <button id="dj-stop" type="button" disabled>Stop (DJ)</button>
+      </div>
+      <label class="handoff" for="handoff">Handoff
+        <select id="handoff" disabled>
+          <option value="direct">Crossfade A → B</option>
+          <option value="hybrid">Procedural bridge</option>
+          <option value="mix">Automatic mix (experimental)</option>
+        </select>
+      </label>
+      <p id="command" class="muted small" role="status">No remote command yet.</p>
+    </section>
+
+    <footer class="foot">The MP3 copy is lossy and the phone speaker is not a bass reference: judge mixing defects on the PC. Lock-screen behaviour and listening are not tested.</footer>
+  </main>
+  <audio id="audio" preload="none"></audio>
+  <script type="module" src="/phone.js"></script>
+</body>
+</html>

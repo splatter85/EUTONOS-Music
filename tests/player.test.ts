@@ -362,3 +362,25 @@ test('failed decoding stops cleanly and a later explicit Play can retry preparat
   assert.equal(player.snapshot().next, a);
   await player.dispose();
 });
+
+test('S17 stream tap is an extra master-output connection that leaves the destination path unchanged', async () => {
+  const {context, player} = setup();
+  const output = context.gains[0]!;
+  assert.deepEqual(output.connections, [context.destination]);
+  const stream = player.createStreamTap();
+  assert.equal(player.createStreamTap(), stream, 'a repeated request reuses the one tap');
+  assert.equal(context.streamTaps.length, 1);
+  const tap = context.streamTaps[0]!;
+  assert.deepEqual(output.connections, [context.destination, tap]);
+  await player.play('a');
+  assert.deepEqual(output.connections, [context.destination, tap], 'playback keeps both connections');
+  player.releaseStreamTap();
+  assert.deepEqual(output.connections, [context.destination], 'release removes only the tap');
+  assert.equal(tap.stoppedTracks.length, 1);
+  player.releaseStreamTap();
+  const again = player.createStreamTap();
+  assert.notEqual(again, stream);
+  await player.dispose();
+  assert.equal(context.streamTaps[1]!.stoppedTracks.length, 1, 'dispose stops the tap tracks');
+  assert.throws(() => player.createStreamTap(), /closed/);
+});
