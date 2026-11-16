@@ -9,7 +9,7 @@ export interface MixPcm {
   readonly sampleRate: number;
   readonly channels: readonly (Float32Array | Float64Array)[];
 }
-export const MIX_ANALYSIS_VERSION = 'mix-analysis-v4' as const;
+export const MIX_ANALYSIS_VERSION = 'mix-analysis-v5' as const;
 export const MIX_ANALYSIS_LIMITS = Object.freeze({
   minSampleRate: 8000, maxSampleRate: 192000, maxSeconds: 180,
   maxChannelSamples: 16_777_216, minBpm: 60, maxBpm: 180,
@@ -18,6 +18,30 @@ export const SONG_ANALYSIS_WINDOW = Object.freeze({policy: 'song-mono-window@1' 
 /** S21: whole-song coverage from bounded windows (each <= 60 s; the 180 s render cap is untouched). */
 export const SONG_MERGE_POLICY = Object.freeze({policy: 'song-window-merge@1' as const, hopSeconds: 48, maxWindows: 12,
   tempoAgreement: 0.02, maxCues: 32});
+/** EMF-S21 Part B: tempo-relation repair (engineering starting points, not calibrated). */
+export const TEMPO_RELATION = Object.freeze({version: 'tempo-relation@1' as const,
+  /** Candidate must sit within this fraction of the reference tempo. */
+  referenceTolerance: 0.02,
+  /** The reference candidate must land on this fraction of grid beats... */
+  minCoverage: 0.75,
+  /** ...and score at least this fraction of the top candidate. */
+  minStrengthRatio: 0.75,
+  /** Simple ratios tested between rival readings (bpm chosen:rival), with relative tolerance. */
+  ratios: Object.freeze([[1, 2], [2, 1], [2, 3], [3, 2], [3, 4], [4, 3]] as const), ratioTolerance: 0.015,
+  /** Ambiguity left once a reference resolves a simple-ratio rival. */
+  resolvedAmbiguity: 0.35});
+/** EMF-S21 Part B: requested-origin downbeat (engineering starting points). */
+export const REQUESTED_DOWNBEAT = Object.freeze({version: 'requested-downbeat@1' as const,
+  /** Measured BPM must match the requested tempo within this fraction. */
+  tempoTolerance: 0.005,
+  /** Median |offset| of measured beats from the requested grid, in beats. */
+  maxOffsetBeats: 0.2,
+  /** Median absolute deviation of those offsets, in beats. */
+  maxSpreadBeats: 0.12,
+  /** Audio downbeat confidence below this lets the requested origin decide the bar phase. */
+  audioConfident: 0.65,
+  /** Weight of a fully agreeing requested grid in the noisy-OR with the audio confidence. */
+  priorWeight: 0.5});
 export const MIX_LEVEL_VERSION = 'bs1770-k-window@1' as const;
 export interface MixLevelEvidence {
   readonly version: typeof MIX_LEVEL_VERSION; readonly sampleRate: number;
@@ -60,6 +84,25 @@ export interface TempoCandidate {
   readonly driftSeconds: number;
   readonly hintSupport: number;
 }
+export type TempoRatioLabel = '1:2' | '2:1' | '2:3' | '3:2' | '3:4' | '4:3';
+/** A simple-ratio rival to the chosen tempo and how (or whether) it was resolved. */
+export interface TempoRelation {
+  readonly rivalBpm: number;
+  /** chosen:rival. */
+  readonly ratio: TempoRatioLabel;
+  readonly resolvedBy: 'audio' | 'requested-tempo' | 'song-consensus' | 'unresolved';
+}
+/** Part B whole-song tempo map from per-window readings. */
+export interface SongTempoSummary {
+  readonly bpm: number | null;
+  /** Fraction of total window confidence inside the chosen tempo cluster. */
+  readonly agreement: number;
+  /** Max minus min BPM among kept windows. */
+  readonly driftBpm: number;
+  readonly resolvedBy: 'consensus' | 'requested-tempo' | 'single-window';
+  readonly windows: readonly {readonly startFrame: number; readonly bpm: number | null; readonly confidence: number;
+    readonly kept: boolean; readonly relation?: TempoRelation}[];
+}
 export interface TempoEstimate {
   readonly bpm: number | null;
   readonly confidence: number;
@@ -69,6 +112,8 @@ export interface TempoEstimate {
   /** Compatibility summary of the leading candidates. */
   readonly alternatives: readonly {bpm: number; strength: number}[];
   readonly status: 'estimated' | 'insufficient-rhythm';
+  /** Part B: simple-ratio (octave or 3:2) rival, when one competes. */
+  readonly relation?: TempoRelation;
 }
 export interface VocalSpan {
   /** Supplied source-buffer frame interval [startFrame, endFrame); never detected here. */
@@ -98,6 +143,13 @@ export interface CueEvidence {
 export interface MixAnalysisOptions {
   /** Requested generation tempo: weak evidence only, never a fixed grid. */
   readonly generationBpm?: number;
+  /** Part B: song-consensus tempo from other windows; resolves simple-ratio rivals like the requested tempo. */
+  readonly tempoPrior?: number;
+  /**
+   * Part B: requested bar origin as a window-relative frame (may be negative). Used only when the
+   * audio downbeat is weak and the measured grid agrees with the requested tempo and phase.
+   */
+  readonly requestedDownbeatFrame?: number;
   readonly vocalSpans?: readonly VocalSpan[];
 }
 export interface KeyCandidate {
@@ -141,12 +193,18 @@ export interface MixAnalysis {
   /** S21 whole-song merge: every bounded window whose evidence was kept, in native song frames. */
   readonly analyzedWindows?: readonly SongWindowRef[];
   readonly tempo: TempoEstimate;
-  readonly beatGrid: {readonly frames: readonly number[]; readonly confidence: number; readonly maxFitErrorSeconds: number | null};
+  readonly beatGrid: {readonly frames: readonly number[]; readonly confidence: number; readonly maxFitErrorSeconds: number | null;
+    /** Part B: 'requested' when a planner/evaluator substituted the requested grid; absent means measured. */
+    readonly source?: 'measured' | 'requested'};
+  /** Part B: whole-song tempo map (merged analyses only). */
+  readonly songTempo?: SongTempoSummary;
   readonly structure: {
     readonly meter: readonly [4, 4];
     readonly assumed: true;
     readonly downbeatFrames: readonly number[];
     readonly downbeatConfidence: number;
+    /** Part B: where the bar phase came from. Absent in older analyses means 'audio'. */
+    readonly downbeatSource?: 'audio' | 'requested-origin' | 'audio+requested';
     readonly phraseFrames: readonly number[];
     readonly phraseConfidence: number;
     readonly phraseBars: 4;
@@ -369,7 +427,7 @@ function peakNear(values: Float64Array, at: number, radius: number): number {
 }
 
 function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Array,
-    hop: number, rate: number, generationBpm?: number) {
+    hop: number, rate: number, generationBpm?: number, tempoPrior?: number) {
   const empty = {tempo: {bpm: null, confidence: 0, ambiguity: 0, candidates: [],
     alternatives: [], status: 'insufficient-rhythm'} as TempoEstimate,
     frames: [] as number[], fitError: null as number | null};
@@ -399,14 +457,22 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
     peaks.push({lag: lag + delta, correlation: b});
   }
   peaks.sort((a, b) => b.correlation - a.correlation || a.lag - b.lag);
-  // Keep nearby autocorrelation peaks, and explicitly test both octave relatives.
+  // Keep nearby autocorrelation peaks, and explicitly test octave and 3:2/4:3 relatives (Part B:
+  // a swung or triplet-heavy groove often autocorrelates best at 2/3 of the true tempo).
   const hypotheses = peaks.slice(0, 16);
-  for (const peak of peaks.slice(0, 5)) for (const octave of [0.5, 2]) {
-    const lag = peak.lag * octave, bpm = 60 * rate / (hop * lag);
+  const correlationAt = (lag: number): number => {
+    const i = Math.floor(lag), f = lag - i;
+    return (correlations[i] ?? 0) * (1 - f) + (correlations[i + 1] ?? 0) * f;
+  };
+  const addHypothesis = (lag: number): void => {
+    const bpm = 60 * rate / (hop * lag);
     if (bpm >= MIX_ANALYSIS_LIMITS.minBpm - 0.5 && bpm <= MIX_ANALYSIS_LIMITS.maxBpm + 0.5) {
-      hypotheses.push({lag, correlation: correlations[Math.round(lag)] ?? 0});
+      hypotheses.push({lag, correlation: correlationAt(lag)});
     }
-  }
+  };
+  for (const peak of peaks.slice(0, 5)) for (const relative of [0.5, 2, 2 / 3, 1.5, 0.75, 4 / 3]) addHypothesis(peak.lag * relative);
+  // The reference tempo is always tested as a hypothesis; fitGrid still refines it from the audio.
+  for (const reference of [tempoPrior, generationBpm]) if (reference !== undefined) addHypothesis(60 * rate / (hop * reference));
   const lowOnsets = onsetEnvelope(low);
   const high = Float64Array.from(rms, (x, i) => Math.sqrt(Math.max(0, x * x - low[i]! * low[i]!)));
   const highOnsets = onsetEnvelope(high);
@@ -483,14 +549,33 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
     doubled.fit.coverage >= TEMPO_OCTAVE.doubledCoverage;
   const hintPicksDoubled = octaveUndecided && doubled.report.hintSupport >= TEMPO_OCTAVE.hintSupport &&
     doubled.report.hintSupport > top.report.hintSupport;
-  const chosen = hintPicksDoubled ? doubled : top;
-  const rival = octaveUndecided ? (hintPicksDoubled ? top : doubled) :
+  // Part B relation repair. A reference tempo (song consensus, else the requested generation tempo)
+  // resolves a simple-ratio rival only when the audio itself supports the reference reading: its grid
+  // must land on most beats and score close to the top reading. Otherwise the tie stays reported.
+  const reference = tempoPrior ?? generationBpm;
+  const referenceSource = tempoPrior !== undefined ? 'song-consensus' as const : 'requested-tempo' as const;
+  const atReference = reference === undefined ? undefined :
+    uniqueCandidates.find(c => Math.abs(c.report.bpm / reference - 1) <= TEMPO_RELATION.referenceTolerance);
+  const supported = (c: typeof top) => c.fit.coverage >= TEMPO_RELATION.minCoverage &&
+    c.report.strength >= TEMPO_RELATION.minStrengthRatio * top.report.strength;
+  const referenceRepair = atReference !== undefined && atReference !== top &&
+    tempoRatioLabel(atReference.report.bpm, top.report.bpm) !== null && supported(atReference);
+  const chosen = referenceRepair ? atReference! : hintPicksDoubled ? doubled : top;
+  const rival = referenceRepair ? top : octaveUndecided ? (hintPicksDoubled ? top : doubled) :
     uniqueCandidates.find(c => Math.abs(Math.log2(c.report.bpm / chosen.report.bpm)) >= 0.04);
   const margin = rival ? (chosen.report.strength - rival.report.strength) / Math.max(0.1, chosen.report.strength) : 1;
   // Ambiguity follows the reported score margin; the prior can shift that margin only weakly.
   const marginAmbiguity = rival ? clamp(1 - margin / 0.18) : 0;
-  const ambiguity = !octaveUndecided ? marginAmbiguity :
+  const rivalRatio = rival ? tempoRatioLabel(chosen.report.bpm, rival.report.bpm) : null;
+  // The top reading already matches a supported reference: a simple-ratio rival is corroborated away.
+  // An undecided octave (identical unaccented hits) stays reported: a matching hint cannot make the audio decide.
+  const referenceAgrees = !referenceRepair && !octaveUndecided && atReference === chosen && rivalRatio !== null;
+  let ambiguity = !octaveUndecided ? marginAmbiguity :
     hintPicksDoubled ? TEMPO_OCTAVE.hintedAmbiguity : Math.max(marginAmbiguity, TEMPO_OCTAVE.undecidedAmbiguity);
+  if (referenceRepair || referenceAgrees) ambiguity = Math.min(ambiguity, TEMPO_RELATION.resolvedAmbiguity);
+  const relation: TempoRelation | undefined = rival && rivalRatio ? {rivalBpm: rival.report.bpm, ratio: rivalRatio,
+    resolvedBy: referenceRepair || referenceAgrees ? referenceSource : hintPicksDoubled ? 'requested-tempo' :
+      ambiguity < 0.5 ? 'audio' : 'unresolved'} : undefined;
   // A metrical tie must also lower the legacy scalars read by barGrid.
   // Quadratic attenuation preserves clear positives; a complete tie caps at 0.35.
   const confidence = clamp((0.5 * chosen.report.correlation + 0.5 * chosen.fit.coverage) *
@@ -505,7 +590,14 @@ function estimateTempo(values: Float64Array, low: Float64Array, rms: Float64Arra
   const ranked = uniqueCandidates.map(c => c.report);
   return {tempo: {bpm: chosen.report.bpm, confidence, ambiguity, candidates: ranked,
     alternatives: ranked.slice(0, 5).map(c => ({bpm: c.bpm, strength: c.strength})),
-    status: 'estimated'} as TempoEstimate, frames, fitError: chosen.report.driftSeconds};
+    status: 'estimated', ...(relation ? {relation} : {})} as TempoEstimate, frames, fitError: chosen.report.driftSeconds};
+}
+/** chosen:rival as a simple ratio label, or null. */
+export function tempoRatioLabel(chosenBpm: number, rivalBpm: number): TempoRatioLabel | null {
+  for (const [a, b] of TEMPO_RELATION.ratios) {
+    if (Math.abs((chosenBpm / rivalBpm) / (a / b) - 1) <= TEMPO_RELATION.ratioTolerance) return `${a}:${b}` as TempoRatioLabel;
+  }
+  return null;
 }
 
 /** Original radix-2 complex FFT used only outside playback. */
@@ -613,9 +705,15 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
     throw new Error('Mix analysis requires bounded source-frame vocal spans.');
   }
   const {hop, rms, low, novelty, midFlux, highFlux, chroma, harmonicEnergy, energyCurve} = features(input, frames);
-  const estimate = estimateTempo(novelty, low, rms, hop, input.sampleRate, options.generationBpm);
+  if (options.tempoPrior !== undefined && (!Number.isFinite(options.tempoPrior) || options.tempoPrior <= 0)) {
+    throw new Error('Mix analysis requires a finite positive tempo prior.');
+  }
+  if (options.requestedDownbeatFrame !== undefined && !Number.isFinite(options.requestedDownbeatFrame)) {
+    throw new Error('Mix analysis requires a finite requested downbeat frame.');
+  }
+  const estimate = estimateTempo(novelty, low, rms, hop, input.sampleRate, options.generationBpm, options.tempoPrior);
   const beats = estimate.frames.filter(frame => frame < frames);
-  const beatConfidence = estimate.tempo.confidence *
+  let beatConfidence = estimate.tempo.confidence *
     clamp(1 - (estimate.fitError ?? 0) / 0.25);
   // Low-band attacks nominate beat 1; snare-like high accents on 2/4 support
   // bar parity but cannot distinguish beat 1 from beat 3 by themselves.
@@ -674,7 +772,48 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
     }
   }
   if (firstSupportedBeat === beats.length) downbeatConfidence = 0;
-  const downbeatFrames = beats.filter((_, i) => i >= firstSupportedBeat && i % 4 === phases[0]!.phase);
+  // Part B requested-origin downbeat. Four-on-the-floor kicks give no audio accent for beat 1, so
+  // a weak audio phase is replaced by the requested bar origin only when the measured beats agree
+  // with the requested tempo and land on the requested beat grid; confidence stays tied to that agreement.
+  let selectedPhase = phases[0]!.phase;
+  let downbeatSource: 'audio' | 'requested-origin' | 'audio+requested' = 'audio';
+  let requestedAgreement: number | null = null;
+  const origin = options.requestedDownbeatFrame, requestedBpm = options.generationBpm;
+  if (origin !== undefined && requestedBpm !== undefined && estimate.tempo.bpm !== null && beats.length >= 8 &&
+      Math.abs(estimate.tempo.bpm / requestedBpm - 1) <= REQUESTED_DOWNBEAT.tempoTolerance) {
+    const beatFrames = 60 * input.sampleRate / requestedBpm;
+    const offsets = beats.map(frame => { const x = (frame - origin) / beatFrames; return x - Math.round(x); });
+    const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]!; };
+    const centre = median(offsets), spread = median(offsets.map(x => Math.abs(x - centre)));
+    if (Math.abs(centre) <= REQUESTED_DOWNBEAT.maxOffsetBeats && spread <= REQUESTED_DOWNBEAT.maxSpreadBeats) {
+      const k = Math.round((beats[0]! - origin) / beatFrames);
+      const requestedPhase = (((-k) % 4) + 4) % 4;
+      const agreement = (1 - 0.5 * Math.abs(centre) / REQUESTED_DOWNBEAT.maxOffsetBeats) *
+        (1 - 0.5 * spread / REQUESTED_DOWNBEAT.maxSpreadBeats);
+      const audioConfident = downbeatConfidence >= REQUESTED_DOWNBEAT.audioConfident;
+      if (requestedPhase === selectedPhase) {
+        downbeatConfidence = Math.max(downbeatConfidence, beatConfidence * agreement);
+        downbeatSource = audioConfident ? 'audio+requested' : 'requested-origin';
+      } else if (!audioConfident) {
+        // Weak audio evidence for another phase still counts against the requested origin.
+        const requestedConfidence = beatConfidence * agreement * (1 - downbeatConfidence);
+        if (requestedConfidence > downbeatConfidence) {
+          selectedPhase = requestedPhase; downbeatConfidence = requestedConfidence; downbeatSource = 'requested-origin';
+        }
+      }
+      if (downbeatSource !== 'audio') {
+        // Two independent sources now agree (the measured beats and the producer's requested grid), so
+        // both confidences combine as a noisy-OR with the requested grid weighted by its measured agreement.
+        const corroborate = (x: number): number => 1 - (1 - x) * (1 - REQUESTED_DOWNBEAT.priorWeight * agreement);
+        beatConfidence = corroborate(beatConfidence);
+        downbeatConfidence = corroborate(downbeatConfidence);
+        requestedAgreement = agreement;
+        firstSupportedBeat = beats.findIndex((frame, i) => i % 4 === selectedPhase && frame >= origin - 0.35 * beatFrames);
+        if (firstSupportedBeat < 0) { firstSupportedBeat = beats.length; downbeatConfidence = 0; }
+      }
+    }
+  }
+  const downbeatFrames = beats.filter((_, i) => i >= firstSupportedBeat && i % 4 === selectedPhase);
   const phraseFrames = downbeatFrames.filter((_, i) => i % 4 === 0);
   const phraseConfidence = 0.5 * downbeatConfidence;
   const maximumEnergy = Math.max(1e-20, ...energyCurve.map(e => e.rms));
@@ -717,7 +856,7 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
   const analysis: MixAnalysis = {version: MIX_ANALYSIS_VERSION, sampleRate: input.sampleRate, frames, tempo: estimate.tempo,
     level: measureMixLevel(input), nativePeak: nativeSamplePeak(input),
     beatGrid: {frames: beats, confidence: beatConfidence, maxFitErrorSeconds: estimate.fitError},
-    structure: {meter: [4, 4], assumed: true, downbeatFrames, downbeatConfidence, phraseFrames,
+    structure: {meter: [4, 4], assumed: true, downbeatFrames, downbeatConfidence, downbeatSource, phraseFrames,
       phraseConfidence, phraseBars: 4},
     key: estimateKey(input, frames), energyCurve, cueFeatures, vocalSpans: vocalSpans.map(span => ({...span})),
     mixIn: rank('in'), mixOut: rank('out'),
@@ -727,6 +866,8 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
       'Global equal-tempered major/minor estimate; no chord-region, modulation, vocal or tuning analysis.',
       'Confidence scores are uncalibrated engineering heuristics, not probabilities or listening results.',
       'Real-song detection accuracy outside measured files is unknown.',
+      ...(estimate.tempo.relation && estimate.tempo.relation.resolvedBy !== 'audio' ? [`Tempo ${estimate.tempo.bpm?.toFixed(2)} BPM vs ${estimate.tempo.relation.rivalBpm.toFixed(2)} BPM (${estimate.tempo.relation.ratio}): ${estimate.tempo.relation.resolvedBy}.`] : []),
+      ...(requestedAgreement !== null ? [`Bar phase from the requested origin (${downbeatSource}); measured beats agree with the requested grid (agreement ${requestedAgreement.toFixed(2)}).`] : []),
     ]};
   return {...analysis, mixIn: findIncomingCues(analysis), mixOut: findOutgoingCues(analysis)};
 }
@@ -860,8 +1001,15 @@ export function mergeSongWindows(windows: readonly MixAnalysis[]): MixAnalysis {
   if (sorted.some(w => w.frames !== first.frames || w.sampleRate !== first.sampleRate || w.version !== first.version)) throw new Error('Song windows disagree on the song.');
   if (sorted.length === 1) return first;
   const confidence = (w: MixAnalysis): number => w.tempo.bpm === null ? -1 : w.tempo.confidence;
-  const reference = [...sorted].sort((x, y) => confidence(y) - confidence(x) || windowSpan(x).start - windowSpan(y).start)[0]!;
+  // Part B: the reference comes from the heaviest tempo cluster (sum of window confidences), so one
+  // confident window at a 2:3 or 1:2 relative cannot outvote a song that agrees elsewhere.
+  const agrees = (a: number | null, b: number | null): boolean => a !== null && b !== null && Math.abs(a / b - 1) <= SONG_MERGE_POLICY.tempoAgreement;
+  const clusterWeight = (w: MixAnalysis): number => sorted.filter(o => agrees(o.tempo.bpm, w.tempo.bpm)).reduce((s, o) => s + Math.max(0, o.tempo.confidence), 0);
+  const reference = [...sorted].sort((x, y) => clusterWeight(y) - clusterWeight(x) || confidence(y) - confidence(x) ||
+    windowSpan(x).start - windowSpan(y).start)[0]!;
   const refBpm = reference.tempo.bpm;
+  const totalWeight = sorted.reduce((s, w) => s + Math.max(0, w.tempo.confidence), 0);
+  const agreement = refBpm === null || totalWeight <= 0 ? 0 : clusterWeight(reference) / totalWeight;
   const limitations: string[] = [];
   const kept = sorted.filter(w => {
     const agree = refBpm !== null && w.tempo.bpm !== null && Math.abs(w.tempo.bpm / refBpm - 1) <= SONG_MERGE_POLICY.tempoAgreement;
@@ -893,12 +1041,23 @@ export function mergeSongWindows(windows: readonly MixAnalysis[]): MixAnalysis {
   const keyed = [...kept].sort((x, y) => y.key.confidence - x.key.confidence)[0]!;
   const spans = mergedSpans(kept.flatMap(w => w.vocalSpans ?? []));
   const {analyzedWindow: _single, ...base} = reference;
+  const keptBpms = kept.map(w => w.tempo.bpm).filter((b): b is number => b !== null);
+  const relations = kept.map(w => w.tempo.relation).filter(r => r !== undefined);
+  const songTempo: SongTempoSummary = {bpm: refBpm, agreement, driftBpm: keptBpms.length ? Math.max(...keptBpms) - Math.min(...keptBpms) : 0,
+    resolvedBy: relations.some(r => r.resolvedBy === 'requested-tempo' || r.resolvedBy === 'song-consensus') ? 'requested-tempo' : 'consensus',
+    windows: sorted.map(w => ({startFrame: windowSpan(w).start, bpm: w.tempo.bpm, confidence: w.tempo.confidence, kept: kept.includes(w),
+      ...(w.tempo.relation ? {relation: w.tempo.relation} : {})}))};
+  // Disagreeing windows lower whole-song confidence; full agreement leaves it unchanged.
+  const agreementScale = 0.6 + 0.4 * agreement;
   return {...base, version: first.version, frames: first.frames, sampleRate: first.sampleRate,
+    tempo: {...reference.tempo, confidence: reference.tempo.confidence * agreementScale}, songTempo,
     analyzedWindows: kept.map(w => { const s = windowSpan(w); return {policy: SONG_ANALYSIS_WINDOW.policy, startFrame: s.start, frames: s.end - s.start}; }),
-    beatGrid: {frames: beats, confidence: mean(w => w.beatGrid.confidence),
+    beatGrid: {frames: beats, confidence: mean(w => w.beatGrid.confidence) * agreementScale,
       maxFitErrorSeconds: kept.some(w => w.beatGrid.maxFitErrorSeconds === null) ? null : Math.max(...kept.map(w => w.beatGrid.maxFitErrorSeconds!))},
     structure: {...reference.structure, downbeatFrames: downbeats, phraseFrames,
-      downbeatConfidence: mean(w => w.structure.downbeatConfidence), phraseConfidence: mean(w => w.structure.phraseConfidence)},
+      downbeatConfidence: mean(w => w.structure.downbeatConfidence) * agreementScale, phraseConfidence: mean(w => w.structure.phraseConfidence),
+      downbeatSource: kept.every(w => (w.structure.downbeatSource ?? 'audio') === 'audio') ? 'audio' :
+        kept.every(w => w.structure.downbeatSource === 'requested-origin') ? 'requested-origin' : 'audio+requested'},
     key: keyed.key,
     energyCurve: owned(w => w.energyCurve, e => e.startFrame),
     ...(kept.every(w => w.cueFeatures) ? {cueFeatures: owned(w => w.cueFeatures!, c => c.frame)} : {}),
@@ -906,7 +1065,7 @@ export function mergeSongWindows(windows: readonly MixAnalysis[]): MixAnalysis {
     mixIn: dedupe(kept.flatMap(w => [...w.mixIn])),
     mixOut: dedupe(kept.flatMap(w => [...w.mixOut])),
     limitations: [...reference.limitations.filter(l => !l.startsWith('Only native frames')),
-      `Whole-song evidence merged from ${kept.length} bounded windows (${SONG_MERGE_POLICY.policy}); tempo from the most confident window.`,
+      `Whole-song evidence merged from ${kept.length} bounded windows (${SONG_MERGE_POLICY.policy}); tempo from the heaviest agreeing cluster (agreement ${(agreement * 100).toFixed(0)}%).`,
       ...limitations]};
 }
 function mergedSpans(spans: readonly VocalSpan[]): VocalSpan[] {

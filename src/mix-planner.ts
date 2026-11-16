@@ -1,8 +1,8 @@
 import {analyzeMixAudio, evidenceSpan, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate, type MixLevelEvidence} from './mix-analysis.js';
 import {bassSwapAutomation, cleanCutAutomation, crossfadeAutomation, filterSweepAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
-import {nativeRateInputAt, type NativeRateRamp} from './time-pitch.js';
+import {nativeRateInputAt, rampInInputAt, type NativeRateRamp, type RampIn} from './time-pitch.js';
 import {choreographyPlan, type ChoreographyParams} from '../web/eq-choreography.js';
-import {ENTRY_POLICY, entrySkipCost} from '../web/transition-policy.js';
+import {DUAL_RAMP_LIMITS, dualRampTempo, ENTRY_POLICY, entrySkipCost} from '../web/transition-policy.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -16,9 +16,9 @@ export interface HarmonicCompatibility {
   readonly circleDistance: number | null; readonly score: number;
   readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
-export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake' | 'meet-in-middle';
+export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake' | 'meet-in-middle' | 'dual-ramp';
 /** WSOLA-rendered B entries. S21 `meet-in-middle` also ramps A's native rate to the meeting tempo. */
-export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend', 'meet-in-middle'].includes(recipe);
+export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend', 'meet-in-middle', 'dual-ramp'].includes(recipe);
 export const MIX_OVERLAP_BEATS = Object.freeze([4, 8, 16, 32, 64, 128] as const);
 export type MixOverlapBeats = typeof MIX_OVERLAP_BEATS[number];
 /** S21 meet-in-middle: each deck within about 8%; A reaches the meeting tempo over two native bars. */
@@ -94,6 +94,14 @@ export interface AutomaticMixPlan {
   readonly tempoReturn?: {readonly rampFrames: number; readonly curve: 'linear' | 'smoothstep'};
   /** S21 meet-in-middle: the shared meeting tempo. */
   readonly meet?: {readonly bpm: number; readonly fromRate: number; readonly toRatio: number};
+  /** Part B dual tempo ramp: both decks at `bpm` during the overlap, pitch kept on both. */
+  readonly dualRamp?: {readonly bpm: number; readonly fromRatio: number; readonly toRatio: number;
+    readonly rampFrames: number; readonly rampBars: number; readonly curve: 'smoothstep'; readonly returnBars: number};
+  /**
+   * Part B: A's outgoing audio is a WSOLA render of native A from `sourceStartFrame` (pitch kept),
+   * easing from speed 1 to `tempoRatio` over `rampIn`; it replaces A at S like a finite loop buffer.
+   */
+  readonly outgoingStretch?: {readonly sourceStartFrame: number; readonly inputFrames: number; readonly tempoRatio: number; readonly rampIn: RampIn};
   /** S21: echo allowed by measured low density only (content not confirmed). */
   readonly echoHeuristic?: boolean;
   readonly confidence: number;
@@ -152,7 +160,7 @@ export function withPreparedLevelGain(plan: AutomaticMixPlan, gain: number): Aut
 
 function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions): MixDecision {
   const plan = planBlend(from, to, options);
-  if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend' || options.recipe === 'meet-in-middle') return plan;
+  if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend' || options.recipe === 'meet-in-middle' || options.recipe === 'dual-ramp') return plan;
   if (options.recipe === 'filter-sweep') {
     // S21: filter-sweep keeps its S19 shape; EQ choreography band lanes are not layered onto it.
     const {choreography: _sweepChoreo, ...sweepBase} = plan; // the sweep keeps its own S19 lanes
@@ -286,7 +294,14 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   }
   const fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!;
   const meet = options.recipe === 'meet-in-middle';
-  const meetBpm = meet ? options.meetBpm ?? Math.sqrt(fromBpm * toBpm) : fromBpm;
+  const dual = options.recipe === 'dual-ramp';
+  const dualTempo = dual ? dualRampTempo(fromBpm, toBpm) : null;
+  if (dual && !dualTempo) return fallback('Dual tempo ramp needs a tempo gap above 0.5% that both decks can meet within 8% each.');
+  if (dual && options.meetBpm !== undefined && !(Number.isFinite(options.meetBpm) &&
+    [options.meetBpm / fromBpm, options.meetBpm / toBpm].every(r => r >= DUAL_RAMP_LIMITS.minRatio - 1e-9 && r <= DUAL_RAMP_LIMITS.maxRatio + 1e-9))) {
+    return fallback('Dual tempo ramp target must keep each deck within 8%.');
+  }
+  const meetBpm = meet ? options.meetBpm ?? Math.sqrt(fromBpm * toBpm) : dual ? options.meetBpm ?? dualTempo!.bpm : fromBpm;
   if (meet && (!Number.isFinite(meetBpm) || meetBpm < Math.min(fromBpm, toBpm) || meetBpm > Math.max(fromBpm, toBpm) ||
     Math.abs(meetBpm / fromBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9 || Math.abs(meetBpm / toBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9)) {
     return fallback('Meet-in-the-middle needs each deck within 8% of the meeting tempo.');
@@ -294,7 +309,7 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   if (meet && Math.abs(fromBpm / toBpm - 1) <= 0.08) return fallback('Meet-in-the-middle is for gaps beyond the 8% stretched blend.');
   // B's output/original tempo: A's tempo for a normal blend, the meeting tempo for meet-in-middle.
   const tempoRatio = meetBpm / toBpm;
-  if (meet) { /* range checked above */ } else if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
+  if (meet || dual) { /* range checked above */ } else if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
     tempoRatio > (options.recipe === 'tempo-ramp' ? 1.25 : MIX_LIMITS.tempoRatioMax)) {
     return fallback(options.recipe === 'tempo-ramp' ? 'Native ramp ratio must stay within 0.8..1.25.' : 'Tempo match is outside the engineering limit of +/-8%.');
   }
@@ -326,11 +341,18 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   }
   if (harmonicLimited && !options.choreography) return fallback('A weak or distant key needs a mid-limited choreography.');
   // Shared tempo during the overlap: A's own for a blend, the meeting tempo for meet-in-middle.
-  const sharedBpm = meet ? meetBpm : fromBpm;
+  const sharedBpm = meet || dual ? meetBpm : fromBpm;
   const overlapFrames = Math.round(overlapBeats * 60 * from.sampleRate / sharedBpm);
   const fromRate = meetBpm / fromBpm;
-  const rampFrames = meet ? Math.round(MEET_LIMITS.rampBars * 4 * 60 * from.sampleRate / fromBpm * 2 / (1 + fromRate)) : 0;
-  const aNeeds = meet ? Math.ceil(nativeRateInputAt({start: 1, end: fromRate, frames: rampFrames}, rampFrames + overlapFrames)) : overlapFrames;
+  // Both ramps cover a whole number of A's native bars: the mean speed of a linear or smoothstep ramp is (1 + rate) / 2.
+  const rampBars = dual ? DUAL_RAMP_LIMITS.rampBars : MEET_LIMITS.rampBars;
+  const rampFrames = meet || dual ? Math.round(rampBars * 4 * 60 * from.sampleRate / fromBpm * 2 / (1 + fromRate)) : 0;
+  const rampIn: RampIn = {rampFrames, curve: 'smoothstep'};
+  // The WSOLA render of A reads a little past its nominal end (position search and window).
+  const stretchMargin = Math.round(0.1 * from.sampleRate);
+  const dualInput = dual ? Math.ceil(rampInInputAt(rampFrames + overlapFrames, fromRate, rampIn)) + stretchMargin : 0;
+  const aNeeds = meet ? Math.ceil(nativeRateInputAt({start: 1, end: fromRate, frames: rampFrames}, rampFrames + overlapFrames)) :
+    dual ? dualInput : overlapFrames;
   const outgoing = eligibleCues(from.mixOut, minimum, from.frames - aNeeds - 1, from.vocalSpans);
   // A tempo return (linear or smoothstep) consumes the mean of its endpoint rates.
   // Reserve that actual source budget plus one native B beat before ranking cues.
@@ -395,20 +417,34 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   if (meet) {
     // A ramps to the meeting tempo over two native bars, then B enters on A's next downbeat.
     const ramp: NativeRateRamp = {start: 1, end: fromRate, frames: rampFrames};
-    const shift = (lanes: MixAutomation): MixAutomation => {
-      const move = (pts: MixAutomation['gain'], first: number) => [{frame: 0, value: first}, ...pts.map(p => ({...p, frame: p.frame + rampFrames}))];
-      return {...lanes, durationFrames: rampFrames + lanes.durationFrames, gain: move(lanes.gain, lanes.gain[0]!.value),
-        lowShelfDb: move(lanes.lowShelfDb, 0), highPassHz: move(lanes.highPassHz, 0), lowPassHz: move(lanes.lowPassHz, from.sampleRate / 2),
-        ...(lanes.bands ? {bands: {low: move(lanes.bands.low, lanes.bands.low[0]!.value), mid: move(lanes.bands.mid, lanes.bands.mid[0]!.value),
-          high: move(lanes.bands.high, lanes.bands.high[0]!.value)}} : {})};
-    };
+    const shift = (lanes: MixAutomation): MixAutomation => shiftLanes(lanes, rampFrames, from.sampleRate);
     result = {...result, recipe: 'meet-in-middle', entryDelayFrames: rampFrames, outgoingEffectSourceFrame: choice.out.frame,
       nativeRate: {outgoing: ramp, pitchMoves: true},
       meet: {bpm: meetBpm, fromRate, toRatio: tempoRatio},
       automation: {outgoing: shift(automation.outgoing), incoming: automation.incoming},
       reasons: [...result.reasons, `Both decks meet at ${meetBpm.toFixed(1)} BPM: A's native rate ramps ${((fromRate - 1) * 100).toFixed(1)}% over two bars (its pitch moves ${aMove.toFixed(2)} semitones; the key check uses A shifted by ${aShift}), B is time-stretched ${((tempoRatio - 1) * 100).toFixed(1)}% and returns to its own tempo afterwards.`]};
   }
+  if (dual) {
+    // Part B: A eases (smoothstep, pitch kept) to the shared tempo over `rampBars` native bars from its exit
+    // downbeat S; B enters on the A downbeat that ends the ramp (T = S + R). Both beat periods are then
+    // 60 / meetBpm seconds, so the decks stay phase-locked; B returns to its own tempo after the overlap.
+    const returnBars = options.tempoReturn?.bars ?? 1;
+    result = {...result, recipe: 'dual-ramp', entryDelayFrames: rampFrames, outgoingEffectSourceFrame: choice.out.frame,
+      dualRamp: {bpm: meetBpm, fromRatio: fromRate, toRatio: tempoRatio, rampFrames, rampBars, curve: 'smoothstep', returnBars},
+      outgoingStretch: {sourceStartFrame: choice.out.frame, inputFrames: dualInput, tempoRatio: fromRate, rampIn},
+      automation: {outgoing: shiftLanes(automation.outgoing, rampFrames, from.sampleRate), incoming: automation.incoming},
+      reasons: [...result.reasons, `Dual tempo ramp to ${meetBpm.toFixed(1)} BPM with pitch kept: A eases ${((fromRate - 1) * 100).toFixed(1)}% over ${rampBars} bars (smoothstep), B enters on A's downbeat stretched ${((tempoRatio - 1) * 100).toFixed(1)}% and eases back to ${toBpm.toFixed(1)} BPM over ${returnBars} bar${returnBars > 1 ? 's' : ''}. Keys are compared unshifted. WSOLA artefacts are not listening-tested.`]};
+  }
   return result;
+}
+
+/** Delay outgoing lanes by `frames`, holding their starting values (A plays on while it ramps). */
+function shiftLanes(lanes: MixAutomation, frames: number, sampleRate: number): MixAutomation {
+  const move = (pts: MixAutomation['gain'], first: number) => [{frame: 0, value: first}, ...pts.map(p => ({...p, frame: p.frame + frames}))];
+  return {...lanes, durationFrames: frames + lanes.durationFrames, gain: move(lanes.gain, lanes.gain[0]!.value),
+    lowShelfDb: move(lanes.lowShelfDb, 0), highPassHz: move(lanes.highPassHz, 0), lowPassHz: move(lanes.lowPassHz, sampleRate / 2),
+    ...(lanes.bands ? {bands: {low: move(lanes.bands.low, lanes.bands.low[0]!.value), mid: move(lanes.bands.mid, lanes.bands.mid[0]!.value),
+      high: move(lanes.bands.high, lanes.bands.high[0]!.value)}} : {})};
 }
 
 /** New recipes require explicit strong grid/cue evidence, independent of global harmony. */
@@ -484,7 +520,7 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
     });
 }
 function validOptions(options: MixPlannerOptions): boolean {
-  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match', 'tempo-ramp', 'loop-extend', 'brake', 'meet-in-middle'].includes(options.recipe)) &&
+  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match', 'tempo-ramp', 'loop-extend', 'brake', 'meet-in-middle', 'dual-ramp'].includes(options.recipe)) &&
     (options.toEntryFrame === undefined || Number.isSafeInteger(options.toEntryFrame) && options.toEntryFrame >= 0) &&
     (options.entryRank === undefined || Number.isSafeInteger(options.entryRank) && options.entryRank >= 0 && options.entryRank < 8) &&
     (options.tempoReturn === undefined || Number.isInteger(options.tempoReturn.bars) && options.tempoReturn.bars >= 1 && options.tempoReturn.bars <= 8 &&
@@ -504,7 +540,10 @@ function validOptions(options: MixPlannerOptions): boolean {
 export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
   options: MixPlannerOptions = {}): readonly AutomaticMixPlan[] {
   if (!validOptions(options)) return [];
-  const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] : ['blend', 'echo-out', 'cut'] as const;
+  // Part B: the dual tempo ramp is a first-class Auto candidate, ahead of the blend for a stretched gap (above 4%).
+  const gap = from.tempo.bpm && to.tempo.bpm ? Math.max(from.tempo.bpm, to.tempo.bpm) / Math.min(from.tempo.bpm, to.tempo.bpm) - 1 : 0;
+  const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] :
+    gap > 0.04 ? ['dual-ramp', 'blend', 'echo-out', 'cut'] as const : ['blend', 'dual-ramp', 'echo-out', 'cut'] as const;
   const plans: AutomaticMixPlan[] = [];
   for (const recipe of recipes) {
     if (recipe === 'brake') {
@@ -524,6 +563,13 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
             incoming: crossfadeAutomation(frames - handover, base.sampleRate).incoming},
           reasons: ['Short finite native slowdown with pitch drop and gain fade; B enters on its measured downbeat before A closes. Shared-grid beat phase is unjudged.']});
       }
+    } else if (recipe === 'dual-ramp') {
+      // B always eases back to its own tempo (smoothstep, 4 bars or 8 for a stretch above 5%).
+      const target = from.tempo.bpm && to.tempo.bpm ? dualRampTempo(from.tempo.bpm, to.tempo.bpm) : null;
+      if (!target) continue;
+      const dual = styledBlend(from, to, {...options, recipe: 'dual-ramp', returnToOriginalTempo: true,
+        tempoReturn: options.tempoReturn ?? {bars: Math.abs(target.toRatio - 1) > 0.05 ? 8 : 4, curve: 'smoothstep'}});
+      if (dual.kind === 'mix') plans.push(dual);
     } else if (isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp') {
       const blend = styledBlend(from, to, options);
       if (blend.kind === 'mix') plans.push(blend);

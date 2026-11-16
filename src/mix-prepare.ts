@@ -61,7 +61,7 @@ export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCO
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly kind: 'render'; readonly audio: TimePitchPcm; readonly options: TimePitchOptions} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze';
-  readonly from: TimePitchPcm; readonly to: TimePitchPcm} |
+  readonly from: TimePitchPcm; readonly to: TimePitchPcm; readonly fromOptions?: MixAnalysisOptions; readonly toOptions?: MixAnalysisOptions} |
   /** S18: one song, already downmixed to mono so a full 180 s stereo take fits the analysis budget. */
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze-one';
   readonly audio: TimePitchPcm; readonly levelAudio?: TimePitchPcm; readonly options: MixAnalysisOptions};
@@ -185,6 +185,7 @@ export async function prepareTimePitch(audio: TimePitchPcm, options: TimePitchOp
       result.mapping?.inputFrames !== frames || result.mapping.tempoRatio !== expected.tempoRatio ||
       result.mapping.pitchSemitones !== (expected.pitchSemitones ?? 0) ||
       JSON.stringify(result.mapping.returnToOriginal) !== JSON.stringify(expected.returnToOriginal ?? null) ||
+      JSON.stringify(result.mapping.rampIn ?? null) !== JSON.stringify(expected.rampIn ?? null) ||
       !Number.isSafeInteger(result.mapping.outputFrames) || result.mapping.outputFrames < 1 ||
       result.mapping.outputFrames * audio.channels.length > TIME_PITCH_LIMITS.maxSamples / TIME_PITCH_LIMITS.minTempoRatio ||
       result.audio.channels?.length !== audio.channels.length || result.audio.channels.some(channel =>
@@ -197,10 +198,11 @@ export async function prepareTimePitch(audio: TimePitchPcm, options: TimePitchOp
 
 /** Audio analysis uses the same disposable worker ownership and abort/late-result rules. */
 export async function analyzeMixPairInWorker(from: TimePitchPcm, to: TimePitchPcm,
-  signal?: AbortSignal, timeoutMs = 30_000): Promise<MixPairAnalysis> {
+  signal?: AbortSignal, options: {readonly from?: MixAnalysisOptions; readonly to?: MixAnalysisOptions} = {}, timeoutMs = 30_000): Promise<MixPairAnalysis> {
   if (signal?.aborted) throw new Error('Mix preparation was cancelled.');
   const left = privateCopy(from), right = privateCopy(to);
-  const message: MixWorkerRequest = {protocol: PREPARE_WORKER_PROTOCOL, kind: 'analyze', from: left, to: right};
+  const message: MixWorkerRequest = {protocol: PREPARE_WORKER_PROTOCOL, kind: 'analyze', from: left, to: right,
+    ...(options.from ? {fromOptions: structuredClone(options.from)} : {}), ...(options.to ? {toOptions: structuredClone(options.to)} : {})};
   return runWorker(message, [...left.channels, ...right.channels].map(channel => channel.buffer), data => {
     if (!data.ok || data.kind !== 'analyze' || !data.result?.from || !data.result.to ||
       !Number.isFinite(data.result.from.tempo?.confidence) || !Number.isFinite(data.result.to.tempo?.confidence)) {

@@ -3,7 +3,7 @@ import {analyzeMixPairInWorker, analyzeMixSongInWorker, monoAnalysisCopy, prepar
 import {MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, type NativeSamplePeak, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
 import {planAutomaticMix, isBeatmatchedRecipe, withPreparedLevelGain, LEVEL_MATCH_LIMITS,
   type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
-import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedFiniteLoop, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
+import {composeRampInStart, outgoingStretchPeakLimit, outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedFiniteLoop, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
 import {cleanCutAutomation, crossfadeAutomation, type MixAutomation} from './mix-automation.js';
 import type {AudioAsset} from './pack-types.js';
 import type {DecodedRecording} from './web-audio.js';
@@ -12,12 +12,14 @@ import {evidenceSpan as songEvidenceSpan, mergeSongWindows, songWindowStarts, SO
 import {echoOutAutomation as routeEchoAutomation} from './mix-automation.js';
 import {harmonicCompatibility, MIX_PLANNER_VERSION} from './mix-planner.js';
 import {chooseChoreography, ENTRY_POLICY as SET_ENTRY_POLICY, entrySkipCost as setEntrySkipCost, exploreChoice, makeTransitionPlanRecord,
-  meetTempo, tempoGapPolicy, TRANSITION_POLICY_VERSION, type ExploreChoice, type PairFeatures, type SetRecipe, type TempoGapDecision,
+  DUAL_RAMP_LIMITS, dualRampTempo, meetTempo, tempoGapPolicy, TRANSITION_POLICY_VERSION, type ExploreChoice, type PairFeatures, type SetRecipe, type TempoGapDecision,
   type TransitionPlanRecord, type TransitionStyle} from '../web/transition-policy.js';
 import {CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyParams} from '../web/eq-choreography.js';
 
 export interface MixPreparationRuntime {
-  analyze(from: MixPcm, to: MixPcm, signal?: AbortSignal): Promise<{from: MixAnalysis; to: MixAnalysis}>;
+  /** Part B: optional per-side requested evidence (tempo and bar origin); runtimes may ignore it. */
+  analyze(from: MixPcm, to: MixPcm, signal?: AbortSignal,
+    options?: {readonly from?: MixAnalysisOptions; readonly to?: MixAnalysisOptions}): Promise<{from: MixAnalysis; to: MixAnalysis}>;
   render(audio: MixPcm, options: TimePitchOptions, signal?: AbortSignal): Promise<PreparedTimePitch>;
   /** S18 optional: one song (mono). Without it, set mode analyzes the mono copy through `analyze`. */
   analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions, levelAudio?: MixPcm): Promise<MixAnalysis>;
@@ -52,8 +54,8 @@ export function replanPreparedMix(ready: ReadyMixTransition, minimumFromFrame: n
       overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
       // S21: keep the recipe options a replan must reproduce (choreography, meeting tempo, tempo return, harmony mode).
       ...(plan.choreography ? {choreography: plan.choreography.params, harmonicMode: 'limited' as const} : {}),
-      ...(plan.meet ? {meetBpm: plan.meet.bpm} : {}),
-      ...(plan.tempoReturn ? {tempoReturn: {bars: Math.max(1, Math.round(plan.tempoReturn.rampFrames * (plan.meet?.bpm ?? plan.fromBpm) /
+      ...(plan.meet ? {meetBpm: plan.meet.bpm} : plan.dualRamp ? {meetBpm: plan.dualRamp.bpm} : {}),
+      ...(plan.tempoReturn ? {tempoReturn: {bars: Math.max(1, Math.round(plan.tempoReturn.rampFrames * (plan.meet?.bpm ?? plan.dualRamp?.bpm ?? plan.fromBpm) /
         (4 * 60 * plan.sampleRate))), curve: plan.tempoReturn.curve}} : {}),
       returnToOriginalTempo: plan.returnToOriginalTempo, ...(plan.levelMatch ? {fromLevelGain: plan.levelMatch.fromGain} : {})});
   return later.kind === 'mix' && plan.levelMatch ? {...later, levelMatch: plan.levelMatch} : later;
@@ -71,6 +73,7 @@ function pcm(recording: DecodedRecording): MixPcm {
 /** Copy only the measured loop and handover tail; validate the actual returned PCM independently. */
 export async function prepareOutgoingLoop(context: BaseAudioContext, from: DecodedRecording, plan: AutomaticMixPlan,
   levelGain: number, signal?: AbortSignal, runtime: MixPreparationRuntime = browserMixPreparation): Promise<AudioBuffer | undefined> {
+  if (plan.outgoingStretch) return prepareOutgoingStretch(context, from, plan, levelGain, signal, runtime);
   const loop = plan.loopExtension;
   if (!loop) return undefined;
   if (!runtime.renderLoop || from.processed || loop.endFrame !== plan.fromExitFrame || loop.endFrame - loop.startFrame !== loop.frames ||
@@ -90,6 +93,41 @@ export async function prepareOutgoingLoop(context: BaseAudioContext, from: Decod
       channel[loop.frames - 1] !== audio.channels[c]![loop.frames - 1] || channel[loop.frames] !== audio.channels[c]![loop.frames]) throw new Error('Finite loop changed a native seam anchor.');
     for (const value of channel) if (!Number.isFinite(value) || Math.abs(value) * levelGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Invalid effective finite loop PCM.');
     buffer.copyToChannel(new Float32Array(channel), c);
+  });
+  return buffer;
+}
+
+/**
+ * Part B dual tempo ramp: render A's outgoing audio from its native exit downbeat S through the
+ * bounded WSOLA worker (pitch kept), easing from speed 1 to the shared tempo. The buffer replaces
+ * A at S through the same 20 ms splice as a finite loop. The processor's 5 ms edge fade at the
+ * start is complemented by native A (speed is 1 there), and its common attenuation is undone so A
+ * keeps its own level; the effective peak may not exceed A's own native peak (or -1 dBFS) by more
+ * than the WSOLA overlap allowance, and never 0 dBFS.
+ */
+export async function prepareOutgoingStretch(context: BaseAudioContext, from: DecodedRecording, plan: AutomaticMixPlan,
+  levelGain: number, signal?: AbortSignal, runtime: MixPreparationRuntime = browserMixPreparation): Promise<AudioBuffer> {
+  const stretch = plan.outgoingStretch;
+  const frames = plan.automation.outgoing.durationFrames;
+  if (!stretch || from.processed || plan.sampleRate !== context.sampleRate || from.buffer.sampleRate !== context.sampleRate ||
+    stretch.sourceStartFrame !== plan.fromExitFrame || !Number.isSafeInteger(stretch.inputFrames) || stretch.inputFrames < 1 ||
+    stretch.sourceStartFrame < 0 || stretch.sourceStartFrame + stretch.inputFrames > from.buffer.length ||
+    !fitsBlendRender(stretch.inputFrames, from.buffer.numberOfChannels, context.sampleRate) ||
+    !(levelGain > 0 && Number.isFinite(levelGain))) throw new Error('Outgoing tempo ramp lacks a bounded native A window.');
+  checkAbort(signal);
+  const native = Array.from({length: from.buffer.numberOfChannels}, (_, c) =>
+    from.buffer.getChannelData(c).subarray(stretch.sourceStartFrame, stretch.sourceStartFrame + stretch.inputFrames));
+  const ready = await runtime.render({sampleRate: context.sampleRate, channels: native},
+    {tempoRatio: stretch.tempoRatio, pitchSemitones: 0, rampIn: stretch.rampIn}, signal);
+  checkAbort(signal);
+  if (ready.audio.sampleRate !== context.sampleRate || ready.mapping.inputFrames !== stretch.inputFrames ||
+    ready.audio.channels.some(channel => !(channel instanceof Float32Array))) throw new Error('Invalid outgoing tempo-ramp render.');
+  const composed = composeRampInStart(native, ready, frames);
+  const limit = outgoingStretchPeakLimit(native, levelGain);
+  const buffer = context.createBuffer(native.length, frames, context.sampleRate);
+  composed.forEach((out, c) => {
+    for (const value of out) if (!Number.isFinite(value) || Math.abs(value) * levelGain > limit + 1e-7) throw new Error('Outgoing tempo ramp exceeds A\'s own sample peak.');
+    buffer.copyToChannel(out, c);
   });
   return buffer;
 }
@@ -123,7 +161,8 @@ export async function prepareMixTransition(context: BaseAudioContext, from: Deco
   options = {...options};
   checkAbort(signal);
   const a = pcm(from), b = pcm(to);
-  const analysis = await runtime.analyze(a, b, signal);
+  const analysis = await runtime.analyze(a, b, signal, {from: requestedAnalysisOptions(from.asset, context.sampleRate),
+    to: requestedAnalysisOptions(to.asset, context.sampleRate)});
   checkAbort(signal);
   if (analysis.from.frames !== from.buffer.length || analysis.to.frames !== to.buffer.length ||
     analysis.from.sampleRate !== context.sampleRate || analysis.to.sampleRate !== context.sampleRate) {
@@ -178,7 +217,9 @@ export async function renderPlannedMix(context: BaseAudioContext,
   }
   const returnToOriginal = plan.returnToOriginalTempo ? {
     afterFrames: Math.round(plan.toEntryFrame / plan.tempoRatio) + plan.overlapFrames,
-    rampFrames: Math.round(4 * 60 * plan.sampleRate / plan.fromBpm),
+    // S21 Part B: a planned (smoothstep) tempo return is honoured; otherwise the S18 one-bar linear ramp.
+    rampFrames: plan.tempoReturn?.rampFrames ?? Math.round(4 * 60 * plan.sampleRate / plan.fromBpm),
+    ...(plan.tempoReturn?.curve === 'smoothstep' ? {curve: 'smoothstep' as const} : {}),
   } : undefined;
   const renderOptions: TimePitchOptions = {tempoRatio: plan.tempoRatio, pitchSemitones: plan.pitchSemitones,
     ...(returnToOriginal ? {returnToOriginal} : {})};
@@ -250,6 +291,16 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
  * analysis. A failure is returned as an explicit unavailable result to every caller that shared
  * it, then dropped, so the next request retries.
  */
+/**
+ * Part B: the producer's requested tempo and bar origin as analysis evidence for a window starting at
+ * `startFrame` (native frames at `sampleRate`). The analyser uses them only where the audio agrees.
+ */
+export function requestedAnalysisOptions(asset: AudioAsset, sampleRate: number, startFrame = 0): MixAnalysisOptions {
+  const timing = asset.timing;
+  if (!timing || !(timing.bpm > 0)) return {};
+  const origin = Math.round((timing.first_downbeat_frame ?? 0) * sampleRate / asset.file.sample_rate);
+  return {generationBpm: timing.bpm, requestedDownbeatFrame: origin - startFrame};
+}
 export class MixAnalysisCache {
   private readonly entries = new Map<string, Promise<SongAnalysisResult>>();
   private readonly peaks = new WeakMap<AudioBuffer, Promise<NativeSamplePeak>>();
@@ -257,7 +308,7 @@ export class MixAnalysisCache {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 2 || maxEntries > 256) throw new Error('Invalid analysis cache size.');
   }
   static key(asset: AudioAsset, sampleRate: number, startFrame = 0): string {
-    return `${asset.file.sha256}:${MIX_ANALYSIS_VERSION}:${MIX_LEVEL_VERSION}:${sampleRate}:${SONG_ANALYSIS_WINDOW.policy}:${SONG_ANALYSIS_WINDOW.seconds}s:${startFrame}:${asset.timing?.bpm ?? 'none'}`;
+    return `${asset.file.sha256}:${MIX_ANALYSIS_VERSION}:${MIX_LEVEL_VERSION}:${sampleRate}:${SONG_ANALYSIS_WINDOW.policy}:${SONG_ANALYSIS_WINDOW.seconds}s:${startFrame}:${asset.timing?.bpm ?? 'none'}:${asset.timing?.first_downbeat_frame ?? 'none'}`;
   }
   private readonly songs = new Map<string, Promise<SongAnalysisResult>>();
   /**
@@ -306,7 +357,7 @@ export class MixAnalysisCache {
       entry = (async (): Promise<SongAnalysisResult> => {
         try {
           const channels = Array.from({length: buffer.numberOfChannels}, (_, i) => buffer.getChannelData(i).subarray(startFrame));
-          const options: MixAnalysisOptions = asset.timing ? {generationBpm: asset.timing.bpm} : {};
+          const options = requestedAnalysisOptions(asset, buffer.sampleRate, startFrame);
           const mono = monoAnalysisCopy({sampleRate: buffer.sampleRate, channels});
           let analysis: MixAnalysis;
           const levelFrames = songLevelWindowFrames(mono.channels[0].length, buffer.sampleRate, channels.length);
@@ -388,6 +439,30 @@ export function setBarGrid(asset: AudioAsset, analysis: MixAnalysis | null, samp
   if (!timing || !(timing.bpm > 0)) throw new Error(`Song ${asset.id} has neither a measured nor a requested grid.`);
   return {source: 'requested', bpm: timing.bpm, barFrames: 4 * 60 * sampleRate / timing.bpm,
     downbeats: [Math.round(timing.first_downbeat_frame * sampleRate / asset.file.sample_rate)]};
+}
+/**
+ * Part B: the analysis the pre-check judges must describe the grid the planner used. A measured grid
+ * is the analysis itself (labelled 'measured'); a requested grid replaces tempo, beats and downbeats
+ * with the requested ones and labels them 'requested', so the evaluator never judges against a raw,
+ * low-confidence reading the planner did not use.
+ */
+export function gridAlignedAnalysis(analysis: MixAnalysis | null, grid: SetBarGrid): MixAnalysis | null {
+  if (!analysis) return null;
+  if (grid.source === 'measured') return {...analysis, beatGrid: {...analysis.beatGrid, source: 'measured'}};
+  const beat = grid.barFrames / 4, origin = grid.downbeats[0]!;
+  const first = Math.ceil(-origin / beat), beats: number[] = [], downbeats: number[] = [];
+  for (let i = first; ; i++) {
+    const frame = Math.round(origin + i * beat);
+    if (frame >= analysis.frames) break;
+    if (frame < 0) continue;
+    beats.push(frame);
+    if (((i % 4) + 4) % 4 === 0) downbeats.push(frame);
+  }
+  return {...analysis, tempo: {...analysis.tempo, bpm: grid.bpm},
+    beatGrid: {frames: beats, confidence: 0, maxFitErrorSeconds: null, source: 'requested'},
+    structure: {...analysis.structure, downbeatFrames: downbeats, downbeatConfidence: 0,
+      phraseFrames: downbeats.filter((_, i) => i % 4 === 0), phraseConfidence: 0},
+    limitations: [...analysis.limitations, 'Pre-check grid is the requested grid (not measured); beat phase is not judged against it.']};
 }
 export function downbeatAt(grid: SetBarGrid, bar: number): number {
   bar -= grid.firstBar ?? 0;
@@ -647,7 +722,7 @@ export async function renderSetBlend(context: BaseAudioContext, to: DecodedRecor
 }
 
 /** S21 recipes that render B through the bounded WSOLA window with a native join. */
-const SET_STRETCHED: readonly string[] = ['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle'];
+const SET_STRETCHED: readonly string[] = ['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle', 'dual-ramp'];
 
 /**
  * S21: identity of one parameterisation for the retry exclusion list: recipe, requested-boundary exit bar,
@@ -671,7 +746,7 @@ function pairFeatures(from: MixAnalysis, to: MixAnalysis, bpm: number, maxOverla
 }
 
 /**
- * S21 set transition choice. Candidates come from the tempo-gap policy (transition-policy@1) in
+ * S21 set transition choice. Candidates come from the tempo-gap policy (transition-policy@2) in
  * band order; rhythm recipes need a confident beat grid, and a weak key only limits sustained
  * harmonic overlap (mid-carve or bass-drop choreography). Every analyzed recipe may only use A
  * exits on the requested boundary bars. The route-free echo reset needs only grids; a clean cut
@@ -689,10 +764,17 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
   const second = first.bar + boundary.bars;
   const boundaries = [first, {bar: second, frame: downbeatAt(fromGrid, second)}];
   const owner = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : null;
-  const beatConfident = !!from.analysis && !!to.analysis && [from.analysis, to.analysis].every(a =>
-    a.beatGrid.confidence >= SET_GRID_LIMITS.tempoConfidence && a.structure.downbeatConfidence >= SET_GRID_LIMITS.downbeatConfidence);
+  // Part B: a rhythm recipe is planned on the analysis tempo, so both songs need a measured grid; a
+  // requested-grid fallback can never be beat-matched against (or judged by) the raw analysis.
+  const beatConfident = !!from.analysis && !!to.analysis && fromGrid.source === 'measured' && toGrid.source === 'measured' &&
+    [from.analysis, to.analysis].every(a =>
+      a.beatGrid.confidence >= SET_GRID_LIMITS.tempoConfidence && a.structure.downbeatConfidence >= SET_GRID_LIMITS.downbeatConfidence);
   const policy = tempoGapPolicy(fromGrid.bpm, toGrid.bpm, {beatConfident});
-  const order: string[] = owner ? [owner, ...(owner === 'cut' ? [] : ['echo-reset'])] : [...policy.recipes];
+  // Part B: an owner-selected blend continues to the dual tempo ramp before the route-free echo reset.
+  const ownerChain = (o: string): string[] => o === 'cut' ? [o] :
+    [o, ...(o === 'blend' && dualRampTempo(fromGrid.bpm, toGrid.bpm) ? ['dual-ramp'] : []),
+      ...(o === 'dual-ramp' && !dualRampTempo(fromGrid.bpm, toGrid.bpm) ? ['blend'] : []), 'echo-reset'];
+  const order: string[] = owner ? ownerChain(owner) : [...policy.recipes];
   const why = [...policy.reasons];
   if (owner) why.push(`Owner selected ${owner}.`);
   const maxOverlapSeconds = input.maxOverlapSeconds ?? 26;
@@ -717,20 +799,25 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
         if (recipe === 'echo-reset' || recipe === 'cut') break; // route-free and last-resort handled below
         const stretched = SET_STRETCHED.includes(recipe);
         const meet = recipe === 'meet-in-middle';
-        const usesChoreo = ['blend', 'meet-in-middle'].includes(recipe);
+        const usesChoreo = ['blend', 'meet-in-middle', 'dual-ramp'].includes(recipe);
+        const dual = recipe === 'dual-ramp' ? dualRampTempo(fromGrid.bpm, toGrid.bpm) : null;
         const planWith = (chosen: ChoreographyParams, scope: MixAnalysis): MixDecision => planAutomaticMix(scope, to.analysis!, {...input.options, recipe: recipe as NonNullable<MixPlannerOptions['recipe']>,
           minimumFromFrame: earliestFrame, returnToOriginalTempo: stretched, harmonicMode: 'limited',
           ...(usesChoreo ? {choreography: chosen} : {}),
           ...(explore ? {entryRank: explore.entryIndex} : {}),
           ...(meet ? {meetBpm: meetTempo(fromGrid.bpm, toGrid.bpm, explore?.meetFraction ?? 0.5),
             tempoReturn: {bars: policy.perDeckChange > 0.05 ? 8 : 4, curve: 'smoothstep' as const}} :
+            dual ? {tempoReturn: {bars: Math.abs(dual.toRatio - 1) > 0.05 ? 8 : 4, curve: 'smoothstep' as const}} :
             stretched && policy.band === 'stretched' ? {tempoReturn: {bars: 4, curve: 'smoothstep' as const}} : {}),
           ...(recipe === 'echo-out' ? {echoHeuristic: true} : {})});
         // S21: one rejected parameterisation (overlap, boundary, choreography) never removes the recipe family:
         // the next variant of the same recipe is tried before the next recipe. A request-fixed choreography stays fixed.
         const fixed = !!input.options?.choreography;
-        const variants: {choreo: ChoreographyParams; scope: MixAnalysis}[] = [{choreo: choreography, scope: scoped},
-          ...boundaries.map(b => ({choreo: choreography, scope: {...scoped, mixOut: cuesAt(b.bar)}})).filter(v => v.scope.mixOut.length),
+        // Part B: the dual ramp spends its ramp bars before the overlap, so its Auto overlap fits the remaining time.
+        const lead = dual && !fixed && !explore ? chooseChoreography({...features,
+          maxOverlapSeconds: Math.max(8 * 60 / fromGrid.bpm, maxOverlapSeconds - DUAL_RAMP_LIMITS.rampBars * 4 * 60 / fromGrid.bpm)}).params : choreography;
+        const variants: {choreo: ChoreographyParams; scope: MixAnalysis}[] = [{choreo: lead, scope: scoped},
+          ...boundaries.map(b => ({choreo: lead, scope: {...scoped, mixOut: cuesAt(b.bar)}})).filter(v => v.scope.mixOut.length),
           ...(usesChoreo && !fixed ? [auto.params, safeCarve].map(choreo => ({choreo, scope: scoped})) : [])];
         const said = new Set<string>();
         const reject = (reason: string): void => { if (!said.has(reason)) { said.add(reason); rejected.push({recipe, reason}); } };

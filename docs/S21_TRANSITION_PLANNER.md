@@ -1,10 +1,10 @@
-# S21 transition planner (Part A)
+# S21 transition planner (Part A and Part B)
 
 Slice: [EMF-S21](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) · Handoff: [EMF-S21-HANDOFF](handoffs/EMF-S21-HANDOFF.md)
 
 **Source:** `web/transition-policy.ts` (policy, entry rule, explore, plan record, ratings), `web/eq-choreography.ts` (LR4 split, choreographies), `src/mix-planner.ts`, `src/mix-transition.ts`, `src/player.ts`, `web/mix-evaluator.ts` (`transition-safety@1`), `web/set-mode.ts` and `web/studio.ts` (readout). The two new modules live in `web/` because the unchanged loopback server only serves an allowlist of `dist/src` modules.
 
-**Status:** Part A is built on branch `work/emf-s21-transitions` and passes the Windows engineering checks. It is not merged. Part B (structure analysis, pairwise scoring, re-ranking, clash estimates) is not started. **Listening NOT TESTED.** Everything below is plan data, unit tests and offline renders. None of it shows that a handover sounds good.
+**Status:** Part A is merged into local `main` (recorded in the campaign at `9010f27`). Part B (trusted tempo grids and the dual tempo ramp) is built on a worker branch and is described in [Part B](#part-b-trusted-tempo-grids-and-the-dual-tempo-ramp); pairwise scoring, re-ranking and clash estimates are not started. **Listening NOT TESTED.** Everything below is plan data, unit tests and offline renders. None of it shows that a handover sounds good.
 
 ## What changed for the set DJ
 
@@ -124,3 +124,97 @@ The same panel has an Explore checkbox with a seed, and Love/Like/Dislike button
 - The 6 s whole-song analysis deadline falls back to a start-of-song entry; no later phrase is considered in that case.
 - `replayOverrides` has **no consumer** yet; recorded plans are not replayed anywhere.
 - After a blend, Next may be unavailable for a long window (the outgoing deck is busy until the handover ends). This was **not measured**.
+
+## Part B: trusted tempo grids and the dual tempo ramp
+
+**Source:** `src/mix-analysis.ts` (`mix-analysis-v5`, `tempo-relation@1`, `requested-downbeat@1`, `gridAlignedAnalysis`), `src/time-pitch.ts` (ramp-in map, `composeRampInStart`, `outgoingStretchPeakLimit`), `web/transition-policy.ts` (`transition-policy@2`, `dual-ramp@1`), `src/mix-planner.ts`, `src/mix-transition.ts` (`prepareOutgoingStretch`), `src/player.ts`, `web/mix-evaluator.ts`, `web/mix-precheck*.ts` and `web/deck-readout.ts`. Tests: `tests/s21-partb.test.ts` and the Part B case in `tests/set-mode.test.ts`.
+
+**Status:** built on a worker branch, not merged. **Listening NOT TESTED. Real phone NOT TESTED.** macOS and Linux NOT RUN. `mix-evaluation-thresholds@1` and `scripts/serve.ts` are unchanged.
+
+### The bug it fixes
+
+Turbo Storm (128 BPM) → Midnight Orbit (128 BPM) failed with `DJ plan check FAIL: beatPhase fail`. The analyser read Turbo Storm as 85.33 BPM. This is a 3:2 misread, caused by a strong dotted-quarter layer. The planner then built a grid from that misread, and the evaluator judged the blend against it.
+
+### Analysis (`mix-analysis-v5`)
+
+- **Ratio repair (`tempo-relation@1`).** Rival tempo readings at 1:2, 2:1, 2:3, 3:2, 3:4 and 4:3 (±1.5%) are compared. One reading replaces its rival only when all three of these hold:
+  - it matches a reference tempo within 2%. The reference is the pack's requested generation tempo, when there is one;
+  - it lands on at least 75% of grid beats;
+  - it scores at least 75% of the top candidate.
+
+  A resolved relation is recorded on `tempo.relation`, and the ambiguity becomes 0.35. Without a reference, or with weak support, nothing is forced. The ambiguity then stays above the 0.5 gate, so the rhythm recipes stay closed.
+- **Requested-origin downbeat (`requested-downbeat@1`).** The requested bar origin is used only when all four of these hold:
+  - the measured BPM is within 0.5% of the requested tempo;
+  - the measured beats sit within a median of 0.2 beats of the requested grid;
+  - their spread is at most 0.12 beats;
+  - the audio downbeat is not already confident.
+
+  The requested origin is then combined with the audio evidence (noisy-OR, weight 0.5). A half-beat origin is rejected.
+- **Whole-song map.** The bounded windows (`song-window-merge@1`) each carry their own tempo, which gives a per-window before/after map.
+- **One grid for both sides.** `gridAlignedAnalysis` rewrites an analysis onto the grid that the set chooser trusted, whether measured or requested. The pre-check evaluator judges against that same grid. If either grid is only *requested* (not measured), beat phase is reported **unjudged**, with the reason "requested grid (not measured)". The pre-check then reports `warn`, never `pass`.
+
+### Before/after tempo on the owner songs
+
+The songs were analysed in place and read only. Nothing was copied.
+
+| Song | Before (v4) | After (v5) | Notes |
+| --- | --- | --- | --- |
+| Turbo Storm | 85.33 in most windows | 127.99–128.04 per window | tempo confidence 0.69–0.75, beat confidence 0.76–0.79, downbeat confidence 0.67–0.71 (requested origin) |
+| Midnight Orbit | not recorded | 127.96–128.10 | downbeat confidence 0.57–0.75; tail windows borderline |
+| Still Tide | 73.3 | 110.0 | 3:2 repaired |
+| Hazy Harbor | 66.67 | 100.0 | 3:2 repaired; 99.27 and 99.40 in the 60 s and 72 s windows |
+| Thunder Storm | 90 | 90 | requested origin rejected; the audio downbeat is honestly weak (confidence 0.08–0.44), so the rhythm recipes stay gated |
+
+Results on the synthetic 3:2 trap (128 BPM with a dotted layer):
+
+| Inputs | Result |
+| --- | --- |
+| No hint | 85.33 BPM with ambiguity 0.60, so it is not trusted |
+| Requested tempo | 128 BPM, ambiguity 0.35, relation 3:2 |
+| Requested tempo and origin | beat confidence 0.82–0.84, downbeat confidence 0.81–0.82 |
+
+### Dual tempo ramp (`dual-ramp@1`, `transition-policy@2`)
+
+- **Meeting tempo.** This is the geometric mean of the two tempos. It is clamped so that each deck stays within the WSOLA bounds of 0.92–1.08. There is no meeting tempo when the gap is below 0.5% (a blend already matches) or when no common tempo fits. Gaps up to about 17% are reachable.
+- **Timing.**
+  1. A starts a pitch-preserving stretch at the planned exit S.
+  2. Over 4 of A's bars, A moves along a smoothstep to the meeting tempo.
+  3. B enters at T = S + ramp frames, already at the meeting tempo. That is exactly 16 of A's native beats after S.
+  4. After the overlap, B returns to its own tempo along a smoothstep. The return takes 4 bars, or 8 bars if B moved more than 5%.
+
+  No pitch shift is left over, so the harmonic checks use the unshifted keys.
+- **A's buffer.**
+  - A's ramp is a bounded WSOLA render of A's own window, starting at S.
+  - `composeRampInStart` replaces the processor's 5 ms edge fade with A's native samples, so the first sample equals native A.
+  - The buffer is spliced at S with the existing 20 ms crossfade.
+  - Its peak must stay within A's own sample peak × level gain × 1.12 (`outgoingStretchPeakLimit`). Otherwise the candidate is refused and the next one is tried.
+- **Evaluator.** Beat phase maps A's beats through the ramp-in map and B's beats through B's stretch, then normalises by the shared beat period. On a 122 → 128 fixture, a dual-ramp plan is judged below the warn threshold over at least 8 beats.
+- **Where it can be used:**
+  - the Studio DJ Booth pair mode, through Auto and the recipe list entry "Dual tempo ramp (pitch kept)";
+  - the set page, through Auto and Next;
+  - phone Next, which uses the same set path.
+
+### Candidate order
+
+- **Pair Auto:** `dual-ramp, blend, echo-out, cut` when the gap is above 4%. Otherwise `blend, dual-ramp, echo-out, cut`.
+- **Set chooser bands:**
+
+  | Band | Order |
+  | --- | --- |
+  | normal | `blend, dual-ramp, …` |
+  | stretched | `dual-ramp` first |
+  | meet | `dual-ramp` first |
+  | bridge | `dual-ramp` first when both decks fit within 8% |
+
+- **Fallbacks between them.** An owner-chosen blend falls through to the dual ramp once the blend's variants are excluded. A dual ramp that does not fit falls back to a blend.
+- **Rejected candidates.** A pre-check `fail`, or a failed render of A's tempo ramp, excludes that candidate and the next one is tried.
+- **The clean cut** is last, and it is reported as a fallback.
+- **An unjudged beat phase** is never a pass.
+
+### Known limits (Part B)
+
+- Ratio repair needs a reference tempo. With no requested tempo, a 3:2 misread is still detected as ambiguous and gated, but it is not corrected. A second analysis pass with a tempo prior was not built. The window consensus merge covered the owner songs that were measured.
+- A pre-check that is `unavailable` (for example a window over 4M samples) still aborts the transition instead of trying the next candidate. The dual-ramp overlap is shortened by the ramp length to make this less likely.
+- Studio pair mode has no pre-check. Its dual ramp is planned and rendered, but not judged before it plays.
+- The engineering values (`dual-ramp@1`, `tempo-relation@1`, `requested-downbeat@1`) are not calibrated by listening.
+- Not tested: listening, the real phone, audio devices, macOS and Linux.

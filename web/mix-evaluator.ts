@@ -8,7 +8,7 @@
  */
 import {analyzeAudio} from '../src/audio-analysis.js';
 import {analyzeMixAudio, type MixAnalysis, type MixPcm} from '../src/mix-analysis.js';
-import {nativeRateInputAt, nativeRateOutputAt, renderFiniteLoop, validateNativeRate, TIME_PITCH_LIMITS} from '../src/time-pitch.js';
+import {composeRampInStart, nativeRateInputAt, nativeRateOutputAt, outgoingStretchPeakLimit, rampInOutputAt, renderFiniteLoop, renderTimePitch, validateNativeRate, TIME_PITCH_LIMITS} from '../src/time-pitch.js';
 import {EQ_SPLIT, ThreeBandSplitter, type BandGap} from './eq-choreography.js';
 import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, validateMixAutomation, type MixAutomation,
   type MixAutomationPoint} from '../src/mix-automation.js';
@@ -105,6 +105,8 @@ export interface TransitionSpec {
   readonly entryDelayFrames?: number;
   readonly nativeRate?: AutomaticMixPlan['nativeRate'];
   readonly loopExtension?: AutomaticMixPlan['loopExtension'];
+  /** Part B dual tempo ramp: A plays a pitch-kept WSOLA ramp from `fromStartFrame`. */
+  readonly outgoingStretch?: AutomaticMixPlan['outgoingStretch'];
 }
 
 export interface TransitionRender {
@@ -328,21 +330,29 @@ export function renderTransition(from: MixPcm, to: MixPcm, spec: TransitionSpec,
   const channels = Math.max(from.channels.length, to.channels.length, (prepared?.audio.channels.length ?? 1));
   if (!Number.isSafeInteger(length) || length * channels > TIME_PITCH_LIMITS.maxSamples) throw new Error('Transition evaluation exceeds its bounded PCM budget.');
   const aFrame = (n: number) => spec.fromStartFrame + (spec.nativeRate && n >= S ? nativeRateInputAt(spec.nativeRate.outgoing, n - S) : n - S);
-  const loop = spec.loopExtension, suppliedLoop = prepared?.outgoingLoop;
-  if (suppliedLoop !== undefined && !loop) throw new Error('Unexpected prepared outgoing loop.');
+  const loop = spec.loopExtension, stretch = spec.outgoingStretch, suppliedLoop = prepared?.outgoingLoop;
+  if (suppliedLoop !== undefined && !loop && !stretch) throw new Error('Unexpected prepared outgoing loop.');
+  if (stretch && (loop || spec.nativeRate || stretch.sourceStartFrame !== spec.fromStartFrame || !Number.isSafeInteger(stretch.inputFrames) ||
+    stretch.inputFrames < 1 || stretch.sourceStartFrame + stretch.inputFrames > from.channels[0]!.length ||
+    stretch.rampIn.rampFrames !== delay)) throw new Error('Invalid bounded outgoing tempo-ramp coordinates.');
+  const stretchNative = stretch ? from.channels.map(c => c.subarray(stretch.sourceStartFrame, stretch.sourceStartFrame + stretch.inputFrames)) : null;
+  // Part B: a supplied ramp is held to A's own peak (plus the WSOLA overlap margin); the true-peak metric still judges it.
+  const suppliedLimit = stretchNative ? outgoingStretchPeakLimit(stretchNative, gainA) : TIME_PITCH_LIMITS.peakCeiling;
   if (suppliedLoop !== undefined) {
     if (!suppliedLoop || suppliedLoop.sampleRate !== rate || !Array.isArray(suppliedLoop.channels) ||
       ![1, 2].includes(suppliedLoop.channels.length) || suppliedLoop.channels.length !== from.channels.length ||
       suppliedLoop.channels.some(channel => !(channel instanceof Float32Array || channel instanceof Float64Array) ||
         channel.length !== outgoingFrames)) throw new Error('Prepared outgoing loop dimensions differ from its automation.');
     for (const channel of suppliedLoop.channels) for (const sample of channel) {
-      if (!Number.isFinite(sample) || Math.abs(sample) * gainA > TIME_PITCH_LIMITS.peakCeiling + 1e-7)
+      if (!Number.isFinite(sample) || Math.abs(sample) * gainA > suppliedLimit + 1e-7)
         throw new Error('Prepared outgoing loop failed effective sample-peak/finite validation.');
     }
   }
   const loopAudio = loop ? suppliedLoop ?? renderFiniteLoop({sampleRate: rate, channels: from.channels.map(c =>
     c.subarray(loop.startFrame, loop.endFrame + spec.automation.incoming.durationFrames))}, loop.frames,
-    spec.automation.incoming.durationFrames, loop.bars, gainA).audio : null;
+    spec.automation.incoming.durationFrames, loop.bars, gainA).audio : stretch ? suppliedLoop ?? {sampleRate: rate,
+      channels: composeRampInStart(stretchNative!, renderTimePitch({sampleRate: rate, channels: stretchNative!},
+        {tempoRatio: stretch.tempoRatio, pitchSemitones: 0, rampIn: stretch.rampIn}), outgoingFrames)} : null;
   const aAt = (ch: number, n: number): number => {
     if (!loopAudio || n < S) return sampleAt(from, ch, aFrame(n));
     const k = n - S, fade = Math.round(rate * 0.02), weight = Math.min(1, k / fade);
@@ -421,11 +431,29 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
   const unjudged = (reason: string): TransitionMeasurements['beatPhase'] =>
     ({maxError: null, meanError: null, beats: 0, judged: false, reason});
   if (spec.recipe === 'brake') return unjudged('Brake deliberately leaves A\'s grid; B cue membership is not an independent phase comparison.');
+  // Part B: the judge uses the same grid the planner used. A requested (unmeasured) grid is labelled,
+  // never compared: neither the requested grid nor the raw low-confidence analysis is evidence of phase.
+  const requested = [analysis.from, analysis.to].filter(a => a.beatGrid.source === 'requested').length;
+  if (requested) return unjudged(`${requested === 2 ? 'Both songs use' : analysis.from.beatGrid.source === 'requested' ? 'A uses' : 'B uses'} the requested grid (not measured); phase is not judged against it.`);
   const fromBpm = analysis.from.tempo.bpm;
   if (fromBpm === null || !analysis.from.beatGrid.frames.length || !analysis.to.beatGrid.frames.length) {
     return unjudged('Both measured beat grids are required.');
   }
   const rate = render.sampleRate, period = 60 * rate / fromBpm;
+  if (spec.outgoingStretch) {
+    // Part B dual tempo ramp: A's beats follow the WSOLA ramp-in time map from S; B is stretched from T.
+    // Both periods are 60 / shared BPM after the ramp, so B's beats are compared with A's mapped grid.
+    const s = spec.outgoingStretch, sharedPeriod = period / s.tempoRatio;
+    const grid = analysis.from.beatGrid.frames.filter(f => f >= s.sourceStartFrame && f <= s.sourceStartFrame + s.inputFrames)
+      .map(f => render.S + rampInOutputAt(f - s.sourceStartFrame, s.tempoRatio, s.rampIn))
+      .filter(n => n >= render.T - sharedPeriod && n <= render.E + sharedPeriod);
+    if (!grid.length) return unjudged('No A beat falls inside the compared window.');
+    const errors = analysis.to.beatGrid.frames.map(g => render.T + (g - spec.toEntryFrame) / spec.tempoRatio)
+      .filter(n => n >= render.T - 1 && n <= Math.min(render.E, grid[grid.length - 1]! + sharedPeriod / 2))
+      .map(n => Math.min(...grid.map(g => Math.abs(g - n))) / sharedPeriod);
+    return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length,
+      beats: errors.length, judged: true} : unjudged('No B beat falls inside the compared window.');
+  }
   if (spec.nativeRate?.incoming) {
     const ramps = spec.nativeRate;
     const grid = analysis.from.beatGrid.frames.map(f => render.S + nativeRateOutputAt(ramps.outgoing, f - spec.fromStartFrame));
@@ -692,7 +720,8 @@ export function planTransitionSpec(plan: AutomaticMixPlan): TransitionSpec {
     preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame,
     tempoRatio: plan.tempoRatio, automation: plan.automation, ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
     ...(plan.entryDelayFrames ? {entryDelayFrames: plan.entryDelayFrames} : {}),
-    ...(plan.nativeRate ? {nativeRate: plan.nativeRate} : {}), ...(plan.loopExtension ? {loopExtension: plan.loopExtension} : {})};
+    ...(plan.nativeRate ? {nativeRate: plan.nativeRate} : {}), ...(plan.loopExtension ? {loopExtension: plan.loopExtension} : {}),
+    ...(plan.outgoingStretch ? {outgoingStretch: plan.outgoingStretch} : {})};
 }
 
 export type EvaluatedMixDecision =

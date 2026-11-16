@@ -25,7 +25,7 @@ scope.onmessage = (event): void => {
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render', result},
         result.audio.channels.map(channel => channel.buffer as ArrayBuffer));
     } else if (event.data.kind === 'analyze') {
-      const result = {from: analyzeMixAudio(event.data.from), to: analyzeMixAudio(event.data.to)};
+      const result = {from: analyzeMixAudio(event.data.from, event.data.fromOptions ?? {}), to: analyzeMixAudio(event.data.to, event.data.toOptions ?? {})};
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result}, []);
     } else if (event.data.kind === 'analyze-one') {
       const analysis = analyzeMixAudio(event.data.audio, event.data.options);

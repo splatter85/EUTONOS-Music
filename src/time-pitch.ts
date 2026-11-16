@@ -76,6 +76,32 @@ export interface TimePitchOptions {
   readonly pitchSemitones?: number;
   /** Output-frame positions. Ramp the tempo ratio back to 1 (linear, or S21 smoothstep). */
   readonly returnToOriginal?: ReturnToOriginal;
+  /**
+   * Part B dual ramp (outgoing A): the speed eases from 1 to `tempoRatio` over the first `rampFrames`
+   * output frames, then holds. Exclusive with `returnToOriginal`. The integral of the speed is exact.
+   */
+  readonly rampIn?: RampIn;
+}
+export interface RampIn {readonly rampFrames: number; readonly curve: 'linear' | 'smoothstep';}
+/** Input frames consumed after `output` frames of a ramp-in from speed 1 to `ratio`. */
+export function rampInInputAt(output: number, ratio: number, ramp: RampIn): number {
+  if (output <= 0) return output;
+  const r = ramp.rampFrames;
+  if (output >= r) return r * (1 + ratio) / 2 + (output - r) * ratio;
+  const u = output / r;
+  return output + (ratio - 1) * r * (ramp.curve === 'smoothstep' ? u * u * u - u * u * u * u / 2 : u * u / 2);
+}
+/** Inverse of `rampInInputAt` (monotonic for positive speeds). */
+export function rampInOutputAt(input: number, ratio: number, ramp: RampIn): number {
+  if (input <= 0) return input;
+  const rampInput = ramp.rampFrames * (1 + ratio) / 2;
+  if (input >= rampInput) return ramp.rampFrames + (input - rampInput) / ratio;
+  let low = 0, high = ramp.rampFrames;
+  for (let i = 0; i < 64 && high - low > 1e-6; i++) {
+    const mid = (low + high) / 2;
+    if (rampInInputAt(mid, ratio, ramp) < input) low = mid; else high = mid;
+  }
+  return (low + high) / 2;
 }
 /** S21: `smoothstep` eases the speed with 3u^2 - 2u^3; its integral equals the linear ramp's,
  * so total frame counts are identical and only the intra-ramp mapping changes. */
@@ -86,7 +112,13 @@ export interface TimePitchMapping {
   readonly tempoRatio: number;
   readonly pitchSemitones: number;
   readonly returnToOriginal: ReturnToOriginal | null;
+  /** Part B: present only for an outgoing dual-ramp render. */
+  readonly rampIn?: RampIn;
 }
+const mapInput = (output: number, m: Pick<TimePitchMapping, 'tempoRatio' | 'returnToOriginal' | 'rampIn'>): number =>
+  m.rampIn ? rampInInputAt(output, m.tempoRatio, m.rampIn) : rawInputAt(output, m.tempoRatio, m.returnToOriginal);
+const mapOutput = (input: number, m: Pick<TimePitchMapping, 'tempoRatio' | 'returnToOriginal' | 'rampIn'>): number =>
+  m.rampIn ? rampInOutputAt(input, m.tempoRatio, m.rampIn) : rawOutputAt(input, m.tempoRatio, m.returnToOriginal);
 export interface PreparedTimePitch {
   readonly processor: typeof TIME_PITCH_PROCESSOR;
   readonly audio: {readonly sampleRate: number; readonly channels: readonly Float32Array[]};
@@ -138,14 +170,14 @@ export function sourceFrameAtOutput(mapping: TimePitchMapping, outputFrame: numb
   if (outputFrame <= 0) return 0;
   if (outputFrame >= mapping.outputFrames) return mapping.inputFrames;
   return Math.min(mapping.inputFrames, Math.max(0,
-    Math.round(rawInputAt(outputFrame, mapping.tempoRatio, mapping.returnToOriginal))));
+    Math.round(mapInput(outputFrame, mapping))));
 }
 export function outputFrameAtSource(mapping: TimePitchMapping, inputFrame: number): number {
   check(finite(inputFrame), 'Source frame must be finite.');
   if (inputFrame <= 0) return 0;
   if (inputFrame >= mapping.inputFrames) return mapping.outputFrames;
   return Math.min(mapping.outputFrames, Math.max(0,
-    Math.round(rawOutputAt(inputFrame, mapping.tempoRatio, mapping.returnToOriginal))));
+    Math.round(mapOutput(inputFrame, mapping))));
 }
 
 function validatedMapping(audio: TimePitchPcm, options: TimePitchOptions): TimePitchMapping {
@@ -170,10 +202,16 @@ function validatedMapping(audio: TimePitchPcm, options: TimePitchOptions): TimeP
     back.afterFrames * ratio < length && back.rampFrames <= length / TIME_PITCH_LIMITS.minTempoRatio &&
     rawInputAt(back.afterFrames + back.rampFrames, ratio, back) <= length,
   'Return-to-original needs output-frame timing, a ramp of at least 20 ms, and enough audio to finish.');
-  const outputFrames = Math.max(1, Math.round(rawOutputAt(length, ratio, back)));
+  const rampIn = options.rampIn ? {...options.rampIn} : undefined;
+  if (rampIn) check(!back && (rampIn.curve === 'linear' || rampIn.curve === 'smoothstep') &&
+    Number.isSafeInteger(rampIn.rampFrames) && rampIn.rampFrames >= Math.round(audio.sampleRate * 0.02) &&
+    rampInInputAt(rampIn.rampFrames, ratio, rampIn) <= length,
+  'Ramp-in needs output-frame timing, a ramp of at least 20 ms, enough audio, and no return-to-original.');
+  const shape = {tempoRatio: ratio, returnToOriginal: back, ...(rampIn ? {rampIn} : {})};
+  const outputFrames = Math.max(1, Math.round(mapOutput(length, shape)));
   check(outputFrames * audio.channels.length <= TIME_PITCH_LIMITS.maxSamples / TIME_PITCH_LIMITS.minTempoRatio,
     'Prepare output exceeds the bounded PCM budget.');
-  return {inputFrames: length, outputFrames, tempoRatio: ratio, pitchSemitones: pitch, returnToOriginal: back};
+  return {inputFrames: length, outputFrames, tempoRatio: ratio, pitchSemitones: pitch, returnToOriginal: back, ...(rampIn ? {rampIn} : {})};
 }
 
 /** Stereo-linked WSOLA: one position search uses channel-energy sums, never a cancelling downmix. */
@@ -187,8 +225,7 @@ function stretch(audio: TimePitchPcm, mapping: TimePitchMapping, pitchFactor: nu
   for (let i = 0; i < windowSize; i++) window[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / windowSize);
   let previous = 0, maxOffset = 0;
   for (let at = 0; at < count; at += hop) {
-    const nominal = Math.min(length - 1, Math.round(rawInputAt(at / pitchFactor,
-      mapping.tempoRatio, mapping.returnToOriginal)));
+    const nominal = Math.min(length - 1, Math.round(mapInput(at / pitchFactor, mapping)));
     let selected = nominal;
     if (at > 0) {
       const low = Math.max(0, previous, nominal - search), high = Math.min(length - 1, nominal + search);
@@ -265,6 +302,34 @@ function pitchResample(input: readonly Float64Array[], count: number, factor: nu
     }
   }
   return output;
+}
+
+/** Part B: effective peak allowance for an outgoing ramp: A's own native peak plus the WSOLA overlap margin, at least -1 dBFS, never above 0 dBFS. */
+export function outgoingStretchPeakLimit(native: readonly ArrayLike<number>[], levelGain: number): number {
+  let peak = 0;
+  for (const channel of native) for (let i = 0; i < channel.length; i++) peak = Math.max(peak, Math.abs(channel[i]!));
+  return Math.min(1, Math.max(TIME_PITCH_LIMITS.peakCeiling, peak * levelGain * 1.12));
+}
+
+/**
+ * Part B: the first `frames` of a ramp-in render as playable PCM. The processor's common
+ * attenuation is undone (A keeps its own level) and its raised-cosine start fade is complemented
+ * by the native input, which plays at speed 1 there. Pure; the caller validates the peak.
+ */
+export function composeRampInStart(native: readonly ArrayLike<number>[], ready: PreparedTimePitch, frames: number): Float32Array<ArrayBuffer>[] {
+  const gain = ready.metrics.gainApplied, fade = ready.metrics.edgeFadeFrames;
+  check(!!ready.mapping.rampIn && Number.isSafeInteger(frames) && frames > 0 && ready.mapping.outputFrames >= frames &&
+    ready.audio.channels.length === native.length && finite(gain) && gain > 0 && gain <= 1 &&
+    Number.isSafeInteger(fade) && fade >= 0 && fade < frames, 'Invalid ramp-in render for an outgoing splice.');
+  return ready.audio.channels.map((channel, c) => {
+    check(channel.length >= frames && native[c]!.length >= fade, 'Ramp-in PCM is shorter than its splice.');
+    const out = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) {
+      const w = i < fade ? 0.5 - 0.5 * Math.cos(Math.PI * i / fade) : 1;
+      out[i] = channel[i]! / gain + (1 - w) * native[c]![i]!;
+    }
+    return out;
+  });
 }
 
 /** Render a new PCM copy. The input is neither changed nor detached. */

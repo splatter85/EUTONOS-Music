@@ -108,7 +108,7 @@ test('analysis cache keys by audio hash, analysis version, rate and requested BP
     const asset = loaded.pack.assets[0]!;
     const key = MixAnalysisCache.key(asset, 16000);
     assert.ok(key.includes(asset.file.sha256) && key.includes(MIX_ANALYSIS_VERSION) && key.includes(':16000:') &&
-      key.endsWith(String(asset.timing!.bpm)));
+      key.endsWith(`:${asset.timing!.bpm}:${asset.timing!.first_downbeat_frame}`));
     assert.notEqual(MixAnalysisCache.key(asset, 48000), key);
     assert.notEqual(MixAnalysisCache.key({...asset, file: {...asset.file, sha256: 'f'.repeat(64)}}, 16000), key);
     const recording = await decodeRecording(loaded, context.audio, asset);
@@ -472,8 +472,9 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     await player.playAsset(set.idFor('long-122'));
     context.advance(0.5);
     const nativeB = await decodeRecording(loaded, context.audio, loaded.pack.assets.find(a => a.id === set.idFor('long-128'))!);
-    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'});
+    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'}, {recipe: 'blend'});
     let snap = player.snapshot(), summary = snap.mix!.summary!;
+    // Part B: Auto would lead this 4.9% gap with the dual tempo ramp; this budget test selects the blend explicitly.
     assert.equal(summary.recipe, 'blend', JSON.stringify(snap.mix));
     assert.equal(summary.set!.fromGrid, 'measured'); assert.equal(summary.set!.toGrid, 'measured');
     const join = summary.nativeJoin!;
@@ -493,7 +494,7 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.ok(processed.stops.length > 0 && native.stops.length > 0);
     assert.equal(player.snapshot().voices.length, 1);
 
-    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'});
+    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'}, {recipe: 'blend'});
     snap = player.snapshot(); summary = snap.mix!.summary!;
     await player.pause(); const frozen = player.clock.currentFrame; context.advance(100);
     assert.equal(player.clock.currentFrame, frozen); await player.resume();
@@ -505,7 +506,7 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.ok(player.clock.currentFrame < summary.nativeJoin!.at.frame);
     assert.ok(originalEntryNode.connections.length > 0, 'the processed B entry remains owned and audible before its native join');
     const rendersBefore = renders.length;
-    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'});
+    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'}, {recipe: 'blend'});
     const following = player.snapshot();
     assert.ok(renders.length > rendersBefore, 'Next preparation actually starts before the prior native join');
     assert.ok(following.mix!.earliestEffect!.frame >= summary.nativeJoin!.at.frame, 'new effect waits for native source coordinates');
@@ -521,7 +522,7 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     context.advance((summary.nativeJoin!.at.frame - player.clock.currentFrame) / rate + 0.01);
     snap = player.snapshot(); assert.equal(snap.voices.length, 1); assert.equal(snap.now[0], set.idFor('long-128'));
     assert.deepEqual(context.sources.map(n => n.starts.length), aheadStarts, 'settlement starts no source');
-    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'});
+    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'}, {recipe: 'blend'});
     snap = player.snapshot();
     assert.equal(snap.mix!.summary!.recipe, 'blend', 'native B can be the next outgoing song');
     assert.equal(snap.transitionAt!.frame,
@@ -550,6 +551,36 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.ok(fault.sources.every(n => n.connections.length === 0));
     await checkLateAuto(set, loaded);
     await checkSelectedSetRecipes(set, loaded);
+  } finally { await set.cleanup(); }
+});
+
+test('Part B: Auto Next on a 4.9% gap schedules the dual tempo ramp with A\'s pitch-kept outgoing render spliced at S', async () => {
+  const rate = 16000;
+  const set = await buildSyntheticSet([{id: 'dual-122', bpm: 122, seconds: 90, transitionEvidence: true},
+    {id: 'dual-128', bpm: 128, seconds: 90, transitionEvidence: true}], rate);
+  try {
+    const loaded = await loadSet(set), context = new SetContext(rate), {runtime, calls} = countingRuntime();
+    const player = new SmallPlayer(context.audio, loaded, null, runtime);
+    await player.playAsset(set.idFor('dual-122'));
+    context.advance(0.5);
+    const nativeA = await decodeRecording(loaded, context.audio, loaded.pack.assets.find(a => a.id === set.idFor('dual-122'))!);
+    await player.scheduleMixTo(set.idFor('dual-128'), {bars: 4, anchor: 'song'});
+    const snap = player.snapshot(), summary = snap.mix!.summary!;
+    assert.equal(summary.recipe, 'dual-ramp', JSON.stringify(snap.mix));
+    assert.equal(summary.pitchSemitones, 0);
+    assert.ok(summary.entryDelayFrames! > 0 && snap.transitionAt!.frame === snap.mix!.earliestEffect!.frame + summary.entryDelayFrames!,
+      'B enters after the four-bar ramp');
+    assert.ok(summary.tempoRatio < 1 && summary.tempoRatio > 0.92, 'B is slowed towards the shared tempo');
+    assert.ok(calls.render >= 2, 'both B entry and A outgoing went through the time-stretch runtime');
+    // A's outgoing render is a separate buffer started exactly at the effect frame, beginning on the native sample.
+    const effect = snap.mix!.earliestEffect!.frame;
+    const loop = context.sources.find(n => n.starts[0] && Math.round(n.starts[0].when * rate) === effect && n.buffer !== context.sources[0]!.buffer);
+    assert.ok(loop && loop.buffer, 'the outgoing ramp buffer is scheduled at S');
+    assert.equal(loop!.buffer!.getChannelData(0)[0], nativeA.buffer.getChannelData(0)[summary.fromExitFrame]);
+    assert.ok((summary.set!.why ?? []).some(w => /Dual tempo ramp/.test(w)));
+    assert.equal(player.cancelPendingTransition(), true);
+    assert.ok(loop!.stops.length > 0 || loop!.connections.length === 0, 'cancellation releases the outgoing ramp');
+    player.stop();
   } finally { await set.cleanup(); }
 });
 

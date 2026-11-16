@@ -110,8 +110,16 @@ export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const length = E + context, channels = Math.max(from.buffer.numberOfChannels, to.buffer.numberOfChannels, incoming.buffer.numberOfChannels);
   check(integer(length) && length * channels <= PRECHECK_LIMITS.renderSamples,
     'The selected transition exceeds the bounded live pre-check window.');
-  const loop = original.loopExtension;
-  check(!!loop === !!request.loopBuffer, 'The selected finite loop needs its actual prepared PCM.');
+  const loop = original.loopExtension, stretch = original.outgoingStretch;
+  check(!!(loop || stretch) === !!request.loopBuffer, 'The selected finite loop or outgoing tempo ramp needs its actual prepared PCM.');
+  if (stretch) {
+    // Part B: the dual tempo ramp's outgoing WSOLA render replaces A at S, like a finite loop.
+    check(!loop && integer(stretch.inputFrames) && stretch.inputFrames > 0 && stretch.sourceStartFrame === original.fromStartFrame &&
+      stretch.sourceStartFrame + stretch.inputFrames <= from.buffer.length, 'Invalid selected outgoing tempo-ramp coordinates.');
+    checkBuffer(request.loopBuffer!, rate);
+    check(request.loopBuffer!.length === original.automation.outgoing.durationFrames &&
+      request.loopBuffer!.numberOfChannels === from.buffer.numberOfChannels, 'Prepared outgoing tempo-ramp dimensions differ.');
+  }
   if (loop) {
     check(integer(loop.startFrame) && loop.startFrame < loop.endFrame && loop.endFrame === original.fromStartFrame &&
       loop.endFrame - loop.startFrame === loop.frames && loop.frames === original.entryDelayFrames,
@@ -123,18 +131,20 @@ export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const aLast = original.fromStartFrame + (original.nativeRate
     ? nativeRateInputAt(original.nativeRate.outgoing, length - 1 - S) : length - 1 - S);
   const a = range(Math.min(original.fromStartFrame - S, loop?.startFrame ?? Infinity),
-    Math.max(aLast, loop ? loop.endFrame + original.automation.incoming.durationFrames - 1 : 0), from.buffer.length);
+    Math.max(aLast, loop ? loop.endFrame + original.automation.incoming.durationFrames - 1 : 0,
+      stretch ? stretch.sourceStartFrame + stretch.inputFrames - 1 : 0), from.buffer.length);
   const bInput = (k: number): number => original.toEntryFrame + (original.nativeRate?.incoming
     ? nativeRateInputAt(original.nativeRate.incoming, k) : k * original.tempoRatio);
   const b = range(bInput(-T), bInput(length - 1 - T), to.buffer.length);
   const usePrepared = !!incoming.processed;
-  check(!loop || usePrepared, 'The selected loop requires its prepared B entry.');
+  check(!(loop || stretch) || usePrepared, 'The selected loop or outgoing tempo ramp requires its prepared B entry.');
   check(!usePrepared || !original.nativeRate?.incoming, 'Prepared and native-rate B cannot both own the entry.');
   check(integer(request.entryFrame) && request.entryFrame < incoming.buffer.length, 'Invalid prepared B entry.');
   const prepared = usePrepared ? range(request.entryFrame - T, request.entryFrame + length - 1 - T, frames(incoming)) : null;
   const spec: TransitionSpec = {...original, fromStartFrame: original.fromStartFrame - a.start,
     toEntryFrame: original.toEntryFrame - b.start,
-    ...(loop ? {loopExtension: {...loop, startFrame: loop.startFrame - a.start, endFrame: loop.endFrame - a.start}} : {})};
+    ...(loop ? {loopExtension: {...loop, startFrame: loop.startFrame - a.start, endFrame: loop.endFrame - a.start}} : {}),
+    ...(stretch ? {outgoingStretch: {...stretch, sourceStartFrame: stretch.sourceStartFrame - a.start}} : {})};
   const streams: PrecheckStream[] = [{name: 'from', frames: a.end - a.start, channels: from.buffer.numberOfChannels},
     {name: 'to', frames: b.end - b.start, channels: to.buffer.numberOfChannels}];
   if (prepared) streams.push({name: 'prepared', frames: prepared.end - prepared.start, channels: incoming.buffer.numberOfChannels});
