@@ -113,6 +113,8 @@ To go back to the pair, rename the folders back. Nothing under `local/` is commi
 
 ## Limits of increments 2 and 3
 
+These describe S18 as integrated. [S19](S19_TRANSITIONS.md) adds bounded full-song blends and exact native continuation on its worker branch, pending coordinator integration; its generated actual-worker browser evidence updates the full-song budget, native-join and earlier fallback-only coverage limits once integrated. Real owner-song analysis and listening remain unverified.
+
 - **Blend is unavailable for full-length songs.** The time-stretch budget is 12 M samples (frames × channels), so a 180 s stereo song at 44.1 kHz cannot be blended. Those handovers use the analyzed cut or the route-free fallback. Raising this budget is a candidate next slice.
 - **Analysis of real owner songs is unverified.** Synthetic tones give low downbeat confidence, so the browser gate exercised only the route-free fallback with requested grids. Node tests cover the blend path with a controlled analysis.
 - When a mix-in finishes, the incoming song is reconnected directly at the end of its entry automation. Tests check this approximation; nobody has listened to it.

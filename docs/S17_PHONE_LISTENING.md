@@ -1,6 +1,6 @@
 # S17 — Phone listening (streamed)
 
-Scope: **EMF-S17, PC, IN PROGRESS (engineering built and checked on Windows; pending coordinator merge)**. The [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) and [Current Tasks](CURRENT_TASKS.md) own status; the [handoff](handoffs/EMF-S17-HANDOFF.md) holds evidence.
+Scope: **EMF-S17, PC, IN MAIN for engineering scope (Windows only; real phone, lock screen and listening NOT TESTED)**. The [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) and [Current Tasks](CURRENT_TASKS.md) own status; the [handoff](handoffs/EMF-S17-HANDOFF.md) holds evidence.
 
 The owner listens on a phone (iPhone or Android, screen may be locked) to the **live DJ** running in desktop Edge/Chrome on the Windows PC, hears the real transitions, and controls the DJ from the phone. **The PC browser stays the only audio engine.** The phone receives a lossy MP3 copy of the PC's master output and sends allowlisted commands back.
 
