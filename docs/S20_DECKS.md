@@ -1,6 +1,6 @@
 # S20 — Studio set decks
 
-Status: decks on `work/emf-s20-decks`, set analysis/cache on dependent `work/emf-s20-set-analysis`, and the live pre-check on dependent `work/emf-s20-live-precheck`; see the [source-pinned handoff](handoffs/EMF-S20-HANDOFF.md) for actual verification and delivery state. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current status. This extends [S18 set mode](S18_SET_MODE.md) and [S19 transitions](S19_TRANSITIONS.md).
+Status: S20 decks, analysis/cache and live pre-check are integrated into local main (2026-11-16). The follow-up [post-merge code review](reviews/EMF_S20_POSTMERGE_REVIEW_20261116.md) corrected two partial manual-control failure paths, integrated at `ed616e1`; see the [source-pinned handoff](handoffs/EMF-S20-HANDOFF.md#post-merge-review-and-local-integration--complete) for exact verification and delivery state. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns current status. This extends [S18 set mode](S18_SET_MODE.md) and [S19 transitions](S19_TRANSITIONS.md).
 
 ## Owner controls
 
@@ -52,4 +52,4 @@ Studio set mode always supplies this gate; there is no bypass switch. Existing a
 
 ## Verification and limits
 
-The handoff records each branch's exact Windows Node and browser checks, independent review and native offline sample comparisons. No real phone, owner songs, physical output, touch hardware, macOS, Linux or listening is qualified by these slices. No stems or transition selection changes are included.
+The handoff records each branch's exact Windows Node and browser checks, source review and native offline sample comparisons. All three S20 slices are integrated into local main (2026-11-16). The [post-merge review](reviews/EMF_S20_POSTMERGE_REVIEW_20261116.md) reproduced and fixed two second-parameter refusal defects: filter HP/LP and crossfader A/B now restore previous manual ownership and native values on a partial failure (best effort when native calls themselves persistently refuse). Two fault-injection tests failed first, passed after the correction. Windows 579/579 Node tests and full browser exit 0 at the reviewed source. No real phone, owner songs, physical output, touch hardware, macOS, Linux or listening is qualified. No stems, thresholds or transition selection changes are included.

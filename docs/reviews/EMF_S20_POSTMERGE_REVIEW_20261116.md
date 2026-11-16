@@ -32,6 +32,6 @@ The fixes preserve the existing 20 ms manual-control slew and native clock sched
 
 ## Delivery
 
-Source fix commit: `57d0c996ab775998132e2f53350c5c8f3ed4f952`. First full Node run used exactly these changes before commit (579/579, 43.77 s); the committed-source rerun is recorded separately in the S20 handoff. Browser run used the committed source. Native boards/RAM change only through their CLI; final local main readback is recorded separately. No GitHub push or deployment is requested.
+Source fix commit: `57d0c996ab775998132e2f53350c5c8f3ed4f952`. The committed-source Windows Node rerun passed 579/579 (44.56 s); the full browser run at the same SHA exited 0 (245.46 s). The review branch was fast-forwarded into local main at `ed616e119b296f7771e469a5febf404192a14d5c`. The native boards CLI produced a verified S20/Deck update, reconciled into main without manual authoring. The containing documentation checkpoint commit is recorded in the handoff/chat. No GitHub push, deployment or listening test was performed.
 
-**Next PC step:** After both full gates pass, fast-forward the reviewed fix branch to local main, run readback/target qualification, and retain S10 real-song/phone listening as a separate owner acceptance task.
+**Next PC step:** The reviewed fixes are integrated. S10 real-song/audio-device listening and acceptance is the next separately authorized owner task; this review does not start S10 automatically.

@@ -77,7 +77,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EMF-S20",
       "status": "active",
-      "summary": "All three owner-assigned slices COMPLETE for branch-only engineering scope: decks on work/emf-s20-decks (511 tests), set analysis/cache on work/emf-s20-set-analysis (547), live pre-check on dependent work/emf-s20-live-precheck (577). Each full Windows Node/browser gate passed. Latest runtime cc7422ac5dcf15c112631f1ad4eb2778e6059572. Main stays 124b000; no merge/push, stems, threshold or chooser changes. Next PC slice requires owner-authorized review/integration. Listening, owner songs, real devices and other OSes untested.",
+      "summary": "All three S20 slices integrated locally onto main at 9ad6aef. Post-merge code review reproduced two partial native AudioParam failures in the coupled filter and crossfader controls; fix branch work/emf-s20-postmerge-review commit 57d0c99 restores prior control state on second-lane refusal, with two red→green fault-injection tests. Windows 579/579 Node tests and full browser gate exit 0 on reviewed source. Main integration of fix and final closeout in progress. No push, deployment, private audio, stems or threshold/chooser change. Physical listening, owner songs, phones, macOS/Linux untested.",
       "title": "S20 Studio set decks and manual mixer ownership",
       "type": "slice"
     },
@@ -102,7 +102,7 @@ Native EUTONOS board for the EMF campaign, its stages and slices. Edit its fence
       },
       "id": "EM-F-S20-DECKS",
       "status": "active",
-      "summary": "Built and checked on work/emf-s20-decks at 201a4f5. Physical A/B decks, live signal waveforms, EQ/filter, tempo/pitch readouts and crossfader; explicit handback of persistent manual ownership. Full Windows gates pass. Main integration and listening remain outside this engineering evidence.",
+      "summary": "S20 physical A/B decks and manual ownership integrated locally main at 9ad6aef. Post-merge review reproduced and fixed two failure-path defects: a filter HP/LP partial native automation refusal and a crossfader A/B partial refusal could leave split owner/audio state. Fix 57d0c99 adds best-effort two-lane rollback and two fault-injection regressions. Windows 579/579 Node tests and complete browser gate pass; manual ownership, source lifetime and phone master tap retained. Real listening/owner songs/phones/other OSes untested.",
       "title": "Studio set deck mixer",
       "type": "feature"
     },

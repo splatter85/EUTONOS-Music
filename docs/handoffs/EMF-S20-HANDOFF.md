@@ -192,3 +192,25 @@ Local branch commits are the authorized delivery. Main remains at the inspected 
 ### Exactly one next slice
 
 **Next PC slice:** owner/coordinator review and explicitly authorized integration of the three dependent S20 branches. Review this source-pinned handoff and the unchanged protected/choice paths before any merge instruction. No further implementation is selected here. S10 owner listening and other-OS/device qualification remain separately assigned work; main merge and push require the owner's instruction.
+
+## Post-merge review and local integration — COMPLETE
+
+**Recorded:** 2026-11-16; Windows-only code, audio-scheduling-double and Chromium engineering evidence.
+
+**Owner-authorized target integration:** Three dependent S20 slices fast-forwarded to local `main` from base `124b000ee2a0ed0a70dccede4c307b044cdce55e` at `9ad6aef28e64bc9be2399394323e4eb4762d05a9`. Original untracked `.claude/` was retained unchanged.
+
+**Review:** [EMF S20 post-merge review](../reviews/EMF_S20_POSTMERGE_REVIEW_20261116.md) examined player/source lifetimes, per-deck EQ/filter/fader ownership, the queue/clock, saved BPM/key/waveform evidence, IndexedDB integrity and the bounded worker pre-check. Decision **CHANGE**, with two reproduced P2-level native failure-path defects; both corrected and retested. This review was performed directly from the checked sources and synthetic native-call doubles; no independent second model or listener was claimed.
+
+**Source correction:** `57d0c996ab775998132e2f53350c5c8f3ed4f952` on `work/emf-s20-postmerge-review`. `web/deck-mixer.ts` makes the filter HP+LP and crossfader A+B manual updates transactional. A refusal on the second native AudioParam now attempts to restore both channels' prior automation/manual positions, keeps the original error visible, and does not falsely claim ownership. `tests/deck-mixer.test.ts` adds two deterministic second-lane fault-injection tests, including take and explicit handback. The code fix and review report fast-forwarded into local main at `ed616e119b296f7771e469a5febf404192a14d5c`.
+
+**Red-to-green evidence:** The initial source with added fault tests had **19/21 PASS, 2 FAIL**, confirming both defects. After correction **21/21 focused deck-mixer PASS**.
+
+**Required Windows full gates at tested code `57d0c99`:** `npm.cmd run check` **579/579 PASS**, zero failures/cancellations/skips, exit 0; completed committed-source run in 44.56 seconds. `npm.cmd run check:browser` **exit 0** in 245.46 seconds, covering the full previous browser inventory (including 16 set, 8 phone, 7 decks, 7 cache and 7 live pre-check checks). The full browser run is pinned to the committed source SHA, and the final local-main integration differs from the tested implementation only by documentation and native board records.
+
+**Explicit unchanged boundaries:** `src/mix-planner.ts`, `src/mix-transition.ts`, `src/dj.ts`, `web/set-mode.ts`, protected `scripts/serve.ts` and `mix-evaluation-thresholds@1` were not modified. No stems work, alternative recipe/entry selection, second music clock or stream tap was introduced.
+
+**Native board evidence:** `emf-s20-postmerge-review-20261116` updated existing `EMF-S20` and `EM-F-S20-DECKS` through the admitted EUTONOS boards CLI, with `complete` outcome and `verified` readback. The newer review/main checkout could not reuse that prior host admission (`wrong-scope`). Its failed attempt wrote nothing. The CLI was run in the original authorized S20 worktree; the resulting generated board was copied into local main only after verifying that main's prior board matched the generated file's base Git blob and that the resulting bytes matched the CLI output. No board/RAM/NAV/acceptance record was manually authored.
+
+**Provenance and limitations:** All test audio was original generated fixture material. No owner's nine private songs, `local/` recordings, credentials or model weights were staged. Human listening, real phone/touch/lock-screen, audio-device output, macOS and Linux are **NOT TESTED**. The live pre-check is an experimental model of the automated plan; manually owned controls and the master output remain outside it. Its strict thresholds can refuse transitions that previously played. Neither GitHub push nor installation/deployment was performed. The existing managed-adoption acceptance-finalize incompatibility remains a separate environment issue, not an audio test failure.
+
+**Exactly one next owner/PC slice:** EMF-S10 listening acceptance on local Windows with the owner song set and actual audio output. First action: follow [S10 listening scorecard](../S10_LISTENING_SCORECARD.md) and record which handovers work or fail musically. S10 is not automatically authorized by this completion. Public push, cross-platform checks, stems and later transition-selection changes remain separate.
