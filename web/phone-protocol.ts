@@ -4,6 +4,9 @@
  * fixed, bounded shape. Nothing here is executable recipe or agent instruction.
  */
 
+import {cleanFeedbackText, FEEDBACK_NOTE_MAX, FEEDBACK_PLAN_ID, isFeedbackRating, parseFeedbackTags, type FeedbackRating,
+  type FeedbackTag} from './feedback-vocabulary.js';
+
 export const HANDOFF_MODES = ['direct', 'hybrid', 'mix'] as const;
 export type PhoneHandoffMode = typeof HANDOFF_MODES[number];
 
@@ -16,7 +19,13 @@ export type PhoneCommand =
   /** S18: toggle (or set) Auto on the Studio set page; other pages ignore it. */
   | {readonly command: 'auto'; readonly enabled?: boolean}
   /** Phone UX: make this queued song the next one (Studio set page only; checked against its queue). */
-  | {readonly command: 'set-next'; readonly songId: string};
+  | {readonly command: 'set-next'; readonly songId: string}
+  /**
+   * Rate the LAST COMPLETED transition (Studio set page only). The DJ page owns the plan record; the
+   * phone sends only the rating, optional reason tags and note. `planId` (optional) is the plan the phone
+   * was showing: if the last transition has changed since, the DJ page refuses instead of rating the wrong one.
+   */
+  | {readonly command: 'rate'; readonly rating: FeedbackRating; readonly tags: readonly FeedbackTag[]; readonly note?: string; readonly planId?: string};
 
 /** A song id as it may cross the relay: short, printable, no path separators. */
 export const SONG_ID_PATTERN = /^[A-Za-z0-9._:-]{1,120}$/;
@@ -49,6 +58,17 @@ export function parseControlCommand(value: unknown): PhoneCommand | null {
       if (!onlyKeys(value, ['command', 'songId'])) return null;
       return typeof value.songId === 'string' && SONG_ID_PATTERN.test(value.songId)
         ? {command: 'set-next', songId: value.songId} : null;
+    case 'rate': {
+      if (!onlyKeys(value, ['command', 'rating', 'tags', 'note', 'planId'])) return null;
+      if (!isFeedbackRating(value.rating)) return null;
+      const tags = value.tags === undefined ? [] : parseFeedbackTags(value.tags);
+      if (!tags) return null;
+      if (value.note !== undefined && (typeof value.note !== 'string' || value.note.length > FEEDBACK_NOTE_MAX)) return null;
+      if (value.planId !== undefined && (typeof value.planId !== 'string' || !FEEDBACK_PLAN_ID.test(value.planId))) return null;
+      const note = typeof value.note === 'string' ? cleanFeedbackText(value.note, FEEDBACK_NOTE_MAX) : '';
+      return {command: 'rate', rating: value.rating, tags, ...(note ? {note} : {}),
+        ...(typeof value.planId === 'string' ? {planId: value.planId} : {})};
+    }
     default:
       return null;
   }
@@ -89,13 +109,19 @@ export interface DjStatus {
 export interface TransitionInfo {
   readonly recipe: string; readonly overlap: string; readonly choreography: string;
   readonly tempo: string; readonly entry: string; readonly fallback: string;
+  /** Optional rating context (transitionLast only): the plan id, its current rating and whether it is saved on the PC file. */
+  readonly planId?: string; readonly rated?: FeedbackRating; readonly ratedSaved?: boolean;
 }
 const transitionFields = ['recipe', 'overlap', 'choreography', 'tempo', 'entry', 'fallback'] as const;
 export function sanitizeTransition(value: unknown): TransitionInfo | null {
   if (!isRecord(value)) return null;
   const result: Record<string, string> = {};
   for (const field of transitionFields) result[field] = text(value[field]);
-  return result.recipe ? result as unknown as TransitionInfo : null;
+  if (!result.recipe) return null;
+  const extra: Record<string, unknown> = {};
+  if (typeof value.planId === 'string' && FEEDBACK_PLAN_ID.test(value.planId)) extra.planId = value.planId;
+  if (isFeedbackRating(value.rated)) { extra.rated = value.rated; if (value.ratedSaved === true) extra.ratedSaved = true; }
+  return {...result, ...extra} as unknown as TransitionInfo;
 }
 export interface QueueItem { readonly id: string; readonly title: string }
 export const QUEUE_LIMIT = 16;

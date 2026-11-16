@@ -85,10 +85,16 @@
             <div class="set-controls">
               <label class="check"><input id="set-explore" type="checkbox" autocomplete="off"> Explore (seeded variations)</label>
               <label>seed<input id="set-explore-seed" type="number" min="0" step="1" value="1" autocomplete="off"></label>
-              <button class="chip" type="button" data-rate="love">Love it</button><button class="chip" type="button" data-rate="like">Like it</button>
-              <button class="chip" type="button" data-rate="dislike">Dislike it</button><button id="set-ratings-export" class="chip" type="button">Export ratings</button>
             </div>
-            <p id="set-why-rating" class="dim" role="status">Ratings attach to the exact plan shown. They are stored in this browser only; nothing learns from them yet.</p>
+            <p id="set-rate-which" class="dim" role="status">Rate the last handover that finished playing. None has finished yet.</p>
+            <div class="set-controls" id="set-rate-buttons">
+              <button class="chip" type="button" data-rate="love">Love it</button><button class="chip" type="button" data-rate="like">Like it</button>
+              <button class="chip" type="button" data-rate="ok">OK</button><button class="chip" type="button" data-rate="dislike">Dislike it</button>
+              <button id="set-ratings-export" class="chip" type="button">Export ratings</button>
+            </div>
+            <div class="set-controls" id="set-rate-tags" role="group" aria-label="Optional reasons"></div>
+            <label class="dim">Note (optional, 200 characters, text only)<input id="set-rate-note" type="text" maxlength="200" autocomplete="off"></label>
+            <p id="set-why-rating" class="dim" role="status">Ratings attach to the last finished handover, not the one planned next. Re-rating it replaces the earlier rating. With the phone relay connected they are saved to a local file on the PC; otherwise only in this browser. Nothing learns from them yet.</p>
           </details>
           <p class="dim set-analysis-help">Before a handover, the DJ checks its planned mix. A failed or unavailable check keeps the current song. This experimental check covers the DJ’s plan; your EQ, filter and crossfader settings still apply separately.</p>
           <p id="set-auto-status" class="dim" role="status">Auto is off. When on, it moves to the next queued song every N bars from where each song came in, then stops at the end of the set (or loops).</p>

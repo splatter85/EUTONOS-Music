@@ -6,7 +6,7 @@
  * One playback owner per page: starting any engine stops the others first.
  */
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
-import {SmallPlayer} from '../src/player.js';
+import {SmallPlayer, type PlayerSnapshot} from '../src/player.js';
 import type {MixRecipe} from '../src/mix-planner.js';
 import {DeterministicDj, type DjHandoff} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
@@ -17,8 +17,10 @@ import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
 import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, transitionReadout, type AutoBars, type NextBars} from './set-mode.js';
-import {emptyTransitionRatings, rateTransition, validateTransitionRatingLog, type TransitionPlanRecord, type TransitionRating,
-  type TransitionRatingLog} from './transition-policy.js';
+import type {TransitionPlanRecord} from './transition-policy.js';
+import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
+import {makeTransitionFeedback, type FeedbackDevice, type FeedbackMeasured} from './transition-feedback.js';
+import {FeedbackStore} from './transition-feedback-store.js';
 import {PhoneAutoStart, PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
@@ -391,6 +393,13 @@ let autoOn = false, autoBars: AutoBars = 32, loopSet = false;
 let autoHandled: string | null = null, autoBusy = false, autoNote = '';
 /** The last handover plan, kept after the player settles so the booth can still show it. */
 let lastSetMix = '';
+/**
+ * The transition that most recently FINISHED playing (player.transition === 'complete'), with the
+ * pre-check summary shown for it. Ratings from the PC panel and the phone attach to this plan only.
+ */
+interface CompletedTransition {readonly plan: TransitionPlanRecord; readonly measured: FeedbackMeasured | null; readonly info: TransitionInfo | null}
+let lastCompleted: CompletedTransition | null = null;
+let feedbackStore: FeedbackStore | null = null;
 const setNextBars = $<HTMLSelectElement>('set-next-bars'), setAutoBars = $<HTMLSelectElement>('set-auto-bars');
 const setLoop = $<HTMLInputElement>('set-loop'), setAuto = $<HTMLButtonElement>('set-auto');
 setNextBars.addEventListener('change', () => {
@@ -455,15 +464,69 @@ function ratingOfAsset(id: string): string {
 }
 const setSongList = isSet ? new SetSongList($('set-songs'), setAnalyses!, () => djPlayer,
   id => { void send({type: 'queueTrack', trackId: id}); }, ratingOfAsset) : null;
-// ---------- S21 transition readout, seeded explore and plan ratings (no learner) ----------
-const RATINGS_KEY = 'eutonos-music.transition-ratings.v1';
+// ---------- S21 transition readout, seeded explore, and ratings of the LAST completed handover (no learner) ----------
 let shownPlan: TransitionPlanRecord | null = null;
-function loadRatings(): TransitionRatingLog {
-  try { const raw = localStorage.getItem(RATINGS_KEY); return raw ? validateTransitionRatingLog(JSON.parse(raw)) : emptyTransitionRatings(); }
-  catch { return emptyTransitionRatings(); }
+type DjPlayerSnapshot = PlayerSnapshot;
+function measuredOf(player: DjPlayerSnapshot | undefined): FeedbackMeasured | null {
+  const precheck = player?.mix?.precheck;
+  if (!precheck) return null;
+  return {status: precheck.status, reason: precheck.reason, fallbackAfterFailedChecks: player?.mix?.fallbackAfterFailedPrecheck?.failedChecks ?? null};
 }
-function saveRatings(log: TransitionRatingLog): boolean {
-  try { localStorage.setItem(RATINGS_KEY, JSON.stringify(log)); return true; } catch { return false; }
+/**
+ * Records the plan once its handover has finished playing; a newly planned one never replaces it early.
+ * The player reports `complete` only for an instant before it settles (plan and mix are then cleared), so a
+ * plan seen while mixing is remembered and promoted when it completes or is replaced/cleared while still playing.
+ * A plan cancelled before it started mixing, or one cut short by Stop, is never promoted.
+ */
+let mixingPlan: CompletedTransition | null = null;
+function noteCompleted(player: DjPlayerSnapshot | undefined): void {
+  const summary = player?.mix?.summary, plan = summary?.set?.transition;
+  const current: CompletedTransition | null = player && summary && plan
+    ? {plan, measured: measuredOf(player), info: phoneTransition(summary, player.mix?.fallbackAfterFailedPrecheck)} : null;
+  const promote = (entry: CompletedTransition): void => { if (lastCompleted?.plan.id !== entry.plan.id) lastCompleted = entry; };
+  if (player && current && player.transition === 'complete') { promote(current); mixingPlan = null; return; }
+  if (player && current && player.transition === 'mixing') {
+    if (!mixingPlan || mixingPlan.plan.id !== current.plan.id || current.measured) mixingPlan = current;
+    return;
+  }
+  if (mixingPlan && (!current || current.plan.id !== mixingPlan.plan.id)) {
+    if (player?.state === 'playing') promote(mixingPlan);
+    mixingPlan = null;
+  }
+}
+function lastCompletedLabel(): string {
+  if (!lastCompleted) return '';
+  const {plan, info} = lastCompleted;
+  return `${titleOf(plan.from.id)} → ${titleOf(plan.to.id)} (${info?.recipe ?? plan.recipe}, plan ${plan.id})`;
+}
+/** The handover card's "last" entry for the phone, with its rating and whether it is saved on the PC. */
+function lastTransitionForPhone(): TransitionInfo | null {
+  if (!lastCompleted?.info) return null;
+  const rated = feedbackStore?.get(lastCompleted.plan.id);
+  return {...lastCompleted.info, planId: lastCompleted.plan.id,
+    ...(rated ? {rated: rated.rating, ...(feedbackStore!.isSaved(lastCompleted.plan.id) ? {ratedSaved: true} : {})} : {})};
+}
+function savedWording(outcome: 'saved' | 'queued' | 'local'): string {
+  return outcome === 'saved' ? 'Saved on the PC.' : outcome === 'queued' ? 'Queued: the relay has not accepted it yet; it will be retried.'
+    : 'Saved in this browser only (no relay connected); a throwaway browser profile loses it.';
+}
+/** The one code path for both the PC panel and the phone's `rate` command. */
+function rateLast(rating: FeedbackRating, tags: readonly string[], note: string, device: FeedbackDevice, expectPlanId?: string):
+  {readonly ok: boolean; readonly message: string; readonly done: Promise<string>} {
+  noteCompleted(dj?.snapshot().player);
+  const refuse = (message: string) => ({ok: false, message, done: Promise.resolve(message)});
+  if (!feedbackStore) return refuse('ignored: rating needs the Studio set page');
+  if (!lastCompleted) return refuse('refused: no handover has finished yet, so there is nothing to rate');
+  if (expectPlanId && expectPlanId !== lastCompleted.plan.id) {
+    return refuse(`refused: the last handover changed to ${lastCompleted.plan.id} since you looked; check it and rate again`);
+  }
+  const target = lastCompleted, label = lastCompletedLabel();
+  let entry;
+  try { entry = makeTransitionFeedback({plan: target.plan, rating, tags, note, device, at: new Date().toISOString(), measured: target.measured}); }
+  catch (error) { return refuse(`refused: ${error instanceof Error ? error.message : String(error)}`); }
+  const done = feedbackStore.rate(entry).then(outcome => `Rated "${rating}": ${label}. ${savedWording(outcome)}`,
+    error => `Not saved: ${error instanceof Error ? error.message : String(error)}`).finally(() => { renderSet(); });
+  return {ok: true, message: `rated ${rating}: ${label}`, done};
 }
 const exploreBox = isSet ? $<HTMLInputElement>('set-explore') : null, exploreSeed = isSet ? $<HTMLInputElement>('set-explore-seed') : null;
 function applyExplore(): void {
@@ -474,19 +537,36 @@ function applyExplore(): void {
   catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
 }
 exploreBox?.addEventListener('change', applyExplore); exploreSeed?.addEventListener('change', applyExplore);
+const selectedTags = new Set<FeedbackTag>();
+const rateNote = isSet ? $<HTMLInputElement>('set-rate-note') : null;
+if (isSet) {
+  const tagBox = $('set-rate-tags');
+  for (const tag of FEEDBACK_TAGS) {
+    const chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'chip'; chip.textContent = FEEDBACK_TAG_LABELS[tag]; chip.dataset.tag = tag;
+    chip.setAttribute('aria-pressed', 'false');
+    chip.addEventListener('click', () => {
+      if (selectedTags.has(tag)) selectedTags.delete(tag); else selectedTags.add(tag);
+      chip.setAttribute('aria-pressed', String(selectedTags.has(tag)));
+    });
+    tagBox.append(chip);
+  }
+}
 if (isSet) for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#set-why [data-rate]'))) {
   button.addEventListener('click', () => {
-    if (!shownPlan) { setText('set-why-rating', 'No planned handover to rate yet.'); return; }
-    try {
-      const log = rateTransition(loadRatings(), shownPlan, button.dataset.rate as TransitionRating, new Date().toISOString());
-      setText('set-why-rating', saveRatings(log) ? `Saved "${button.dataset.rate}" for plan ${shownPlan.id} (${log.entries.length} rated).`
-        : 'This browser would not store the rating.');
-    } catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
+    const rating = button.dataset.rate;
+    if (!isFeedbackRating(rating)) return;
+    const result = rateLast(rating, [...selectedTags], rateNote?.value ?? '', 'pc');
+    setText('set-why-rating', result.ok ? 'Saving…' : result.message);
+    if (!result.ok) return;
+    selectedTags.clear(); if (rateNote) rateNote.value = '';
+    for (const chip of Array.from(document.querySelectorAll<HTMLButtonElement>('#set-rate-tags [data-tag]'))) chip.setAttribute('aria-pressed', 'false');
+    void result.done.then(message => { setText('set-why-rating', message); });
   });
 }
 if (isSet) $('set-ratings-export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(loadRatings(), null, 2)], {type: 'application/json'});
-  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'transition-ratings.json';
+  const blob = new Blob([JSON.stringify({version: 'em.transition-feedback-log.v1', entries: feedbackStore?.all() ?? []}, null, 2)], {type: 'application/json'});
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'transition-feedback.json';
   link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 });
 function renderWhy(summary: NonNullable<ReturnType<typeof transitionReadout>> | null): void {
@@ -502,6 +582,13 @@ function renderSet(): void {
   const summary = player?.mix?.summary;
   if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + (player.mix.fallbackAfterFailedPrecheck
     ? `fallback after ${player.mix.fallbackAfterFailedPrecheck.failedChecks} failed pre-check(s); the cut itself: ` : '') + precheckLabel(player.mix.precheck) : '');
+  noteCompleted(player);
+  {
+    const rated = lastCompleted ? feedbackStore?.get(lastCompleted.plan.id) : undefined;
+    setText('set-rate-which', lastCompleted
+      ? `Rating applies to the last handover that finished: ${lastCompletedLabel()}.${rated ? ` Current rating: ${FEEDBACK_RATING_LABELS[rated.rating]} (${feedbackStore!.isSaved(lastCompleted.plan.id) ? 'saved on the PC' : feedbackStore!.relayReady ? 'queued' : 'this browser only'}).` : ''}`
+      : 'Rate the last handover that finished playing. None has finished yet.');
+  }
   if (summary?.set && summary.set.transition?.id !== shownPlan?.id) { shownPlan = summary.set.transition ?? null; renderWhy(transitionReadout(summary)); }
   setText('set-mix', player?.mix?.phase === 'preparing' ? player.mix.reason
     : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
@@ -518,6 +605,13 @@ const phoneButton = $<HTMLButtonElement>('phone-stream'), phoneBackground = $<HT
 const phoneRelay = relayFromLocation(location.search);
 // Read (and strip from the address bar) a relay token on every Studio page, not only the set page.
 const phoneToken = takeRelayToken(phoneRelay);
+if (isSet) {
+  feedbackStore = new FeedbackStore({relay: phoneToken ? phoneRelay : null, token: phoneToken, onChange: () => { renderSet(); }});
+  const store = feedbackStore;
+  // The PC file is the source of truth: send anything queued, then read the file back; retry queued ratings every 15 s.
+  void store.flush().then(() => store.sync());
+  setInterval(() => { void store.tick(); }, 15_000);
+}
 function runPhoneCommand(command: PhoneCommand): string {
   renderDj();
   const press = (id: string, label: string): string => {
@@ -546,6 +640,7 @@ function runPhoneCommand(command: PhoneCommand): string {
       void send({type: 'reorderQueue', queueCommandId: queue[at]!.commandId, toIndex: 0});
       return `moved ${titleOf(command.songId)} to the front of the queue`;
     }
+    case 'rate': return rateLast(command.rating, command.tags, command.note ?? '', 'phone', command.planId).message;
     case 'auto': {
       const want = command.enabled ?? !autoOn;
       if (want === autoOn) return `auto already ${autoOn ? 'on' : 'off'}`;
@@ -554,7 +649,6 @@ function runPhoneCommand(command: PhoneCommand): string {
   }
 }
 const gate = new AudioGate(() => djPlayer?.context.resume());
-let lastTransitionInfo: TransitionInfo | null = null;
 const phoneStream = isSet ? new PhoneStream({
   tapSource: () => { getDj(); if (!djPlayer) throw new Error('The player is not ready.'); return djPlayer; },
   run: runPhoneCommand,
@@ -567,7 +661,7 @@ const phoneStream = isSet ? new PhoneStream({
     const needsClick = gate.observe(playerState, player?.contextState ?? djPlayer?.context.state ?? 'running');
     const summary = player?.mix?.summary ?? null;
     const info: TransitionInfo | null = summary?.set ? phoneTransition(summary, player?.mix?.fallbackAfterFailedPrecheck) : null;
-    if (info && player?.transition === 'complete') lastTransitionInfo = info;
+    noteCompleted(player);
     const head = queue[0] ? titleOf(queue[0].trackId) : '';
     const nextStatus = !player?.next && !head ? ''
       : player?.mix?.phase === 'preparing' ? 'Preparing the handover…'
@@ -583,7 +677,7 @@ const phoneStream = isSet ? new PhoneStream({
       canHandoff: false, auto: autoOn, canAuto: !!loaded,
       queue: queue.slice(0, QUEUE_LIMIT).map(entry => ({id: entry.trackId, title: titleOf(entry.trackId)})),
       nextStatus, canSetNext: queue.length > 0,
-      transitionNext: info && player?.transition !== 'complete' ? info : null, transitionLast: lastTransitionInfo};
+      transitionNext: info && player?.transition !== 'complete' ? info : null, transitionLast: lastTransitionForPhone()};
   },
 }, phoneRelay, phoneToken, () => { renderPhoneStream(); }) : null;
 const phoneAuto = phoneStream && phoneToken ? new PhoneAutoStart(phoneRelay, phoneToken, phoneStream, () => loaded !== null, () => { renderPhoneStream(); }) : null;
