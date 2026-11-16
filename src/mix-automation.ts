@@ -106,26 +106,28 @@ export function mixCurveValue(points: readonly MixAutomationPoint[], frame: numb
 const lane = (frames: number, first: number, last = first): MixAutomationPoint[] =>
   [{frame: 0, value: first}, {frame: frames, value: last}];
 
-/** Complementary gain and sequential bass ownership; attenuation cannot isolate stems. */
+/** Complementary gain with bass attenuation on quieter lanes; this cannot isolate stems. */
 export function bassSwapAutomation(durationFrames: number, sampleRate: number):
   {outgoing: MixAutomation; incoming: MixAutomation} {
   check(Number.isSafeInteger(durationFrames) && durationFrames >= 10,
     'A bass swap needs at least ten output frames.');
-  const cut = Math.floor(durationFrames * 0.4), swap = Math.floor(durationFrames * 0.5);
-  const open = Math.floor(durationFrames * 0.6), nyquist = sampleRate / 2;
+  const open = Math.floor(durationFrames * 0.4), cut = Math.floor(durationFrames * 0.6);
+  const nyquist = sampleRate / 2;
+  // Open B before cutting A: simultaneous shelf/high-pass suppression digs a hole.
+  // Keep the original complementary full-overlap faders and attenuated outer lanes.
   const outgoing: MixAutomation = {durationFrames,
     gain: lane(durationFrames, 1, 0),
     lowShelfDb: [{frame: 0, value: 0}, {frame: cut, value: 0},
-      {frame: swap, value: -24}, {frame: durationFrames, value: -24}],
+      {frame: durationFrames, value: -24}],
     highPassHz: [{frame: 0, value: 0}, {frame: cut, value: 0},
-      {frame: swap, value: 500}, {frame: durationFrames, value: 1000}],
+      {frame: durationFrames, value: 1000}],
     lowPassHz: lane(durationFrames, nyquist)};
   const incoming: MixAutomation = {durationFrames,
     gain: lane(durationFrames, 0, 1),
-    lowShelfDb: [{frame: 0, value: -24}, {frame: swap, value: -24},
-      {frame: open, value: 0}, {frame: durationFrames, value: 0}],
-    highPassHz: [{frame: 0, value: 500}, {frame: swap, value: 500},
-      {frame: open, value: 0}, {frame: durationFrames, value: 0}],
+    lowShelfDb: [{frame: 0, value: -24}, {frame: open, value: 0},
+      {frame: durationFrames, value: 0}],
+    highPassHz: [{frame: 0, value: 500}, {frame: open, value: 0},
+      {frame: durationFrames, value: 0}],
     lowPassHz: lane(durationFrames, nyquist)};
   validateMixAutomation(outgoing, sampleRate); validateMixAutomation(incoming, sampleRate);
   return {outgoing, incoming};

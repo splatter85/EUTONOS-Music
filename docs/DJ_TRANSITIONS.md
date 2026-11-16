@@ -98,7 +98,7 @@ if (plan.kind === 'mix') {
 
 `src/mix-automation.ts` defines frame-relative gain, low-shelf, high-pass and low-pass lanes. Each lane has 2-64 strictly increasing control points with explicit endpoints and linear/exponential ramps. Native AudioParam events convert those frame offsets into times on the same AudioContext that owns both recordings. No JavaScript timer drives the audio moves.
 
-The blend recipe selects `bassSwapAutomation(overlapFrames, sampleRate)`: complementary gain curves, a fixed 250 Hz low shelf and a high-pass handover. A's bass attenuation begins at 40% of the overlap and reaches its cut at 50%; B's bass stays attenuated through 50% and opens by 60%. The shelf cut is -24 dB and the high-pass moves through 500 Hz toward 1 kHz. This attenuates full-band recordings; it does not isolate bass stems.
+The blend recipe selects `bassSwapAutomation(overlapFrames, sampleRate)`: complementary gain curves, a fixed 250 Hz low shelf and a high-pass handover. B's shelf opens from -24 to 0 dB and its high-pass from 500 to 0 Hz over the first 40% of the overlap. A stays neutral through 60%, then its shelf closes to -24 dB and high-pass reaches 1 kHz at the end. At least one lane stays unfiltered throughout; neither the full-overlap faders nor their sum of one changes. This attenuates full-band recordings; it does not isolate bass stems.
 
 `sweepAutomation(durationFrames, sampleRate, 'highpass' | 'lowpass', 'open' | 'close')` supplies a reusable sweep plan. `mixCurveValue` evaluates the same plan data for inspection/tests. The planner does not optimize among different sweep styles, and the page has no separate sweep-style selector.
 
@@ -170,7 +170,22 @@ Rendering is deterministic for the same input. Measured cost on the test PC (Win
 - a momentary loudness dip of −12.6 LU (short-term −3.8 LU);
 - a boundary-flux excess of +24.5 dB, at S + 2.0 s.
 
-That is where the bass swap leaves both A and B shelved and high-passed for about 0.4 s, before B's low band is restored. Log-energy flux also grows when the preceding frame is quiet, so the flux value partly restates the same gap. The S14 recipe is unchanged. Whether the gap is audible is NOT TESTED; it is recorded as a follow-up.
+That is where the bass swap leaves both A and B shelved and high-passed for about 0.4 s, before B's low band is restored. Log-energy flux also grows when the preceding frame is quiet, so the flux value partly restates the same gap. These are the historical S15 measurements; the branch follow-up below changes this timing. Whether the gap is audible is NOT TESTED.
+
+**Bass-swap follow-up (2026-11-15): PARTIAL, pending coordinator review.** Branch `work/bass-swap-gap` starts at main `6d6c072` in an isolated worktree. B now opens before A closes, removing simultaneous bass suppression while preserving complementary four-second faders. No planner, evaluator, threshold, clock, playback owner or browser defaults changed. The generated 120 BPM pair (`makeMixFixture({bpm: 120, tonic: 9})` for each side, `recipe: 'blend'`) changes as follows, measured offline and not heard:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Momentary loudness dip | -12.563076 LU | -2.689717 LU |
+| Short-term loudness dip | -3.756375 LU | -1.665426 LU |
+| Boundary-flux excess | 24.460579 dB | 2.329244 dB |
+| Low-band build-up | 2.578689 dB | 5.171395 dB |
+| True peak | -8.322379 dBTP | -8.322358 dBTP |
+| Evaluator / chooser | FAIL / fallback | WARN / blend |
+
+`mix-evaluation-thresholds@1` is unchanged. The target now has no failing metrics and the existing chooser admits the blend, but **the requested warning-free PASS is not achieved**: loudness and low-band build-up still warn. The regression requires admission with no failures, not a warning-free verdict. Additional synthetic sanity cases still fail: exact same-phase cues produce 5.823223 dB low-band build-up; independent noise has a -3.076101 LU dip (improved from -3.233196 LU). These are not newly qualified inputs. A rejected alternative passed the target by holding both faders high, but added a broadband gain bump; it was not retained. Review found no out-of-scope edits. Broader gain/filter redesign or evaluator policy needs coordinator disposition rather than weakening thresholds here.
+
+Focused verification: `npm.cmd run build`, then `node --test dist/tests/mix-automation.test.js dist/tests/mix-evaluate.test.js`: **27/27 pass**, including the new regression, which fails on the original automation. Required full Windows gates are pending. Physical output and listening are **NOT TESTED**; macOS/Linux are not run. No push or main integration is authorized for this worker. The coordinator owns integration and native board/RAM filing; those paths are excluded from this assignment. Next: coordinator review of the remaining warnings, then S10 owner listening when assigned. Overall campaign effort percentage remains unknown.
 
 ## Tempo and pitch preparation
 
