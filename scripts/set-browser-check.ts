@@ -14,6 +14,8 @@ import {fileURLToPath} from 'node:url';
 import {chromium, type Browser, type Page} from 'playwright';
 import {createDemoServer} from './serve.js';
 import {buildSyntheticSet} from '../tests/helpers/synthetic-set.js';
+import {PassThrough} from 'node:stream';
+import {createPhoneRelay, studioSetPageUrl, type EncoderProcess} from './phone-relay.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const output = new URL('../../artifacts/set-browser/', import.meta.url);
@@ -92,6 +94,64 @@ try {
   assert.equal(fetched.filter(p => p.endsWith('.wav')).length, 0, 'no song audio is fetched before it is needed');
   assert.match(await text(page, 'set-songs'), /174 BPM requested.*(love|like)/s);
   report.checks.push('set page loads lazily (manifest only), automatic mix only, whole set queued in catalogue order with ratings');
+
+  // Phone UX: the Studio set page reports its queue and handover status to a real relay and obeys
+  // the phone's set-next through the same reorder as the Queue arrows; unknown ids are refused.
+  {
+    const fakeEncoder = (): EncoderProcess => {
+      const stdin = new PassThrough(), stdout = new PassThrough();
+      stdin.pipe(stdout);
+      return {stdin, stdout, kill: () => { stdin.unpipe(stdout); stdout.end(); }, on: () => undefined};
+    };
+    const relay = createPhoneRelay({spawnEncoder: fakeEncoder, djOrigins: [origin]});
+    await new Promise<void>((resolve, reject) => { relay.server.once('error', reject); relay.server.listen(0, '127.0.0.1', resolve); });
+    const relayAddress = relay.server.address();
+    assert.ok(relayAddress && typeof relayAddress !== 'string');
+    const control = async (body: unknown): Promise<number> => (await fetch(`http://127.0.0.1:${relayAddress.port}/api/control`,
+      {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)})).status;
+    const phonePage = await context.newPage();
+    phonePage.on('pageerror', error => errors.push(`phone-stream page: ${error.message}`));
+    try {
+      await phonePage.goto(studioSetPageUrl(origin, relayAddress.port, relay.token));
+      await waitText(phonePage, 'global-status', /Rated set.*loaded · 4 songs/);
+      await phonePage.locator('#phone-stream').click();
+      const until = async (check: () => boolean, label: string): Promise<void> => {
+        const deadline = Date.now() + 15000;
+        while (!check()) { if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`); await new Promise(r => setTimeout(r, 50)); }
+      };
+      await until(() => (relay.status().dj.status?.queue?.length ?? 0) === 4, 'queue of four in the phone status');
+      const first = relay.status().dj.status!;
+      assert.equal(first.canSetNext, true);
+      assert.equal(first.state, 'idle');
+      assert.equal(first.next, first.queue![0]!.title, 'before anything plays, Next-up is the queue head');
+      assert.match(first.nextStatus ?? '', /Queued/);
+      assert.ok(first.queue!.every(item => /^[A-Za-z0-9._:-]+$/.test(item.id) && item.title.length > 0));
+      const pick = first.queue![3]!;
+      assert.equal(await control({command: 'set-next', songId: pick.id}), 202);
+      await waitText(phonePage, 'phone-stream-detail', /set-next: moved .* to the front of the queue/);
+      assert.equal((await queueTitles(phonePage))[0], pick.title, 'the picked song is now the queue head');
+      await until(() => relay.status().dj.status?.queue?.[0]?.id === pick.id && relay.status().dj.status?.next === pick.title, 'new head reported to the phone');
+      assert.equal(await control({command: 'set-next', songId: pick.id}), 202);
+      await waitText(phonePage, 'phone-stream-detail', /set-next: .* is already next/);
+      assert.equal(await control({command: 'set-next', songId: 'no-such-song'}), 202);
+      await waitText(phonePage, 'phone-stream-detail', /set-next: refused: no-such-song is not in the queue/);
+      assert.equal((await queueTitles(phonePage))[0], pick.title, 'an unknown id changes nothing');
+      assert.equal(await control({command: 'set-next', songId: '../x'}), 400);
+      // Handover card: after Play and Next the phone gets the plan in plain words (same plan data as "Why this handover").
+      await phonePage.locator('#dj-play').click();
+      await waitText(phonePage, 'dj-now', new RegExp(pick.title.replace(/[()]/g, '\\$&')));
+      await phonePage.locator('#dj-next').click();
+      await until(() => !!relay.status().dj.status?.transitionNext, 'planned handover in the phone status');
+      const planned = relay.status().dj.status!;
+      assert.ok(planned.transitionNext!.recipe.length > 3 && !/^[a-z]+-[a-z-]+$/.test(planned.transitionNext!.recipe), `plain recipe words: ${planned.transitionNext!.recipe}`);
+      assert.match(planned.transitionNext!.tempo, /^[+-]?\d+\.\d%$/);
+      assert.match(planned.transitionNext!.entry, /^enters at \d+:\d\d$/);
+      assert.match(planned.nextStatus ?? '', /Ready/);
+      await phonePage.locator('#dj-stop').click();
+      await phonePage.locator('#phone-stream').click();
+    } finally { await phonePage.close(); await relay.close(); }
+    report.checks.push('phone relay: set page reports queue and next status, set-next reorders to the head, repeat is a no-op, unknown or path-like ids are refused');
+  }
 
   // Any-to-any: start with the third catalogue song, then reorder so 174-b follows it.
   await moveToHead(page, 'synthetic-174-c');

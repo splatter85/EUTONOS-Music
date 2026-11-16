@@ -211,3 +211,6 @@ main { flex: 1; padding: 16px 18px; width: 100%; max-width: 1400px; margin: 0 au
   #set-songs .set-song-row { grid-template-columns: minmax(0, 1fr); }
   #set-songs .song-actions { justify-content: flex-start; }
 }
+
+.gesture-gate:not([hidden]) { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; background: rgba(8, 10, 14, 0.92); color: #fff; }
+.gesture-gate-button { font: inherit; font-size: 1.4rem; padding: 18px 28px; border-radius: 14px; border: 2px solid #fbbf24; background: #fbbf24; color: #201700; cursor: pointer; }

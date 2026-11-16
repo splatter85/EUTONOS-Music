@@ -41,9 +41,24 @@ button {
 button:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
 button[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
 .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.play { width: 100%; min-height: 120px; font-size: 2rem; font-weight: 800; border-radius: 24px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.play[data-mode="playing"], .play[data-mode="loading"] { background: #222734; color: var(--accent); }
+.play[data-mode="needs-click"], .play[data-mode="error"] { background: var(--warn); border-color: var(--warn); color: #201700; }
+.now { margin: 4px 0 0; font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
+.center { text-align: center; }
+.row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 8px; }
+.transition { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.transition p { margin: 2px 0; }
+summary { cursor: pointer; min-height: 32px; color: var(--muted); }
+.picker { margin-top: 10px; }
+.picker-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.picker-list button { width: 100%; text-align: left; min-height: 44px; }
+.picker-list button[aria-current="true"] { border-color: var(--accent); color: var(--accent); }
 .listen { width: 100%; min-height: 64px; font-size: 1.2rem; font-weight: 700; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .listen[aria-pressed="true"] { background: #222734; color: var(--accent); border-color: var(--accent); }
 .remote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .handoff { display: grid; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 0.85rem; }
 select { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: #222734; padding: 8px; }
 .foot { font-size: 0.75rem; color: var(--muted); text-align: center; padding: 0 8px; }
+.invisible { visibility: hidden; }
+.hint { min-height: 2.6em; }

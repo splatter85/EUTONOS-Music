@@ -14,7 +14,12 @@ export type PhoneCommand =
   | {readonly command: 'hold'; readonly enabled?: boolean}
   | {readonly command: 'handoff'; readonly mode: PhoneHandoffMode}
   /** S18: toggle (or set) Auto on the Studio set page; other pages ignore it. */
-  | {readonly command: 'auto'; readonly enabled?: boolean};
+  | {readonly command: 'auto'; readonly enabled?: boolean}
+  /** Phone UX: make this queued song the next one (Studio set page only; checked against its queue). */
+  | {readonly command: 'set-next'; readonly songId: string};
+
+/** A song id as it may cross the relay: short, printable, no path separators. */
+export const SONG_ID_PATTERN = /^[A-Za-z0-9._:-]{1,120}$/;
 
 /** A relayed command carries the relay's monotonically increasing id. */
 export type RelayedCommand = PhoneCommand & {readonly id: number};
@@ -40,6 +45,10 @@ export function parseControlCommand(value: unknown): PhoneCommand | null {
       if (!onlyKeys(value, ['command', 'mode'])) return null;
       return typeof value.mode === 'string' && (HANDOFF_MODES as readonly string[]).includes(value.mode)
         ? {command: 'handoff', mode: value.mode as PhoneHandoffMode} : null;
+    case 'set-next':
+      if (!onlyKeys(value, ['command', 'songId'])) return null;
+      return typeof value.songId === 'string' && SONG_ID_PATTERN.test(value.songId)
+        ? {command: 'set-next', songId: value.songId} : null;
     default:
       return null;
   }
@@ -64,17 +73,55 @@ export interface DjStatus {
   /** S18 Studio set page: Auto is on / can be toggled. False on pages without set mode. */
   readonly auto: boolean;
   readonly canAuto: boolean;
+  /**
+   * Phone UX fields, all optional so an older DJ page (which never sends them) still works.
+   * `queue` is the upcoming songs in order (bounded, sanitized); `nextStatus` says whether the
+   * next song is prepared; `canSetNext` is true only on pages that honour `set-next`.
+   */
+  readonly queue?: readonly QueueItem[];
+  readonly nextStatus?: string;
+  readonly canSetNext?: boolean;
+  /** The upcoming handover and the last one played, in plain words (Studio set page only). */
+  readonly transitionNext?: TransitionInfo | null;
+  readonly transitionLast?: TransitionInfo | null;
 }
+/** Plain-word handover summary; every field is a bounded string, empty when unknown. */
+export interface TransitionInfo {
+  readonly recipe: string; readonly overlap: string; readonly choreography: string;
+  readonly tempo: string; readonly entry: string; readonly fallback: string;
+}
+const transitionFields = ['recipe', 'overlap', 'choreography', 'tempo', 'entry', 'fallback'] as const;
+export function sanitizeTransition(value: unknown): TransitionInfo | null {
+  if (!isRecord(value)) return null;
+  const result: Record<string, string> = {};
+  for (const field of transitionFields) result[field] = text(value[field]);
+  return result.recipe ? result as unknown as TransitionInfo : null;
+}
+export interface QueueItem { readonly id: string; readonly title: string }
+export const QUEUE_LIMIT = 16;
 
 export const STATUS_TEXT_LIMIT = 240;
-const textFields = ['state', 'now', 'next', 'detail', 'status', 'requested', 'execution', 'lastCommand'] as const;
-const flagFields = ['hold', 'canPlay', 'canStop', 'canNext', 'canHold', 'canHandoff', 'auto', 'canAuto'] as const;
+const textFields = ['state', 'now', 'next', 'detail', 'status', 'requested', 'execution', 'lastCommand', 'nextStatus'] as const;
+const flagFields = ['hold', 'canPlay', 'canStop', 'canNext', 'canHold', 'canHandoff', 'auto', 'canAuto', 'canSetNext'] as const;
 
 function text(value: unknown): string {
   if (typeof value !== 'string') return '';
   // Control characters are display noise at best; strip them and bound the length.
   const clean = value.replace(/[\x00-\x1f\x7f]/g, ' ');
   return clean.length > STATUS_TEXT_LIMIT ? `${clean.slice(0, STATUS_TEXT_LIMIT - 1)}…` : clean;
+}
+
+/** At most QUEUE_LIMIT entries; an entry needs a valid id (no paths) and keeps a bounded title. */
+export function sanitizeQueue(value: unknown): QueueItem[] {
+  if (!Array.isArray(value)) return [];
+  const items: QueueItem[] = [];
+  for (const entry of value) {
+    if (items.length >= QUEUE_LIMIT) break;
+    if (!isRecord(entry) || typeof entry.id !== 'string' || !SONG_ID_PATTERN.test(entry.id)) continue;
+    const title = text(entry.title);
+    items.push({id: entry.id, title: title || entry.id});
+  }
+  return items;
 }
 
 /** Copies only known fields with bounded strings and strict booleans; null for non-objects. */
@@ -85,6 +132,9 @@ export function sanitizeDjStatus(value: unknown): DjStatus | null {
   for (const field of flagFields) result[field] = value[field] === true;
   result.handoff = typeof value.handoff === 'string' && (HANDOFF_MODES as readonly string[]).includes(value.handoff)
     ? value.handoff : null;
+  result.queue = sanitizeQueue(value.queue);
+  result.transitionNext = sanitizeTransition(value.transitionNext);
+  result.transitionLast = sanitizeTransition(value.transitionLast);
   return result as unknown as DjStatus;
 }
 

@@ -57,15 +57,35 @@ The phone side cannot inject audio: ingest exists only behind the DJ guard and t
 
 ## How to run (owner, Windows PC)
 
+**Hands-off host (recommended): `npm run phone:host`.** One command builds, starts the file server (4173, or reuses a running `npm run demo`) and the phone relay (4180), then opens the Studio set page (`studio.html?pack=set&tab=dj`) in a **dedicated Edge window (Chrome if Edge is missing)**, minimized, in `--app=` mode, passing the relay token in the URL fragment itself. That window is started with Chromium's documented `--autoplay-policy=no-user-gesture-required` switch and a **throwaway `--user-data-dir` under the OS temp folder** (`eutonos-phone-host-*`, deleted when the host stops), so a phone **Play** starts sound on the PC with **no click on the PC** and **Stream to phone** turns itself on when the phone page opens. It never uses the owner's real browser profile and changes no browser setting. It does not run `tailscale serve`; it prints the address to run yourself. Options: `--visible` (not minimized), `--browser PATH`, `--ffmpeg PATH`, `--no-browser` (print the URL to open in a browser you started with that flag). Ctrl+C (or closing the DJ window) stops everything and removes the temporary profile. Leave the DJ window open: closing it ends sound. Because that window is minimized, the Studio page's **Keep playing when this tab is hidden (only while streaming)** option is now checked by default so the hidden-tab pause does not stop the DJ (untick it to restore the old pause). The launcher passes the token in a process argument, readable by other local users of this PC while it runs; the token is per run and the relay is loopback only. Windows is the tested path; the browser lookup also covers macOS and Linux paths but those were not run.
+
+Manual route (same pieces by hand):
+
 1. Terminal 1: `npm run demo`.
 2. Terminal 2: `npm run phone` (builds, then starts the relay on 127.0.0.1:4180 and prints these steps). Options: `--port N`, `--ffmpeg PATH` (default `ffmpeg` from PATH; needs libmp3lame), `--allow-host NAME`, `--dj-origin ORIGIN`.
-3. Open **the DJ address the relay printed** (it ends with `#relayToken=…`) in **Edge or Chrome** on the PC, choose the pack as usual, and click **Stream to phone** (off by default). The panel shows relay/control/recorder state, chunks sent and errors. Press **Play** once on the PC (that click also gives the page the user activation that later lets a phone **Play** start audio).
+3. Open **the DJ address the relay printed** (it ends with `#relayToken=…`) in **Edge or Chrome** on the PC. In a normal browser window the autoplay policy applies: the first Play must come from a click on the PC page (or see the fallback below).
 4. Once, on the PC: `tailscale serve --bg 4180`. (`tailscale serve status` shows it; `tailscale serve reset` removes all serve configuration.) The agent did not run this.
-5. Install Tailscale on the phone, sign in to the same tailnet, open `https://<pc-name>.<tailnet>.ts.net/`, tap **Listen**.
+5. Install Tailscale on the phone, sign in to the same tailnet, open `https://<pc-name>.<tailnet>.ts.net/` (it can be added to the home screen).
 
-Phone page: **Listen / Pause listening** only affects the phone (pausing disconnects, and Listen rejoins live so the delay does not grow). **Next Song, Hold, Play (DJ), Stop (DJ)** and **Handoff** act on the PC. The Media Session API supplies lock-screen title/state; lock-screen *next track* = DJ **Next Song**, play/pause = phone listening only.
+### Phone page: one remote plus speaker
 
-To stop: turn **Stream to phone** off (recorder, tap, events and timers are torn down; the relay ends the session), then Ctrl+C in the relay terminal (ffmpeg is stopped).
+The main view is small: **Now playing**, one big **Play/Pause**, a one-line status, **Next** (and **Auto** on the set page), a **Next up** card, a **Handover** card and a collapsed **More**.
+
+- **Play** sends the DJ `play` command *and* starts this phone's sound in the same tap (the tap is the gesture iOS needs). **Pause** sends `stop` and releases the phone's sound. The button follows the relay's real DJ state (`idle`, `loading` shows "Starting…", `playing`/`scheduled` shows Pause, `needs-click`, error), never an optimistic guess (pure logic: `web/phone-ui.ts`).
+- Opening the page while the DJ already plays joins the sound by itself once. If the phone refuses audio without a tap, the page says so in one line and the **next tap anywhere** starts the sound; there is no Listen button. A DJ that really stopped releases the phone's sound; a Play press has a 20 s grace so the brief idle state before loading does not drop it.
+- **Next up** shows the next song (the DJ's armed next, else the head of the queue) and `nextStatus`: *Preparing the handover…*, *Ready — handover prepared* or *Queued — prepared when you press Next / Auto prepares it once this song is in*. Set mode analyzes and prepares B only when Next or Auto asks (S18/S21); this slice does not pre-arm it, so "Ready" appears after Next or Auto, not while the song merely plays.
+- **Pick a different next song** lists the queue; tapping an entry sends `{command:'set-next', songId}`. The Studio set page validates the id against its **current queue**: an unknown id is refused (`refused: <id> is not in the queue`), the head is a no-op (`... is already next`), anything else is moved to the front with the same `reorderQueue` the Queue arrows use, so an outstanding Next re-targets and re-prepares for the new head. Ids must match `[A-Za-z0-9._:-]{1,120}` (no paths) at the relay; older DJ pages answer `ignored`.
+- **Handover card** (set page): the upcoming transition and the last one played in plain words (for example *Smooth blend*, *Bass swap*, *Bass handover with 2-bar gap*, *Echo out*, *Filter sweep*, *Tempo meet in the middle*, *Clean cut (last resort)*) with bars of overlap, tempo change, where B enters (`enters at 1:12`) and a *Fallback after N failed pre-check(s)* note. It reads the same plan record and summary as the Studio **Why this handover** panel (`web/phone-transition.ts`); the EQ choreography name is under **More**. Plan data, not listening evidence.
+- **More** holds Hold, Handoff, DJ/stream/command status and the explanatory notes. Fields the DJ page does not send (`queue`, `nextStatus`, `canSetNext`, `transitionNext`, `transitionLast`) are optional: the page still works against an older DJ page.
+- Lock screen: Media Session play/pause map to Play/Pause and *next track* to Next (not tested on a phone).
+
+To stop: Pause on the phone, turn **Stream to phone** off on the PC page (recorder, tap, events and timers are torn down; the relay ends the session), then Ctrl+C in the host or relay terminal (ffmpeg is stopped).
+
+### Needs-click state (fallback only)
+
+A normal browser keeps the `AudioContext` suspended until a real click on the page, so a remote Play would sit on "Getting ready…" (observed live). Both DJ pages now watch for it: a Play that stays `loading` on a suspended context for 1.5 s reports state **`needs-click`** (the phone shows "Tap play on the PC page once") and the PC page shows a **"Click here once to allow sound"** overlay; the click resumes the context and the pending Play proceeds. This never bypasses the policy. The supported way to avoid it is `npm run phone:host`.
+
+Verified in `scripts/phone-browser-check.ts` with real Edge (Chrome as fallback) headless: without the flag a page-created `AudioContext` stays suspended and a remote Play reports `needs-click`; with the flag it runs, a remote Play streams chunks with no click and no overlay. Playwright's bundled Chromium ignores the switch and `page.evaluate()` counts as a gesture, so that stage uses installed Edge/Chrome and reports NOT TESTED if neither exists.
 
 ## Auto-start when the phone connects
 
@@ -94,7 +114,12 @@ The Studio set page (opened from the relay-printed address, so a token exists) h
 | `web/phone-stream.ts` | DJ-page streaming/control client |
 | `web/app.ts`, `web/index.html`, `web/style.css` | Stream to phone panel and command execution through existing controls |
 | `src/player.ts` | `createStreamTap()` / `releaseStreamTap()` |
-| `web/phone.html`, `web/phone.css`, `web/phone.ts` | Phone page |
+| `web/phone.html`, `web/phone.css`, `web/phone.ts` | Phone page (single Play/Pause, Next-up, picker, handover card, More) |
+| `web/phone-ui.ts` | Pure Play/Pause state machine and phone-audio attach/detach rule |
+| `web/phone-transition.ts` | Plain-word handover summary from the S21 plan data |
+| `web/audio-gate.ts` | `needs-click` detection and the PC "Click here once" overlay (fallback) |
+| `scripts/phone-host.ts` | `npm run phone:host`: server + relay + dedicated autoplay-flag Edge/Chrome window with a temporary profile |
+| `tests/phone-ui.test.ts` | Node tests for the above, including the launcher arguments |
 | `web/phone-watchdog.ts` | Phone stall watchdog (reconnect after ~8 s of waiting/stalled) |
 | `tests/phone-relay.test.ts`, `tests/player.test.ts` | Node tests incl. real-ffmpeg smoke |
 | `scripts/phone-browser-check.ts` | Browser check (`npm run check:phone`, part of `check:browser`) |

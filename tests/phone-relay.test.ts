@@ -11,7 +11,7 @@ import {test, type TestContext} from 'node:test';
 import {promisify} from 'node:util';
 import {createPhoneRelay, djPageUrl, studioSetPageUrl, ffmpegEncoder, firstFrameOffset, isLoopbackHost, isPhoneHost, LIMITS,
   parseRelayArgs, safeRequestPath, type EncoderProcess, type PhoneRelay} from '../scripts/phone-relay.js';
-import {parseControlCommand, sanitizeDjStatus, STATUS_TEXT_LIMIT} from '../web/phone-protocol.js';
+import {parseControlCommand, QUEUE_LIMIT, sanitizeDjStatus, STATUS_TEXT_LIMIT} from '../web/phone-protocol.js';
 import {StallWatchdog} from '../web/phone-watchdog.js';
 import {AUTO_RESUME_ABSENT_MS, AUTO_START_INITIAL, AUTO_START_OWNER_STOPPED, autoStartStep, type AutoStartInput} from '../web/phone-stream.js';
 
@@ -95,6 +95,7 @@ async function relay(t: TestContext, options: {allowHosts?: string[]; spawn?: ()
   await writeFile(join(root, 'web', 'phone.css'), 'body{}');
   await writeFile(join(root, 'dist', 'web', 'phone.js'), 'export {};');
   await writeFile(join(root, 'dist', 'web', 'phone-watchdog.js'), 'export {};');
+  await writeFile(join(root, 'dist', 'web', 'phone-ui.js'), 'export {};');
   await writeFile(join(root, 'package.json'), '{"private":true}');
   const encoders: FakeEncoder[] = [];
   const created = createPhoneRelay({root, token: TOKEN, allowHosts: options.allowHosts ?? [], ...(options.now ? {now: options.now} : {}),
@@ -130,6 +131,13 @@ test('the command allowlist refuses unknown commands, fields and modes', () => {
   for (const bad of [{command: 'auto', enabled: 'yes'}, {command: 'auto', bars: 32}, {command: 'auto', enabled: true, loop: true}]) {
     assert.equal(parseControlCommand(bad), null, JSON.stringify(bad));
   }
+  // Phone UX: choose the next song by id; ids are short, printable and never paths.
+  assert.deepEqual(parseControlCommand({command: 'set-next', songId: 'synthetic-174-a'}), {command: 'set-next', songId: 'synthetic-174-a'});
+  for (const bad of [{command: 'set-next'}, {command: 'set-next', songId: ''}, {command: 'set-next', songId: 7}, {command: 'set-next', songId: '../x'},
+    {command: 'set-next', songId: 'a/b'}, {command: 'set-next', songId: 'a\b'}, {command: 'set-next', songId: 'x'.repeat(121)},
+    {command: 'set-next', songId: 'ok', extra: 1}, {command: 'set-next', songId: 'a b'}]) {
+    assert.equal(parseControlCommand(bad), null, JSON.stringify(bad));
+  }
   for (const bad of [null, [], 'next', {command: 'rm'}, {command: 'next', extra: 1}, {command: 'hold', enabled: 'yes'},
     {command: 'handoff', mode: 'scratch'}, {command: 'handoff'}, {command: 'pause'}, {command: '__proto__'}]) {
     assert.equal(parseControlCommand(bad), null, JSON.stringify(bad));
@@ -143,6 +151,25 @@ test('the command allowlist refuses unknown commands, fields and modes', () => {
   assert.equal(status.handoff, null);
   assert.equal('extra' in status, false);
   assert.equal(sanitizeDjStatus([1]), null);
+  // Queue: bounded, sanitized, no paths; missing fields (older DJ page) become empty, never throw.
+  const rich = sanitizeDjStatus({state: 'needs-click', nextStatus: 'Ready\u0000', canSetNext: true,
+    queue: [{id: 'song-a', title: 'A\u0007'}, {id: 'C:/music/x.wav', title: 'path'}, {id: '..\\x', title: 'p2'}, {id: 'song-b'}, 5, null,
+      ...Array.from({length: 40}, (_, i) => ({id: `s${i}`, title: `T${i}`}))],
+    transitionNext: {recipe: 'Bass swap', overlap: '8 bars', choreography: 'bass-swap-classic', tempo: '+1.0%', entry: 'enters at 1:12', fallback: '', evil: 'x'},
+    transitionLast: {overlap: 'no recipe'}});
+  assert.ok(rich);
+  assert.equal(rich.state, 'needs-click');
+  assert.equal(rich.nextStatus, 'Ready ');
+  assert.equal(rich.canSetNext, true);
+  assert.equal(rich.queue!.length, QUEUE_LIMIT);
+  assert.deepEqual(rich.queue!.slice(0, 2), [{id: 'song-a', title: 'A '}, {id: 'song-b', title: 'song-b'}]);
+  assert.ok(rich.queue!.every(item => !/[\\/]/.test(item.id)));
+  assert.deepEqual(rich.transitionNext, {recipe: 'Bass swap', overlap: '8 bars', choreography: 'bass-swap-classic', tempo: '+1.0%', entry: 'enters at 1:12', fallback: ''});
+  assert.equal(rich.transitionLast, null, 'a transition without a recipe is dropped');
+  const old = sanitizeDjStatus({state: 'idle', next: 'x'});
+  assert.deepEqual(old!.queue, []);
+  assert.equal(old!.canSetNext, false);
+  assert.equal(old!.transitionNext, null);
 });
 
 test('path safety and relay argument parsing', () => {
@@ -323,6 +350,11 @@ test('phone commands reach the connected DJ page over Server-Sent Events, and DJ
   assert.equal((await control(port, {command: 'auto', enabled: true})).status, 202);
   await until(() => newer.bytes().toString().includes('"command":"auto","enabled":true'), 'auto delivered');
   assert.equal((await control(port, {command: 'auto', bars: 16})).status, 400);
+  // Phone UX: set-next crosses the relay as an allowlisted command; unknown shapes are refused.
+  assert.equal((await control(port, {command: 'set-next', songId: 'song-b'})).status, 202);
+  await until(() => newer.bytes().toString().includes('"command":"set-next","songId":"song-b"'), 'set-next delivered');
+  assert.equal((await control(port, {command: 'set-next', songId: '/etc/passwd'})).status, 400);
+  assert.equal((await control(port, {command: 'set-next'})).status, 400);
   const posted = await http(port, '/api/dj/status', {method: 'POST', headers: djHeaders({'content-type': 'application/json'}),
     body: JSON.stringify({state: 'playing', now: 'S01 A', next: 'S01 B', hold: true, handoff: 'mix', canNext: true, auto: true, canAuto: 'yes'})});
   assert.equal(posted.status, 200);
@@ -466,6 +498,7 @@ test('live MP3 is Icecast-style for Range probes, and cross-site status or audio
   assert.equal((await http(port, '/api/status', {headers: {'sec-fetch-site': 'same-origin'}})).status, 200);
   assert.equal((await http(port, '/', {headers: {'sec-fetch-site': 'cross-site'}})).status, 200, 'opening the phone page from a link still works');
   assert.equal((await http(port, '/phone-watchdog.js')).headers['content-type'], 'text/javascript; charset=utf-8');
+  assert.equal((await http(port, '/phone-ui.js')).headers['content-type'], 'text/javascript; charset=utf-8');
 });
 
 test('the phone stall watchdog reconnects only after a sustained stall while listening', () => {
