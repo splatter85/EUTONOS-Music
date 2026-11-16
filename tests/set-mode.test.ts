@@ -649,15 +649,24 @@ test('explicit native ramp, brake and finite loop own real clock motion, cancell
     await checkLoopDj(set, loaded);
     for (const failure of ['start', 'stop', 'allocation', 'splice-gain', 'connect', 'graph'] as const) {
       const context = new SetContext(), create = context.createBufferSource.bind(context);
-      const gains = context.createGain.bind(context), filters = context.createBiquadFilter.bind(context);
-      let spliceGains = 0;
+      const gains = context.createGain.bind(context);
+      let spliceGains = 0, graphArmed = false, graphThrown = false;
+      let graphParameter: ParameterDouble | null = null;
       context.createGain = () => {
         if (context.sources.length === 4 && failure === 'splice-gain' && ++spliceGains === 2) throw new Error('injected loop splice gain failure');
-        return gains();
-      };
-      context.createBiquadFilter = () => {
-        if (context.sources.length === 4 && failure === 'graph') throw new Error('injected loop graph failure');
-        return filters();
+        const node = gains(), ramp = node.gain.linearRampToValueAtTime.bind(node.gain);
+        node.gain.linearRampToValueAtTime = (value, at) => {
+          if (context.sources.length === 4 && failure === 'graph' && !graphThrown) {
+            // S20 filters persist across voices. Fault the delegated native schedule after
+            // an actual attenuation event was recorded, so rollback must erase its future fade.
+            if (graphArmed) { graphThrown = true; throw new Error('injected loop graph failure'); }
+            const result = ramp(value, at);
+            if (value < 1) { graphArmed = true; graphParameter = node.gain as unknown as ParameterDouble; }
+            return result;
+          }
+          return ramp(value, at);
+        };
+        return node;
       };
       context.createBufferSource = () => {
         if (context.sources.length === 3 && failure === 'allocation') throw new Error('injected loop allocation failure');
@@ -671,12 +680,28 @@ test('explicit native ramp, brake and finite loop own real clock motion, cancell
       const {runtime} = countingRuntime(), player = new SmallPlayer(context.audio, loaded, null, runtime);
       await player.playAsset(set.idFor('style-120')); context.advance(0.5);
       const end = player.snapshot().voices[0]!.endFrame;
+      const retainedGains = new Map(context.gains.map(node => [node, [...node.connections]]));
       await assert.rejects(player.scheduleMixTo(set.idFor('style-128'), {bars: 4, anchor: 'song'}, {recipe: 'loop-extend'}), /injected loop/);
       assert.equal(player.snapshot().voices.length, 1); assert.equal(player.snapshot().voices[0]!.endFrame, end);
       assert.equal(context.sources[0]!.stops.at(-1)! * 16000, end);
       assert.ok(context.sources.slice(1).every(n => n.connections.length === 0), 'failed loop and both B branches disconnected');
-      assert.ok(context.gains.slice(2).every(n => n.connections.length === 0), 'partially allocated splice/graph gains are released');
-      assert.equal(context.sources[0]!.connections.length, 1, 'A direct graph restored'); player.stop();
+      assert.ok(context.gains.filter(node => !retainedGains.has(node)).every(node => node.connections.length === 0),
+        'partially allocated splice/graph gains are released');
+      for (const [node, connections] of retainedGains) assert.deepEqual(node.connections, connections,
+        'persistent deck/master gains and the retained A source keep their original topology');
+      assert.equal(context.sources[0]!.connections.length, 1, 'A direct graph restored');
+      if (failure === 'graph') {
+        assert.equal(graphThrown, true, 'delegated scheduling failure was actually injected');
+        const parameter = graphParameter as ParameterDouble | null; assert.ok(parameter);
+        const afterCancel = parameter.calls.slice(parameter.calls.map(call => call.kind).lastIndexOf('cancel') + 1);
+        assert.ok(afterCancel.length > 0 && afterCancel.every(call => call.kind !== 'cancel' && call.value === 1),
+          'rollback removes the previously recorded future attenuation from the native A fader');
+      }
+      context.advance(Math.min(25, (end - 1) / 16000 - context.currentTime));
+      const controls = player.deckSnapshot()!.a.controls;
+      assert.equal(controls.gain, 1, 'failed handover must not leave a future muted A');
+      assert.equal(controls.low.value, 0); assert.equal(controls.highPassHz, 0); assert.equal(controls.lowPassHz, 8000);
+      player.stop();
     }
     for (const failure of ['late', 'unstable'] as const) {
       const context = new SetContext(), base = countingRuntime(), entered = deferred(), gate = deferred();

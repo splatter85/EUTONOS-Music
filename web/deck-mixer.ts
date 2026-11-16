@@ -35,6 +35,7 @@ class Lane {
     if (s && frame < s.end) return s.from + (s.to - s.from) * clamp((frame - s.at) / (s.end - s.at), 0, 1);
     return this.manual ?? this.autoValue(frame);
   }
+  automaticState(): {at: number; points: readonly MixAutomationPoint[]} | null { return this.automatic; }
   setAutomatic(points: readonly MixAutomationPoint[] | null, at = 0): void {
     const before = this.value();
     this.automatic = points ? {points: points.map(p => ({...p})), at} : null;
@@ -135,9 +136,20 @@ export class DeckChannel implements MixAutomationOwner {
     check(!this.released && !plan.echo, 'The set deck supports dry recipe lanes; echo keeps its original owner graph.');
     validateMixAutomation(plan, this.context.sampleRate);
     check(Number.isSafeInteger(atFrame) && atFrame >= frameNow(this.context), 'Deck automation needs a future owner-clock frame.');
+    const lanes = [this.lanes.gain, this.lanes.low, this.lanes.hp, this.lanes.lp];
+    const points = [plan.gain, plan.lowShelfDb, plan.highPassHz, plan.lowPassHz];
+    const previous = lanes.map(lane => lane.automaticState());
+    try { lanes.forEach((lane, i) => lane.setAutomatic(points[i]!, atFrame)); }
+    catch (error) {
+      // A failed native parameter call must not leave a partial future exit on A.
+      // Keep the previous handle valid until the entire replacement has succeeded.
+      lanes.forEach((lane, i) => {
+        try { lane.setAutomatic(previous[i]?.points ?? null, previous[i]?.at ?? 0); }
+        catch { /* Preserve the first failure; the source owner still releases prepared B. */ }
+      });
+      throw error;
+    }
     const token = ++this.token;
-    this.lanes.gain.setAutomatic(plan.gain, atFrame); this.lanes.low.setAutomatic(plan.lowShelfDb, atFrame);
-    this.lanes.hp.setAutomatic(plan.highPassHz, atFrame); this.lanes.lp.setAutomatic(plan.lowPassHz, atFrame);
     let disposed = false;
     const reset = (): void => {
       if (disposed) return;
