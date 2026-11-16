@@ -106,3 +106,21 @@ The same panel has an Explore checkbox with a seed, and Love/Like/Dislike button
 - `transition-safety@1` runs in the set pre-check only, not in the pair-mode `chooseEvaluatedMix`.
 - Meet in the middle moves A's pitch, because it uses the native-rate path. A pitch-preserving A stretch is later work.
 - Section/structure analysis, vocal and bass clash estimates and pairwise re-ranking belong to Part B.
+
+## Review fixes (after the first Part A review)
+
+- **Retry exclusion** is by parameterisation, not recipe family: recipe, exit bar, overlap bars and choreography (name and gap). One failing blend no longer removes every blend; the planner tries the other boundary and a safer choreography (Auto's, then an 8-bar mid-carve) before the next recipe. The bound stays 5 attempts per Next.
+- A **clean cut reached only after a measured pre-check FAIL** is reported as a fallback (`fallbackAfterFailedPrecheck`, a line in the "why" list and the plan record's rejected list); its own PASS is not shown as a plain pass. The "Clean cut (last resort)" label is unchanged.
+- **Bass-drop handover measurement** (thresholds@1 unchanged, synthetic fixtures, 120 to 120 and 120 to 124 BPM): beat phase error stays under 0.05 everywhere, so tempo drift is not the limit. The bass gap itself fails the loudness-interpolation, low build-up and boundary-flux limits (for example 3.5 to 4.5 LU loudness deviation at 120 to 120), while mid-carve warns. A 12-bar overlap is not a supported length (48 beats); the planner refuses it, and a 4-bar gap now rounds up to 16 bars (or a smaller gap if 16 bars exceeds the render budget). Auto now picks a bass drop only for dense (above 0.7) or energetic pairs, not for weak harmony alone; the pre-check still rejects a bass drop that fails.
+- Explore never records a choice the planner refuses: an invalid draw falls back to Auto's choreography with a note.
+- Route-free also tries up to two later bars (the echo pre-roll can leave the requested bar short) before a clean cut.
+- A failed native parameter call in the deck mixer now also rolls back the echo parameter events, and releasing an echo plan clears them.
+- Replanning a prepared mix keeps its choreography, meeting tempo and tempo return.
+- Meet in the middle checks A's moved key (A's pitch rises or falls with its native rate; the nearest whole semitone is used). A residual detune above 0.4 semitone counts as a limited-harmony pair, which needs a mid-limited choreography.
+
+## Not addressed (known gaps after review)
+
+- The 64 ms direct-to-split crossfade at the start of a choreography is **not modelled by the evaluator**, so a short tonal change there is neither measured nor judged.
+- The 6 s whole-song analysis deadline falls back to a start-of-song entry; no later phrase is considered in that case.
+- `replayOverrides` has **no consumer** yet; recorded plans are not replayed anywhere.
+- After a blend, Next may be unavailable for a long window (the outgoing deck is busy until the handover ends). This was **not measured**.

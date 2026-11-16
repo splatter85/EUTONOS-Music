@@ -498,7 +498,8 @@ function renderWhy(summary: NonNullable<ReturnType<typeof transitionReadout>> | 
 function renderSet(): void {
   const snap = dj?.snapshot(), player = snap?.player;
   const summary = player?.mix?.summary;
-  if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + precheckLabel(player.mix.precheck) : '');
+  if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + (player.mix.fallbackAfterFailedPrecheck
+    ? `fallback after ${player.mix.fallbackAfterFailedPrecheck.failedChecks} failed pre-check(s); the cut itself: ` : '') + precheckLabel(player.mix.precheck) : '');
   if (summary?.set && summary.set.transition?.id !== shownPlan?.id) { shownPlan = summary.set.transition ?? null; renderWhy(transitionReadout(summary)); }
   setText('set-mix', player?.mix?.phase === 'preparing' ? player.mix.reason
     : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`

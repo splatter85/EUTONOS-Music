@@ -85,3 +85,19 @@ Audio was **rendered offline** in tests and checks only. It was **not played on 
 **First action:** review the diff against `6b88d25`, re-run `npm run check` and `npm run check:browser`, then merge into `main` under the coordinator's rules.
 **Owner action:** none required for review. Listening needs real songs and a real audio device (S10).
 **Still not done:** Part B, listening, macOS and Linux.
+
+## Review-fix pass (after coordinator review)
+
+Seven review findings were fixed on this branch; tests are in `tests/s21-transition.test.ts`, `tests/s21-bassdrop.test.ts`, `tests/deck-mixer.test.ts` and `tests/mix-precheck-player.test.ts`. Detail is in [the planner doc](../S21_TRANSITION_PLANNER.md#review-fixes-after-the-first-part-a-review).
+
+1. Retry exclusion by recipe + boundary + overlap + choreography; a clean cut reached after a failed pre-check carries `fallbackAfterFailedPrecheck` and is not a plain pass. 5-attempt bound kept.
+2. Bass drop measured against thresholds@1 (thresholds unchanged): beat phase under 0.05, but the gap fails loudness, low build-up or flux on synthetic fixtures (120 to 120: loudness 3.5 and 4.5 LU for 8-bar gap 2 and 16-bar gap 4; 120 to 124: flux 24.9 and 20.9). A 12-bar overlap is refused by the planner. Auto now prefers mid-carve for weak harmony alone.
+3. Explore emits only planner-accepted overlaps (4-bar gap rounds to 16 bars); a refused draw falls back to Auto's choreography.
+4. Route-free tries up to two later bars before the clean cut.
+5. Deck mixer rolls back echo parameter events with the lanes and clears them on release.
+6. Replan keeps choreography, meeting tempo and tempo return.
+7. Meet in the middle checks A's shifted key (nearest semitone, 0.4 semitone detune limit).
+
+**Still not addressed:** the 64 ms direct-to-split crossfade is not modelled by the evaluator; the 6 s analysis deadline falls back to a start-of-song entry; `replayOverrides` has no consumer; Next availability after a blend is unmeasured.
+
+**Review-fix gate results (Windows, this working tree before commit):** `npm run check` PASS, exit 0, 601 tests, 601 pass, 0 fail, 0 cancelled, 0 skipped. `npm run check:browser` PASS, exit 0, all nine scripts (studio 15 checks, set 18 checks, mix pre-check 7 checks), Chromium 151. macOS and Linux NOT RUN. Listening NOT TESTED.

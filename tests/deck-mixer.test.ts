@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import test from 'node:test';
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {analyzeMixAudio, measureMixLevel, nativeSamplePeak} from '../src/mix-analysis.js';
-import {bassSwapAutomation, type MixAutomation} from '../src/mix-automation.js';
+import {bassSwapAutomation, echoOutAutomation, type MixAutomation} from '../src/mix-automation.js';
 import type {MixPreparationRuntime} from '../src/mix-transition.js';
 import {SmallPlayer} from '../src/player.js';
 import {renderFiniteLoop, renderTimePitch, type TimePitchMapping} from '../src/time-pitch.js';
@@ -450,4 +450,32 @@ test('set player keeps physical deck identity and manual ownership through cance
     await player?.dispose();
     await set.cleanup();
   }
+});
+
+test('S21 review: a refused native parameter leaves no stale echo events and the previous plan stays valid', () => {
+  const {context, channel} = setup();
+  const echo = echoOutAutomation(120, rate);
+  channel.schedule(echo.outgoing, rate); // creates the echo graph; first plan commits cleanly
+  const delay = context.delays[0]!, at = 4 * rate;
+  const live = (param: ParameterDouble, from: number): number => { // set events still standing at or after `from`
+    let standing: number[] = [];
+    for (const call of param.calls) {
+      if (call.kind === 'set') standing.push(call.time);
+      if (call.kind === 'cancel') standing = standing.filter(t => t < call.time);
+    }
+    return standing.filter(t => t >= from).length;
+  };
+  const before = live(delay.delayTime, at / rate);
+  // Refuse the second native parameter call that schedules the new lanes (after the echo parameters would be set).
+  const gain = context.filters[0]!.gain, original = gain.setValueAtTime.bind(gain);
+  gain.setValueAtTime = () => { throw new Error('native refusal'); };
+  assert.throws(() => channel.schedule(echo.outgoing, at), /native refusal/);
+  gain.setValueAtTime = original;
+  assert.equal(live(delay.delayTime, at / rate), before, 'no stale echo delay event after a refused schedule');
+  assert.equal(live(context.filters[context.filters.length - 1]!.frequency, at / rate), 0, 'no stale loop filter event');
+  // A cancelled (released) schedule clears its echo events too.
+  const handle = channel.schedule(echo.outgoing, at);
+  assert.ok(live(delay.delayTime, at / rate) > before);
+  handle.release();
+  assert.equal(live(delay.delayTime, at / rate), before, 'release removes the echo parameter events');
 });

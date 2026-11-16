@@ -214,3 +214,26 @@ test('queue reorder cancels the old check and admits only the checked new head',
     assert.equal(player.deckSnapshot()!.b.assetId, ids[2]); owners(player);
   } finally { first.release(); await dj.dispose(); }
 });
+
+test('S21 review: a clean cut reached after pre-check FAILs is flagged as a fallback, not a plain pass', async () => {
+  let calls = 0;
+  const gate: PrecheckRuntime = async () => report(calls++ < 2 ? 'fail' : 'pass'); // crossfade, echo reset fail; the cut passes
+  const {player, ids} = await setup(gate);
+  try {
+    await player.scheduleMixTo(ids[1]!, {bars: 4, anchor: 'song'});
+    const mix = player.snapshot().mix!;
+    assert.equal(calls, 3);
+    assert.ok(['cut', 'fallback-cut'].includes(mix.summary!.recipe), mix.summary!.recipe);
+    assert.equal(mix.precheck!.status, 'pass', 'the cut itself measured PASS');
+    assert.deepEqual(mix.fallbackAfterFailedPrecheck, {failedChecks: 2, last: 'DJ plan check FAIL: Synthetic gate fail'});
+    assert.match(mix.reason, /Fallback after 2 failed pre-checks/);
+    assert.ok(mix.summary!.set!.transition!.rejected.length >= 2, 'the failed checks are in the plan record');
+    assert.ok(mix.summary!.set!.why!.some(line => /Clean cut \(last resort\) reached after 2 failed pre-checks/.test(line)));
+  } finally { await player.dispose(); }
+  // A first-try cut or any non-cut pass carries no flag.
+  calls = 0; const clean = await setup(async () => report('pass'));
+  try {
+    await clean.player.scheduleMixTo(clean.ids[1]!, {bars: 4, anchor: 'song'});
+    assert.equal(clean.player.snapshot().mix!.fallbackAfterFailedPrecheck, undefined);
+  } finally { await clean.player.dispose(); }
+});

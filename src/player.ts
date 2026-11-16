@@ -13,7 +13,7 @@ import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {setTransitionRecord} from './mix-transition.js';
 import type {TransitionPlanRecord} from '../web/transition-policy.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  replanPreparedMix, renderSetBlend, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -42,6 +42,8 @@ export interface MixSnapshot {
   readonly reason: string;
   /** Experimental offline model of this selected DJ plan, not listening or manual-control qualification. */
   readonly precheck?: PrecheckReport;
+  /** S21: the scheduled clean cut was reached only after measured pre-check FAILs; its own PASS is not a plain pass. */
+  readonly fallbackAfterFailedPrecheck?: {readonly failedChecks: number; readonly last: string};
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
@@ -809,6 +811,7 @@ export class SmallPlayer {
       let choice: SetTransitionChoice = choose(true);
       let prepared!: Prepared, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
       let lastRejected: PrecheckReport | null = null;
+      const failedChecks: {recipe: string; reason: string}[] = [];
       const delayFor = (): number => 'entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0;
       const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
         from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset) + delayFor());
@@ -870,7 +873,10 @@ export class SmallPlayer {
         if (!current()) return;
         if (report !== false) { precheck = report; break; }
         lastRejected = this.mix?.precheck ?? null;
-        exclude.push(candidate.recipe);
+        // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
+        const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+        exclude.push(failedSignature);
+        if (lastRejected) failedChecks.push({recipe: failedSignature, reason: precheckLabel(lastRejected)});
         choice = choose(true);
       }
       const plan = prepared.plan;
@@ -897,7 +903,12 @@ export class SmallPlayer {
       // both the finishing entry and the ahead-scheduled native join.
       const end = this.clock.stamp(Math.max(effect.frame + plan.automation.outgoing.durationFrames,
         at.frame + plan.automation.incoming.durationFrames));
-      const chosen = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      const picked = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      // A clean cut reached only after measured pre-check FAILs is a fallback, never a plain pass.
+      const cutAfterFail = failedChecks.length > 0 && (picked.plan.recipe === 'cut' || picked.plan.recipe === 'fallback-cut');
+      const chosen: typeof picked = failedChecks.length ? {...picked,
+        why: [...(picked.why ?? []), ...(cutAfterFail ? [`Clean cut (last resort) reached after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''}; the check on the cut itself is not a plain pass.`] : [])],
+        rejected: [...(picked.rejected ?? []), ...failedChecks]} : picked;
       const record = setTransitionRecord(chosen, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
         {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null);
       from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
@@ -911,7 +922,10 @@ export class SmallPlayer {
       this.plan = {at, end};
       const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
       this.mix = {phase: 'scheduled', earliestEffect: effect, ...(precheck ? {precheck} : {}),
-        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? precheckLabel(precheck) + '. ' : ''}Listening is untested.`,
+        ...(cutAfterFail ? {fallbackAfterFailedPrecheck: {failedChecks: failedChecks.length, last: failedChecks.at(-1)!.reason}} : {}),
+        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? (cutAfterFail
+          ? `Fallback after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''} (last: ${failedChecks.at(-1)!.reason}); the cut itself: ${precheckLabel(precheck)}`
+          : precheckLabel(precheck)) + '. ' : ''}Listening is untested.`,
         summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
           pitchSemitones: 'pitchSemitones' in plan ? plan.pitchSemitones : 0,
           confidence: 'confidence' in plan ? plan.confidence : 0, processor: prepared.processor,

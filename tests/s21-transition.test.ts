@@ -13,7 +13,12 @@ import {
   type ChoreographyParams,
 } from '../web/eq-choreography.js';
 import {SONG_ANALYSIS_WINDOW, SONG_MERGE_POLICY, songWindowStarts, type MixAnalysis} from '../src/mix-analysis.js';
-import {planRouteFreeTransition, routeFreeEntry, type SetBarGrid} from '../src/mix-transition.js';
+import {chooseSetTransition, downbeatAt, planRouteFreeTransition, replanPreparedMix, routeFreeEntry, ROUTE_FREE_LATER_BARS, transitionSignature,
+  type ReadyMixTransition, type SetBarGrid} from '../src/mix-transition.js';
+import {analyzeMixAudio} from '../src/mix-analysis.js';
+import {MEET_LIMITS, MIX_OVERLAP_BEATS, planAutomaticMix} from '../src/mix-planner.js';
+import type {AudioAsset} from '../src/pack-types.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from '../src/time-pitch.js';
 import {judgeSafety, measureSafety, TRANSITION_SAFETY_THRESHOLDS, type SafetyMeasurements, type TransitionRender,
   type TransitionSpec} from '../web/mix-evaluator.js';
@@ -279,4 +284,94 @@ test('safety measurement: low-band rise and bass hole are sustained 250 ms check
   assert.equal(cut.bassHoleJudged, false); assert.equal(cut.bassHoleDb, null);
   // Clipping is measured from the rendered samples.
   assert.equal(judgeSafety(measureSafety(render(2, () => 1.2), spec('cut'), 0.5)).flags.map(f => f.metric).sort().join(), 'clipping,lowRise,truePeakCeiling');
+});
+
+// ---------------------------------------------------------------------------------------------
+// Review fixes (findings 1, 3, 4, 6, 7)
+// ---------------------------------------------------------------------------------------------
+const SR = 16000;
+const fakeAsset = (id: string, bpm: number, frames: number) =>
+  ({id, file: {sample_rate: SR, frames, sha256: id}, timing: {bpm, first_downbeat_frame: 0}}) as unknown as AudioAsset;
+const song = (bpm: number, bars: number, tonic = 9) => makeSetFixture({id: 's', bpm, bars, tonic, mode: 'minor', transitionEvidence: true});
+
+test('finding 1: a rejected parameterisation excludes itself, not its recipe family', () => {
+  const a = song(120, 56), b = song(124, 56), analysis = {from: analyzeMixAudio(a), to: analyzeMixAudio(b)};
+  const input = (exclude: string[]) => ({from: {asset: fakeAsset('a', 120, a.channels[0]!.length), analysis: analysis.from, frames: a.channels[0]!.length},
+    to: {asset: fakeAsset('b', 124, b.channels[0]!.length), analysis: analysis.to, frames: b.channels[0]!.length, channels: 1},
+    sampleRate: SR, earliestFrame: 30 * SR, boundary: {bars: 4, anchorBar: 0}, exclude});
+  const seen: string[] = [], blends: string[] = [];
+  const exclude: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const choice = chooseSetTransition(input(exclude));
+    if (choice.kind === 'unavailable') break;
+    const sig = transitionSignature(choice.plan, choice.exitBar);
+    assert.ok(!seen.includes(sig), `attempt ${i} repeated ${sig}`);
+    seen.push(sig); exclude.push(sig);
+    if (choice.plan.recipe === 'blend') blends.push(sig);
+  }
+  assert.ok(blends.length >= 2, `a second blend parameterisation is tried before leaving the family: ${seen.join(' , ')}`);
+});
+
+test('finding 3: explore never emits an overlap the planner refuses (a 4-bar gap needs 16 bars, not 12)', () => {
+  const features: PairFeatures = {densityA: 0.4, densityB: 0.4, harmonic: 0.95, bpm: 124, maxOverlapSeconds: 60};
+  let drops = 0, fours = 0;
+  for (let seed = 0; seed < 400; seed++) for (const harmonic of [0.95, null]) {
+    const c = exploreChoice(seed, {...features, harmonic}, 5).choreography;
+    assert.ok((MIX_OVERLAP_BEATS as readonly number[]).includes(c.overlapBars * 4), `seed ${seed}: ${c.name} ${c.overlapBars} bars`);
+    if (c.name === 'bass-drop-handover') { drops++; if (c.gapBars === 4) { fours++; assert.ok(c.overlapBars >= 16); } }
+    choreographyPlan(c, Math.round(240 / 124 * RATE), RATE);
+  }
+  assert.ok(drops > 0 && fours > 0, 'bass drops with a 4-bar gap are still reachable');
+  // Under a tight render budget the gap shrinks instead of the overlap overflowing it.
+  for (let seed = 0; seed < 200; seed++) {
+    const c = exploreChoice(seed, {...features, harmonic: null, maxOverlapSeconds: 17}, 5).choreography;
+    if (c.name === 'bass-drop-handover') assert.ok(c.overlapBars * 240 / 124 <= 17 + 1e-9 && c.gapBars !== 4, `${c.overlapBars} ${c.gapBars}`);
+  }
+});
+
+test('finding 4: route-free tries a later bar before settling for a clean cut', () => {
+  // 120 -> 160 BPM has no crossfade. The requested bar sits exactly on the earliest effect frame, so the echo
+  // reset (which needs its pre-roll before the exit) fits only on a later bar.
+  const grid = requestedGrid(120, SR), frames = 200 * SR;
+  const earliestFrame = Math.round(downbeatAt(grid, 4));
+  const choice = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames},
+    to: {asset: fakeAsset('b', 160, frames), analysis: null, frames, channels: 1}, sampleRate: SR, earliestFrame, boundary: {bars: 4, anchorBar: 0}});
+  if (choice.kind !== 'route-free') assert.fail(choice.kind);
+  assert.equal(choice.plan.recipe, 'fallback-echo-reset', 'not the clean cut');
+  assert.ok(choice.exitBar > 4 && choice.exitBar <= 4 + ROUTE_FREE_LATER_BARS, String(choice.exitBar));
+  assert.ok(choice.notes.some(n => /pre-roll/.test(n)));
+});
+
+test('finding 6: replanning a prepared mix keeps its choreography, meeting tempo and tempo return', () => {
+  const a = song(100, 56), b = song(116, 56), analysis = {from: analyzeMixAudio(a), to: analyzeMixAudio(b)};
+  const choreography: ChoreographyParams = {name: 'mid-carve', overlapBars: 8, swapMs: 380};
+  const plan = planAutomaticMix(analysis.from, analysis.to, {recipe: 'meet-in-middle', harmonicMode: 'limited', choreography, meetBpm: 107.5,
+    minimumFromFrame: 4 * SR, returnToOriginalTempo: true, tempoReturn: {bars: 4, curve: 'smoothstep'}});
+  if (plan.kind !== 'mix') assert.fail(plan.reason);
+  const ready = {kind: 'ready', plan, analysis} as unknown as ReadyMixTransition;
+  const later = replanPreparedMix(ready, plan.fromExitFrame);
+  if (later.kind !== 'mix') assert.fail(later.reason);
+  assert.equal(later.recipe, 'meet-in-middle');
+  assert.ok(Math.abs(later.meet!.bpm - 107.5) < 1e-9, String(later.meet?.bpm));
+  assert.deepEqual(later.choreography!.params, choreography);
+  assert.equal(later.overlapFrames, plan.overlapFrames);
+  assert.equal(later.tempoReturn!.rampFrames, plan.tempoReturn!.rampFrames);
+  assert.equal(later.tempoReturn!.curve, 'smoothstep');
+  assert.ok(later.fromExitFrame >= plan.fromExitFrame);
+});
+
+test('finding 7: meet in the middle checks A\'s moved key, not its original key', () => {
+  // Same key on both songs. A ramps 100 -> ~108 BPM (about +1.3 semitones), so the overlap is no longer same-key.
+  const a = song(100, 56), b = song(116, 56), analysis = {from: analyzeMixAudio(a), to: analyzeMixAudio(b)};
+  const base = {recipe: 'meet-in-middle' as const, harmonicMode: 'limited' as const, minimumFromFrame: 4 * SR, returnToOriginalTempo: true,
+    tempoReturn: {bars: 4, curve: 'smoothstep' as const}};
+  const plain = planAutomaticMix(analysis.from, analysis.to, base);
+  assert.equal(plain.kind, 'fallback');
+  assert.match(plain.kind === 'fallback' ? plain.reason : '', /weak or distant key needs a mid-limited choreography/);
+  const carved = planAutomaticMix(analysis.from, analysis.to, {...base, choreography: {name: 'mid-carve', overlapBars: 8, swapMs: 380}});
+  if (carved.kind !== 'mix') assert.fail(carved.reason);
+  assert.ok(carved.reasons.some(r => /key check uses A shifted by 1/.test(r)), carved.reasons.join(' | '));
+  assert.ok(carved.harmonic.score < 0.85);
+  // A meeting point inside the detune tolerance (about 3% = 0.5 semitone is the worst case) cannot claim a relation either.
+  assert.ok(MEET_LIMITS.maxDetuneSemitones <= 0.4);
 });

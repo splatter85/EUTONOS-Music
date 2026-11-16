@@ -135,7 +135,9 @@ export function chooseChoreography(f: PairFeatures): ChoreographyChoice {
   const reasons: string[] = [];
   let name: ChoreographyName, bars: number;
   if (harmonicLimited) {
-    name = dense > 0.55 || style === 'energetic' ? 'bass-drop-handover' : 'mid-carve';
+    // Measured against mix-evaluation-thresholds@1 on synthetic pairs a bass gap fails loudness/flux/low build-up
+    // while mid-carve passes or warns, so weak harmony alone no longer selects the gap (dense or energetic still does).
+    name = dense > 0.7 || style === 'energetic' ? 'bass-drop-handover' : 'mid-carve';
     bars = 8;
     reasons.push(f.harmonic === null ? 'Key evidence is weak, so sustained harmonic overlap is avoided.'
       : 'Keys are not closely related, so only one song carries the mids at a time.');
@@ -211,8 +213,13 @@ export function exploreChoice(seed: number, f: PairFeatures, entryCandidates: nu
   const meetFraction = EXPLORE_BOUNDS.meetFraction.min + random() * (EXPLORE_BOUNDS.meetFraction.max - EXPLORE_BOUNDS.meetFraction.min);
   let choreography: ChoreographyParams;
   if (name === 'bass-drop-handover') {
-    const overlapBars = Math.max(8, bassDropMinOverlap(gapBars), bars);
-    choreography = {name, overlapBars, swapMs, gapBars, echoTail, ...(limited ? {silentBands: ['low', 'mid'] as const} : {})};
+    // The planner only accepts 8/16/32-bar overlaps (4 beats per bar in MIX_OVERLAP_BEATS), so a 4-bar gap
+    // (12-bar minimum) rounds up to 16. If that exceeds the render budget, use the largest gap that fits.
+    const barSeconds = 240 / f.bpm, valid = (n: number): number => [8, 16, 32].find(v => v >= n) ?? 32;
+    const gaps = ([4, 2, 1] as const).filter(g => g <= gapBars);
+    const fit = gaps.find(g => valid(bassDropMinOverlap(g)) * barSeconds <= f.maxOverlapSeconds) ?? 1;
+    const overlapBars = valid(Math.max(bassDropMinOverlap(fit), bars));
+    choreography = {name, overlapBars, swapMs, gapBars: fit, echoTail, ...(limited ? {silentBands: ['low', 'mid'] as const} : {})};
   } else choreography = {name, overlapBars: bars, swapMs};
   return {seed, choreography, entryIndex, echoTail: name === 'bass-drop-handover' && echoTail, meetFraction};
 }

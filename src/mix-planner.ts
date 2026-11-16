@@ -22,7 +22,7 @@ export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filte
 export const MIX_OVERLAP_BEATS = Object.freeze([4, 8, 16, 32, 64, 128] as const);
 export type MixOverlapBeats = typeof MIX_OVERLAP_BEATS[number];
 /** S21 meet-in-middle: each deck within about 8%; A reaches the meeting tempo over two native bars. */
-export const MEET_LIMITS = Object.freeze({maxDeckChange: 0.08, rampBars: 2, returnBars: Object.freeze([4, 8] as const)});
+export const MEET_LIMITS = Object.freeze({maxDeckChange: 0.08, maxDetuneSemitones: 0.4, rampBars: 2, returnBars: Object.freeze([4, 8] as const)});
 export const isSmoothRecipe = (recipe: string): boolean => isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp';
 export const LEVEL_MATCH_LIMITS = Object.freeze({maxGain: 4, samplePeakCeiling: 10 ** (-1 / 20)});
 export interface LevelMatchPlan {
@@ -300,7 +300,11 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   }
   if (options.recipe === 'tempo-ramp' && tempoRatio >= 0.92 && tempoRatio <= 1.08) return fallback('Native ramp is for changes beyond static comfort (0.92..1.08); use a pitch-preserving blend here.');
   const keysKnown = from.key.tonic !== null && to.key.tonic !== null && evidence.key >= MIX_LIMITS.keyConfidence;
-  const a: TonalKey = {tonic: from.key.tonic ?? 0, mode: from.key.mode ?? 'major'};
+  // Meet in the middle ramps A's native rate, so A's pitch moves by 12*log2(rate) semitones for the whole overlap.
+  // The key check uses A's nearest whole-semitone shift; a residual detune above 0.4 semitone cannot claim a relation.
+  const aMove = meet ? 12 * Math.log2(meetBpm / fromBpm) : 0, aShift = Math.round(aMove);
+  const meetDetuned = meet && Math.abs(aMove - aShift) > MEET_LIMITS.maxDetuneSemitones;
+  const a: TonalKey = {tonic: mod12((from.key.tonic ?? 0) + aShift), mode: from.key.mode ?? 'major'};
   const b: TonalKey = {tonic: to.key.tonic ?? 0, mode: to.key.mode ?? 'major'};
   let pitchSemitones = options.pitchSemitones ?? 0;
   const relativePitch = 12 * Math.log2(tempoRatio), nativeShift = Math.round(relativePitch);
@@ -315,7 +319,7 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     if (best.harmonic.score > harmonic.score) { pitchSemitones = best.shift; harmonic = best.harmonic; }
   }
   if (!keysKnown) harmonic = {fromCamelot: 'unknown', toCamelot: 'unknown', circleDistance: null, score: 0, relation: 'unknown'};
-  const harmonicLimited = !keysKnown || harmonic.score < 0.85;
+  const harmonicLimited = !keysKnown || harmonic.score < 0.85 || meetDetuned;
   if (harmonicLimited && !limitedHarmony) return fallback('No supported harmonic relation within the selected pitch-shift policy.');
   if (harmonicLimited && options.choreography && !['mid-carve', 'bass-drop-handover'].includes(options.choreography.name)) {
     return fallback('A weak or distant key allows only a mid-carve or bass-drop handover (no sustained harmonic overlap).');
@@ -346,7 +350,7 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     // Pair costs depend on both windows; standalone cue ranks cannot express them.
     const densityMismatch = left && right ? Math.abs(left.interference - right.interference) : 0;
     const tonalDistance = left && right ? left.chroma.reduce((sum, value, i) =>
-      sum + Math.abs(value - right.chroma[(i - pitchSemitones + 12) % 12]!), 0) / 2 : 0;
+      sum + Math.abs(value - right.chroma[(((i - pitchSemitones + aShift) % 12) + 12) % 12]!), 0) / 2 : 0;
     const alignedBoundaries = left && right ? Math.min(left.boundary, right.boundary) : 0;
     const raw = out.score + into.score - 0.15 * mismatch - 0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries;
     const skip = entryPolicy ? entrySkipCost(into.frame, to.frames, options.styleAllowsSkip) : 0;
@@ -402,7 +406,7 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
       nativeRate: {outgoing: ramp, pitchMoves: true},
       meet: {bpm: meetBpm, fromRate, toRatio: tempoRatio},
       automation: {outgoing: shift(automation.outgoing), incoming: automation.incoming},
-      reasons: [...result.reasons, `Both decks meet at ${meetBpm.toFixed(1)} BPM: A's native rate ramps ${((fromRate - 1) * 100).toFixed(1)}% over two bars (its pitch moves), B is time-stretched ${((tempoRatio - 1) * 100).toFixed(1)}% and returns to its own tempo afterwards.`]};
+      reasons: [...result.reasons, `Both decks meet at ${meetBpm.toFixed(1)} BPM: A's native rate ramps ${((fromRate - 1) * 100).toFixed(1)}% over two bars (its pitch moves ${aMove.toFixed(2)} semitones; the key check uses A shifted by ${aShift}), B is time-stretched ${((tempoRatio - 1) * 100).toFixed(1)}% and returns to its own tempo afterwards.`]};
   }
   return result;
 }

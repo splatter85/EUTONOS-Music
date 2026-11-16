@@ -179,17 +179,28 @@ export class DeckChannel implements MixAutomationOwner {
     const points = [plan.gain, plan.lowShelfDb, plan.highPassHz, plan.lowPassHz,
       plan.bands?.low ?? null, plan.bands?.mid ?? null, plan.bands?.high ?? null, route?.direct ?? null, route?.split ?? null,
       plan.echo?.send ?? null, plan.echo?.wet ?? null];
-    if (plan.echo && this.echo) {
-      const rate = this.context.sampleRate, at = atFrame / rate;
-      this.echo.delay.delayTime.setValueAtTime(plan.echo.delayFrames / rate, at);
-      this.echo.feedback.gain.setValueAtTime(plan.echo.feedback, at);
-      this.echo.loop.frequency.setValueAtTime(plan.echo.lowPassHz, at);
-    }
+    const echoAt = atFrame / this.context.sampleRate;
+    const clearEcho = (): void => {
+      // Best effort: drop any echo parameter event at or after this exit so none outlives a failed or released schedule.
+      if (!this.echo) return;
+      for (const param of [this.echo.delay.delayTime, this.echo.feedback.gain, this.echo.loop.frequency]) {
+        try { param.cancelScheduledValues(echoAt); } catch { /* the original failure is reported */ }
+      }
+    };
     const previous = lanes.map(lane => lane.automaticState());
-    try { lanes.forEach((lane, i) => lane.setAutomatic(points[i] ?? null, atFrame)); }
-    catch (error) {
+    try {
+      // The echo parameter events and the lanes commit together: a throw here rolls both back.
+      if (plan.echo && this.echo) {
+        const rate = this.context.sampleRate;
+        this.echo.delay.delayTime.setValueAtTime(plan.echo.delayFrames / rate, echoAt);
+        this.echo.feedback.gain.setValueAtTime(plan.echo.feedback, echoAt);
+        this.echo.loop.frequency.setValueAtTime(plan.echo.lowPassHz, echoAt);
+      }
+      lanes.forEach((lane, i) => lane.setAutomatic(points[i] ?? null, atFrame));
+    } catch (error) {
       // A failed native parameter call must not leave a partial future exit on A.
       // Keep the previous handle valid until the entire replacement has succeeded.
+      if (plan.echo) clearEcho();
       lanes.forEach((lane, i) => {
         try { lane.setAutomatic(previous[i]?.points ?? null, previous[i]?.at ?? 0); }
         catch { /* Preserve the first failure; the source owner still releases prepared B. */ }
@@ -203,6 +214,7 @@ export class DeckChannel implements MixAutomationOwner {
       disposed = true;
       if (this.released || token !== this.token) return;
       for (const lane of this.scheduledLanes()) lane.setAutomatic(null);
+      if (plan.echo) clearEcho();
     };
     return {restore: reset, release: reset};
   }
