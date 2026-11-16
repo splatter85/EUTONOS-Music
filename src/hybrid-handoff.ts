@@ -1,7 +1,7 @@
 import {quartersToFrames} from './pack.js';
 import type {AudioPack, VersionRef} from './pack-types.js';
 import type {AudioClock, ClockStamp, SourceStart} from './playable-source.js';
-import {S01_PERFORMER, type ProceduralPlan, type S01PhraseState} from './phrase-plan.js';
+import {S01_PERFORMER, S11_PERFORMER, S11_ALL_RECIPE_FAMILIES, type ProceduralPlan, type S01PhraseState} from './phrase-plan.js';
 import {checkRoleWindow, type ProceduralSource, type RoleWindow} from './procedural-source.js';
 import {checkedRoute, cueFrame, requireAudio, type CheckedRoute, type RecordedSource} from './web-audio.js';
 
@@ -115,6 +115,11 @@ const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) ==
 export function planHybridHandoff(pack: AudioPack, routeId: string, bridge: ProceduralPlan,
   exit: HybridBridgeExit, fromStart: SourceStart, clock: AudioClock, allowFixtures = false,
   leadFrames = 0): HybridHandoffPlan {
+  // Studies have not qualified the S05/S09 percussion-only overlap windows.
+  // Refuse even when they share tempo, key and source media with an eligible route.
+  requireAudio(!(bridge.performer.id === S11_PERFORMER.id ||
+    S11_ALL_RECIPE_FAMILIES.some(family => family.id === bridge.recipe.id)),
+    'S11 study recipes cannot act as hybrid bridges: no study-specific percussion-only lead-in/tail policy or listening review exists.');
   const pair = checkedRoute(pack, routeId, allowFixtures);
   const {route, from, to} = pair;
   const policy = hybridPolicyForRoute(route);

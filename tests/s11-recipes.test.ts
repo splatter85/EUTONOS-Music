@@ -30,7 +30,7 @@ function checkBounds(plan: ProceduralPlan): void {
 
 test('S11 adds three exact recipe studies under a new pack identity without changing original media or routes', () => {
   const before = canonicalJson(raw), pack = study();
-  assert.equal(pack.recipes.length, raw.recipes.length + 3);
+  assert.equal(pack.recipes.length, raw.recipes.length + S11_RECIPE_FAMILIES.length);
   assert.equal(canonicalJson(pack.assets), canonicalJson(raw.assets));
   assert.equal(canonicalJson(pack.routes), canonicalJson(raw.routes));
   assert.equal(canonicalJson(raw), before);
@@ -44,7 +44,7 @@ test('S11 exact identities choose structurally different finite recipes and pres
   for (const seed of [...selected, ...heldOut]) for (const state of ['explore', 'drive'] as const) {
     const plans = S11_RECIPE_FAMILIES.map(recipe => compile(recipe, seed, state));
     assert.equal(new Set(plans.map(plan => canonicalJson(plan.events.map(event =>
-      ({role: event.role, at: event.atQuarters}))))).size, 3, 'families differ beyond title or gain');
+      ({role: event.role, at: event.atQuarters}))))).size, S11_RECIPE_FAMILIES.length, 'families differ beyond title or gain');
     for (const [index, plan] of plans.entries()) {
       assert.deepEqual(plan.performer, S11_PERFORMER);
       assert.deepEqual(plan, compile(S11_RECIPE_FAMILIES[index]!, seed, state));

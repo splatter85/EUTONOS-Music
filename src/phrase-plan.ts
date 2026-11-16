@@ -11,14 +11,39 @@ export const S01_PERFORMER = Object.freeze({ id: 's04-s01-performer', revision: 
 export const S01_RECIPE = Object.freeze({ id: 's01-recipe', revision: 1 });
 /** S11 patterns are original engineering studies; none has listening acceptance. */
 export const S11_PERFORMER = Object.freeze({ id: 's11-pattern-performer', revision: 1 });
+/** Declarative, non-executable pattern and transition vocabulary; not listening approval.
+ * style/transitionTo are metadata-only hypotheses used by the S11 coverage report. */
 export const S11_RECIPE_FAMILIES = freeze([
   { id: 's11-open-space', revision: 1, title: 'Open space', genre: 'ambient-study',
-    description: 'Sparse alternating bars with a four-bar response.', listening: 'not-tested' },
+    description: 'Sparse alternating bars with a four-bar response.', style: 'space',
+    transitionTo: ['space', 'pulse'], listening: 'not-tested' },
   { id: 's11-steady-pulse', revision: 1, title: 'Steady pulse', genre: 'house-study',
-    description: 'Four quarter-note anchors with offbeat bass and percussion.', listening: 'not-tested' },
+    description: 'Four quarter-note anchors with offbeat bass and percussion.', style: 'pulse',
+    transitionTo: ['pulse', 'break', 'swing'], listening: 'not-tested' },
   { id: 's11-broken-current', revision: 1, title: 'Broken current', genre: 'broken-beat-study',
-    description: 'Syncopated kick patterns and a changing bass response.', listening: 'not-tested' },
+    description: 'Syncopated kick patterns and a changing bass response.', style: 'break',
+    transitionTo: ['break', 'pulse', 'half-time'], listening: 'not-tested' },
 ] as const);
+/** New S22 breadth data has a separate pack identity; old three-study manifests stay identical. */
+export const S11_BREADTH_RECIPE_FAMILIES = freeze([
+  { id: 's11-downtempo-drift', revision: 1, title: 'Downtempo drift', genre: 'downtempo-study',
+    description: 'Half-time anchors with a spacious offbeat response.', style: 'half-time',
+    transitionTo: ['half-time', 'space', 'break'], listening: 'not-tested' },
+  { id: 's11-electro-sparks', revision: 1, title: 'Electro sparks', genre: 'electro-study',
+    description: 'Staggered machine-like accents and syncopated bass.', style: 'break',
+    transitionTo: ['break', 'pulse'], listening: 'not-tested' },
+  { id: 's11-garage-steps', revision: 1, title: 'Garage steps', genre: 'garage-study',
+    description: 'Offset kick answers and skittering percussive offbeats.', style: 'swing',
+    transitionTo: ['swing', 'break', 'pulse'], listening: 'not-tested' },
+  { id: 's11-minimal-circuit', revision: 1, title: 'Minimal circuit', genre: 'minimal-techno-study',
+    description: 'Repetitive quarter-note pulse with restrained bass movement.', style: 'pulse',
+    transitionTo: ['pulse', 'space'], listening: 'not-tested' },
+  { id: 's11-cinematic-wake', revision: 1, title: 'Cinematic wake', genre: 'cinematic-study',
+    description: 'Separated accents and alternating bar-length responses.', style: 'space',
+    transitionTo: ['space', 'half-time'], listening: 'not-tested' },
+] as const);
+/** Versioned recipe catalogue across both non-executable study data packs. */
+export const S11_ALL_RECIPE_FAMILIES = freeze([...S11_RECIPE_FAMILIES, ...S11_BREADTH_RECIPE_FAMILIES] as const);
 /** What a producer's palette must satisfy before this performer may play it. */
 export const PERFORMER_PALETTE_CONTRACT = Object.freeze({ id: 's06-performer-palette', revision: 1 });
 export type S01PhraseState = 'explore' | 'drive';
@@ -150,6 +175,31 @@ const s11Rhythms = freeze({
     bass: [[0.5, 2], [1, 2.5], [0, 1.5, 3], [0.5, 1.5, 3]],
     percussion: [[1, 3], [0.75, 2, 3.5], [0.5, 2.5, 3.5], [1.25, 2.75, 3.75]],
   },
+  's11-downtempo-drift': {
+    kicks: [[0, 2.5], [0, 3], [0, 2], [0.5, 2.5]],
+    bass: [[0, 2.5], [0.5, 2.75], [0, 3], [1, 2.5]],
+    percussion: [[1.5, 3.5], [0.75, 2.75], [1.25, 3.25], [0.5, 2, 3.5]],
+  },
+  's11-electro-sparks': {
+    kicks: [[0, 1.75, 3], [0.5, 2, 3.5], [0, 1.5, 2.75], [0.25, 2, 3.25]],
+    bass: [[0, 1.25, 2.5], [0.5, 1.75, 3], [0, 1.5, 2.75], [0.25, 1.5, 3]],
+    percussion: [[0.75, 1.75, 3.75], [0.5, 1.25, 2.5, 3.5], [1.25, 2.25, 3.25], [0.75, 2, 2.75, 3.75]],
+  },
+  's11-garage-steps': {
+    kicks: [[0, 1.75, 3], [0, 2.75], [0.75, 2, 3.5], [0, 1.5, 3.25]],
+    bass: [[0.5, 2.25], [0, 1.25, 3], [0.75, 2.5], [0, 1.5, 2.75]],
+    percussion: [[0.75, 1.75, 2.75, 3.75], [1.25, 2.25, 3.25], [0.5, 1.75, 2.5, 3.75], [0.75, 2, 3.25]],
+  },
+  's11-minimal-circuit': {
+    kicks: [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]],
+    bass: [[0, 2], [0.5, 2.5], [0, 2.5], [0.5, 2]],
+    percussion: [[1, 3], [1.5, 3.5], [0.5, 2.5], [1, 2.5]],
+  },
+  's11-cinematic-wake': {
+    kicks: [[0], [0, 3], [1], [0, 2.5]],
+    bass: [[0], [1], [0, 2.5], [1.5, 3]],
+    percussion: [[2.5], [1.5, 3.5], [0.5, 2.75], [1, 3.5]],
+  },
 } as const);
 
 /** Compile the S01 recipe identity (`s01-recipe@1`) under the palette contract. */
@@ -175,7 +225,7 @@ export function compilePhrase(input: AudioPack, options: CompilePhraseOptions): 
   compatibility(typeof wanted === 'object' && wanted !== null, 'name the recipe to perform');
   const recipe = pack.recipes.find(item => item.id === wanted.id && item.revision === wanted.revision);
   compatibility(recipe !== undefined, `the pack has no recipe ${String(wanted.id)}@${String(wanted.revision)}`);
-  const family = S11_RECIPE_FAMILIES.find(item => item.id === recipe.id);
+  const family = S11_ALL_RECIPE_FAMILIES.find(item => item.id === recipe.id);
   compatibility(!family || recipe.revision === family.revision, 'unsupported built-in recipe revision');
   const patterns = family ? s11Rhythms[family.id] : undefined;
   const kicks: readonly (readonly number[])[] = patterns?.kicks ?? kickRhythms;
