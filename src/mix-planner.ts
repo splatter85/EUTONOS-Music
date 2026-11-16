@@ -1,4 +1,4 @@
-import {analyzeMixAudio, type MixAnalysis, type MixPcm, type MixPointCandidate} from './mix-analysis.js';
+import {analyzeMixAudio, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate} from './mix-analysis.js';
 import {bassSwapAutomation, cleanCutAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
@@ -85,8 +85,13 @@ const unit = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
 
 /** Validate derived data before it can become a native playback schedule. */
 function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
+  const window = a.analyzedWindow;
+  const evidenceEnd = window ? window.startFrame + window.frames : a.frames;
   return Number.isSafeInteger(a.sampleRate) && a.sampleRate >= 8000 && a.sampleRate <= 192000 &&
-    Number.isSafeInteger(a.frames) && a.frames > 0 && a.frames <= a.sampleRate * 180 &&
+    Number.isSafeInteger(a.frames) && a.frames > 0 &&
+    (window ? window.policy === SONG_ANALYSIS_WINDOW.policy && Number.isSafeInteger(window.startFrame) && window.startFrame >= 0 &&
+      Number.isSafeInteger(window.frames) && window.frames > 0 && evidenceEnd <= a.frames &&
+      window.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && window.frames <= 16_777_216 : a.frames <= a.sampleRate * 180) &&
     a.tempo.bpm !== null && Number.isFinite(a.tempo.bpm) && a.tempo.bpm >= 60 && a.tempo.bpm <= 180 &&
     [a.tempo.confidence, a.tempo.ambiguity, a.beatGrid.confidence, a.key.confidence,
       a.structure.phraseConfidence].every(unit) &&
@@ -94,15 +99,15 @@ function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
     (a.key.mode === 'major' || a.key.mode === 'minor')) ||
       unknownKey && a.key.tonic === null && a.key.mode === null) &&
     a.structure.assumed === true && a.structure.meter[0] === 4 && a.structure.meter[1] === 4 &&
-    [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= 0 && c.frame < a.frames &&
+    [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= (window?.startFrame ?? 0) && c.frame < evidenceEnd &&
       unit(c.score) && unit(c.confidence) && (!c.evidence ||
         ['boundary', 'low-interference', 'track-start'].includes(c.evidence.kind) &&
         [c.evidence.boundary, c.evidence.period, c.evidence.salience, c.evidence.interference].every(unit) &&
         Number.isSafeInteger(c.evidence.windowEndFrame) && c.evidence.windowEndFrame > c.frame &&
-        c.evidence.windowEndFrame <= a.frames && c.evidence.chroma.length === 12 &&
+        c.evidence.windowEndFrame <= evidenceEnd && c.evidence.chroma.length === 12 &&
         c.evidence.chroma.every(unit))) &&
     (a.vocalSpans ?? []).every(s => Number.isSafeInteger(s.startFrame) && Number.isSafeInteger(s.endFrame) &&
-      s.startFrame >= 0 && s.endFrame > s.startFrame && s.endFrame <= a.frames);
+      s.startFrame >= 0 && s.endFrame > s.startFrame && s.endFrame <= evidenceEnd);
 }
 function eligibleCues(cues: readonly MixPointCandidate[], low: number, high: number,
   spans: MixAnalysis['vocalSpans'] = []): MixPointCandidate[] {

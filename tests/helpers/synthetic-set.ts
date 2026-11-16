@@ -14,6 +14,24 @@ import {makeMixFixture} from './mix-fixtures.js';
 export interface SyntheticSong {
   readonly id: string; readonly bpm: number; readonly bars?: number;
   readonly tonic?: number; readonly mode?: 'major' | 'minor';
+  readonly seconds?: number; readonly stereo?: boolean; readonly transitionEvidence?: boolean;
+}
+
+/** Original sectioned fixture, with real accent/activity changes rather than mocked analysis. */
+export function makeSetFixture(song: SyntheticSong, sampleRate = 16000): MixPcm {
+  const bars = song.seconds ? Math.ceil(song.seconds * song.bpm / 240) : song.bars ?? 16;
+  const options = {bpm: song.bpm, bars, sampleRate, tonic: song.tonic ?? 9, mode: song.mode ?? 'minor' as const};
+  const pcm = makeMixFixture({...options, ...(song.transitionEvidence ? {chords: false} : {})});
+  const channel = pcm.channels[0] as Float32Array;
+  if (song.transitionEvidence) {
+    const harmony = makeMixFixture({...options, drums: false}).channels[0]!;
+    for (let i = 0; i < channel.length; i++) {
+      const beat = Math.floor(i * song.bpm / (sampleRate * 60)), bar = Math.floor(beat / 4);
+      channel[i] = (channel[i]! * (beat % 4 === 0 ? 1 : 0.8) + harmony[i]! * 0.35) * (Math.floor(bar / 4) % 2 === 0 ? 1 : 0.5);
+    }
+  }
+  const cropped = song.seconds ? channel.slice(0, Math.round(song.seconds * sampleRate)) : channel;
+  return {sampleRate, channels: song.stereo ? [cropped, new Float32Array(cropped)] : [cropped]};
 }
 /** Default four-song set: 128, 122, 90 and 128 BPM, 16 bars each, at 16 kHz mono. */
 export const SYNTHETIC_SET: readonly SyntheticSong[] = [
@@ -77,8 +95,7 @@ export async function buildSyntheticSet(songs: readonly SyntheticSong[] = SYNTHE
   for (const rating of ['love', 'like', 'dislike'] as const) {
     const takes = [];
     for (const song of groups[rating]) {
-      const pcm = makeMixFixture({bpm: song.bpm, bars: song.bars ?? 16, sampleRate, tonic: song.tonic ?? 9,
-        mode: song.mode ?? 'minor'});
+      const pcm = makeSetFixture(song, sampleRate);
       const audio = pcm16Wav(pcm), frames = pcm.channels[0]!.length;
       await mkdir(join(source, rating, song.id), {recursive: true});
       const file = (name: string, bytes: Uint8Array) => ({path: `${song.id}/${name}`, sha256: sha(bytes), bytes: bytes.length});

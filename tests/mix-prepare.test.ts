@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {analyzeMixAudio} from '../src/mix-analysis.js';
 import {renderTimePitch} from '../src/time-pitch.js';
-import {prepareTimePitch, analyzeMixPairInWorker, PREPARE_WORKER_PROTOCOL,
+import {prepareTimePitch, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
   type MixWorkerRequest, type MixWorkerResponse} from '../src/mix-prepare.js';
 
 /** A transport double only; native Worker execution is separately checked in Chromium. */
@@ -132,4 +132,25 @@ test('worker input and time budgets reject invalid requests without constructing
   await assert.rejects(prepareTimePitch({sampleRate: 8000, channels: []}, {tempoRatio: 1}));
   await assert.rejects(analyzeMixPairInWorker({sampleRate: 0, channels: [new Float32Array(100)]}, pcm()));
   assert.equal(TestWorker.instances.length, 0);
+}));
+
+test('song worker bounds a >180s input and rejects invalid evidence coordinates before rebinding', async () => withWorker(async () => {
+  const input = {sampleRate: 8000, channels: [new Float32Array(181 * 8000)]};
+  const task = analyzeMixSongInWorker(input), worker = TestWorker.instances.at(-1)!;
+  assert.equal(worker.message!.kind, 'analyze-one');
+  assert.ok(worker.message!.kind === 'analyze-one');
+  assert.equal(worker.message!.audio.channels[0]!.length, SONG_ANALYSIS_WINDOW.seconds * 8000);
+  worker.reply(); assert.equal((await task).frames, SONG_ANALYSIS_WINDOW.seconds * 8000);
+  assert.equal(input.channels[0]!.length, 181 * 8000, 'native audio was not detached or truncated');
+  for (const corrupt of ['frames', 'beat', 'cue'] as const) {
+    const pending = analyzeMixSongInWorker(pcm()), instance = TestWorker.instances.at(-1)!;
+    const response = instance.response(); assert.ok(response.ok && response.kind === 'analyze-one');
+    const analysis = response.result;
+    const result = corrupt === 'frames' ? {...analysis, frames: 5000}
+      : corrupt === 'beat' ? {...analysis, beatGrid: {...analysis.beatGrid, frames: [NaN]}}
+      : {...analysis, mixIn: [{frame: analysis.frames, seconds: analysis.frames / analysis.sampleRate, confidence: 1, score: 1, reasons: []}]};
+    instance.reply({...response, result});
+    await assert.rejects(pending, /invalid song analysis coordinates/);
+    assert.equal(instance.terminated, 1);
+  }
 }));

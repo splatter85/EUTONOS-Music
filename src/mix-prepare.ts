@@ -1,6 +1,42 @@
 import {TIME_PITCH_LIMITS, TIME_PITCH_PROCESSOR,
   type PreparedTimePitch, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
-import {MIX_ANALYSIS_LIMITS, type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
+import {MIX_ANALYSIS_LIMITS, MIX_ANALYSIS_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
+
+/** A selected minute of real evidence. Grid extrapolation is not additional cue evidence. */
+export {SONG_ANALYSIS_WINDOW} from './mix-analysis.js';
+export function songAnalysisWindowFrames(frames: number, sampleRate: number): number {
+  return Math.min(frames, Math.floor(sampleRate * SONG_ANALYSIS_WINDOW.seconds), MIX_ANALYSIS_LIMITS.maxChannelSamples);
+}
+
+/** Validate worker-derived coordinates and evidence before rebinding to a full-song timeline. */
+export function validateSongAnalysis(analysis: MixAnalysis, frames: number, sampleRate: number): void {
+  const unit = (n: number): boolean => Number.isFinite(n) && n >= 0 && n <= 1;
+  const frame = (n: number, end = false): boolean => Number.isSafeInteger(n) && n >= 0 && (end ? n <= frames : n < frames);
+  const ordered = (values: readonly number[]): boolean => Array.isArray(values) &&
+    values.every((n, i) => frame(n) && (i === 0 || n > values[i - 1]!));
+  const interval = (start: number, end: number): boolean => frame(start) && frame(end, true) && end > start;
+  const chroma = (values: readonly number[]): boolean => Array.isArray(values) && values.length === 12 && values.every(unit);
+  if (!analysis || analysis.version !== MIX_ANALYSIS_VERSION || analysis.frames !== frames || analysis.sampleRate !== sampleRate ||
+    analysis.analyzedWindow !== undefined ||
+    !(analysis.tempo?.bpm === null || Number.isFinite(analysis.tempo?.bpm) && analysis.tempo.bpm >= 60 && analysis.tempo.bpm <= 180) ||
+    ![analysis.tempo.confidence, analysis.tempo.ambiguity, analysis.beatGrid?.confidence, analysis.key?.confidence,
+      analysis.structure?.downbeatConfidence, analysis.structure?.phraseConfidence].every(unit) ||
+    !ordered(analysis.beatGrid.frames) || !ordered(analysis.structure.downbeatFrames) || !ordered(analysis.structure.phraseFrames) ||
+    analysis.structure.assumed !== true || analysis.structure.meter?.[0] !== 4 || analysis.structure.meter?.[1] !== 4 ||
+    !chroma(analysis.key.chroma) || !Array.isArray(analysis.energyCurve) ||
+    !analysis.energyCurve.every(e => interval(e.startFrame, e.endFrame) && Number.isFinite(e.rms) && e.rms >= 0 &&
+      Number.isFinite(e.lowRms) && e.lowRms >= 0 && (e.dbfs === null || Number.isFinite(e.dbfs))) ||
+    ![analysis.mixIn, analysis.mixOut].every(cues => Array.isArray(cues) && cues.every(c => frame(c.frame) &&
+      Number.isFinite(c.seconds) && Math.abs(c.seconds - c.frame / sampleRate) <= 1 / sampleRate && unit(c.score) && unit(c.confidence) &&
+      (!c.evidence || interval(c.frame, c.evidence.windowEndFrame) && chroma(c.evidence.chroma) &&
+        ['boundary', 'low-interference', 'track-start'].includes(c.evidence.kind) &&
+        [c.evidence.boundary, c.evidence.period, c.evidence.salience, c.evidence.interference].every(unit)))) ||
+    !(analysis.vocalSpans ?? []).every(s => interval(s.startFrame, s.endFrame)) ||
+    !(analysis.cueFeatures ?? []).every(c => interval(c.frame, c.endFrame) && chroma(c.chroma) &&
+      [c.lowOnsets, c.midFlux, c.highFlux, c.rms, c.harmonicEnergy].every(n => Number.isFinite(n) && n >= 0))) {
+    throw new Error('Mix worker returned invalid song analysis coordinates or evidence.');
+  }
+}
 
 export const PREPARE_WORKER_PROTOCOL = 'eutonos.mix-preparation.v1' as const;
 export interface MixPairAnalysis {readonly from: MixAnalysis; readonly to: MixAnalysis;}
@@ -112,15 +148,15 @@ export async function analyzeMixPairInWorker(from: TimePitchPcm, to: TimePitchPc
 }
 
 /**
- * S18: mono copy for single-song analysis. Uses the analysis budget (not the WSOLA render budget),
- * so a 180 s stereo take at 48 kHz can be analyzed. Inputs are never detached or modified.
+ * Bounded leading mono copy of the supplied window, independent of full-song length or the
+ * WSOLA budget. The cache selects/rebinds native window coordinates; inputs stay untouched.
  */
 export function monoAnalysisCopy(audio: TimePitchPcm): {sampleRate: number; channels: [Float32Array<ArrayBuffer>]} {
-  const frames = audio.channels[0]?.length ?? 0;
+  const sourceFrames = audio.channels[0]?.length ?? 0;
+  const frames = songAnalysisWindowFrames(sourceFrames, audio.sampleRate);
   if (!Number.isInteger(audio.sampleRate) || audio.sampleRate < MIX_ANALYSIS_LIMITS.minSampleRate ||
     audio.sampleRate > MIX_ANALYSIS_LIMITS.maxSampleRate || ![1, 2].includes(audio.channels.length) || !frames ||
-    frames / audio.sampleRate > MIX_ANALYSIS_LIMITS.maxSeconds || frames > MIX_ANALYSIS_LIMITS.maxChannelSamples ||
-    audio.channels.some(channel => channel.length !== frames)) {
+    audio.channels.some(channel => !(channel instanceof Float32Array || channel instanceof Float64Array) || channel.length !== sourceFrames)) {
     throw new Error('Song analysis input exceeds its PCM budget or is invalid.');
   }
   const mono = new Float32Array(frames), scale = 1 / audio.channels.length;
@@ -136,10 +172,10 @@ export async function analyzeMixSongInWorker(audio: TimePitchPcm, signal?: Abort
   const message: MixWorkerRequest = {protocol: PREPARE_WORKER_PROTOCOL, kind: 'analyze-one', audio: copy,
     options: structuredClone(options)};
   return runWorker(message, [copy.channels[0].buffer], data => {
-    if (!data.ok || data.kind !== 'analyze-one' || data.result?.frames !== frames ||
-      data.result.sampleRate !== audio.sampleRate || !Number.isFinite(data.result.tempo?.confidence)) {
+    if (!data.ok || data.kind !== 'analyze-one') {
       throw new Error('Mix worker returned invalid song analysis.');
     }
+    validateSongAnalysis(data.result, frames, audio.sampleRate);
     return data.result;
   }, signal, timeoutMs);
 }

@@ -12,6 +12,7 @@ export const MIX_ANALYSIS_LIMITS = Object.freeze({
   minSampleRate: 8000, maxSampleRate: 192000, maxSeconds: 180,
   maxChannelSamples: 16_777_216, minBpm: 60, maxBpm: 180,
 });
+export const SONG_ANALYSIS_WINDOW = Object.freeze({policy: 'song-mono-window@1' as const, seconds: 60});
 export interface TempoCandidate {
   readonly bpm: number;
   /** Ranked evidence score, not a probability. */
@@ -99,6 +100,8 @@ export interface MixAnalysis {
   readonly version: typeof MIX_ANALYSIS_VERSION;
   readonly sampleRate: number;
   readonly frames: number;
+  /** Set mode only: evidence covers this bounded native-song interval, not the whole song. */
+  readonly analyzedWindow?: {readonly policy: typeof SONG_ANALYSIS_WINDOW.policy; readonly startFrame: number; readonly frames: number};
   readonly tempo: TempoEstimate;
   readonly beatGrid: {readonly frames: readonly number[]; readonly confidence: number; readonly maxFitErrorSeconds: number | null};
   readonly structure: {

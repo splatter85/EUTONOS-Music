@@ -80,6 +80,8 @@ export interface DecodedRecording {
     readonly outputFrames: number;
     readonly algorithm: string;
   };
+  /** Set-only bounded render, followed by this original buffer at the prepared buffer's EOF. */
+  readonly continuation?: {readonly buffer: AudioBuffer; readonly sourceFrame: number};
 }
 
 export interface RecordingOptions {
@@ -97,7 +99,10 @@ export class RecordedSource implements PlayableSource {
   private clock: WebAudioClock | null = null;
   private generation = -1;
   private node: AudioBufferSourceNode | null = null;
+  private continuationNode: AudioBufferSourceNode | null = null;
+  private continuationAt: number | null = null;
   private gain: GainNode | null = null;
+  private entryGain: GainNode | null = null;
   private mixGraph: MixAutomationGraph | null = null;
   private start: SourceStart | null = null;
   private entryFrame = 0;
@@ -137,19 +142,42 @@ export class RecordedSource implements PlayableSource {
     requireAudio(buffer.sampleRate === clock.sampleRate && buffer.numberOfChannels === asset.file.channels &&
       (processed !== undefined || Math.abs(buffer.length - sourceFrames) <= 1),
     'Decoded buffer does not match the recording and output sample rate.');
+    const continuation = this.recording.continuation;
+    if (continuation) requireAudio(processed && continuation.buffer.sampleRate === clock.sampleRate &&
+      continuation.buffer.numberOfChannels === asset.file.channels && Math.abs(continuation.buffer.length - sourceFrames) <= 1 &&
+      Number.isSafeInteger(continuation.sourceFrame) && continuation.sourceFrame > 0 && continuation.sourceFrame < continuation.buffer.length,
+    'A native continuation needs the original recording and an explicit native join offset.');
     this.clock = clock;
     this.generation = clock.engineGeneration;
     this.node = this.context.createBufferSource();
     this.node.buffer = buffer;
     this.gain = this.context.createGain();
-    this.node.connect(this.gain);
+    if (continuation) {
+      this.entryGain = this.context.createGain();
+      this.entryGain.connect(this.gain);
+    }
+    this.node.connect(this.entryGain ?? this.gain);
     this.gain.connect(this.destination);
+    const entryNode = this.node;
     this.node.onended = () => {
+      entryNode.disconnect();
+      if (continuation) return; // native continuation owns EOF; no callback starts it
       if (this.phase !== 'released') this.phase = 'ended';
-      this.node?.disconnect();
       this.gain?.disconnect();
       this.mixGraph?.release(); this.mixGraph = null;
     };
+    if (continuation) {
+      this.continuationNode = this.context.createBufferSource();
+      this.continuationNode.buffer = continuation.buffer;
+      this.continuationNode.connect(this.gain);
+      const nativeNode = this.continuationNode;
+      nativeNode.onended = () => {
+        nativeNode.disconnect();
+        if (this.phase !== 'released') this.phase = 'ended';
+        this.gain?.disconnect();
+        this.mixGraph?.release(); this.mixGraph = null;
+      };
+    }
     this.phase = 'prepared';
   }
 
@@ -180,26 +208,42 @@ export class RecordedSource implements PlayableSource {
       entryOffsetFrames + automation.durationFrames <= this.recording.buffer.length,
     'Analyzed entry/automation exceeds prepared audio.');
     requireAudio(automation.gain[0]!.value === 0, 'An incoming mix must start at zero gain.');
-    const graph = createMixAutomationGraph(this.context, this.node!, this.gain!, at.frame, automation);
+    const graph = createMixAutomationGraph(this.context, this.node!, this.entryGain ?? this.gain!, at.frame, automation);
+    let entryStarted = false, nativeStarted = false;
     try {
       // The mix curve owns this entrance; constructor fades belong to authored cues only.
       this.gain!.gain.setValueAtTime(1, at.frame / this.clock!.sampleRate);
       // Gate native filter tails at prepared EOF; onended is cleanup, never an audio deadline.
       this.gain!.gain.setValueAtTime(0,
-        (at.frame + this.recording.buffer.length - entryOffsetFrames) / this.clock!.sampleRate);
+        (at.frame + this.playbackFrames - entryOffsetFrames) / this.clock!.sampleRate);
       this.node!.start(at.frame / this.clock!.sampleRate, entryOffsetFrames / this.clock!.sampleRate);
+      entryStarted = true;
+      if (this.recording.continuation) {
+        this.continuationAt = at.frame + this.recording.buffer.length - entryOffsetFrames;
+        this.continuationNode!.start(this.continuationAt / this.clock!.sampleRate,
+          this.recording.continuation.sourceFrame / this.clock!.sampleRate);
+        nativeStarted = true;
+        // Gate filter tails at the PCM seam, independently of the native continuation.
+        this.entryGain!.gain.setValueAtTime(0, this.continuationAt / this.clock!.sampleRate);
+      }
     } catch (error) {
-      graph.restore(); this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); throw error;
+      // Preserve the scheduling failure even if a native cleanup call also fails. The caller
+      // still releases/disconnects both prepared nodes, including the future continuation.
+      try { if (entryStarted) this.node!.stop(this.context.currentTime); } catch { /* release disconnects it */ }
+      try { if (nativeStarted) this.continuationNode!.stop(this.context.currentTime); } catch { /* release disconnects it */ }
+      try { graph.restore(); } catch { /* caller releases the prepared source */ }
+      try { this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); } catch { /* preserve original error */ }
+      throw error;
     }
     this.mixGraph = graph;
     const nyquist = this.clock!.sampleRate / 2;
     // Only an entry that ends exactly neutral may later be replaced by the direct connection.
     this.mixEntryEndFrame = !automation.echo && automation.gain.at(-1)!.value === 1 &&
       automation.lowShelfDb.at(-1)!.value === 0 && automation.highPassHz.at(-1)!.value === 0 &&
-      automation.lowPassHz.at(-1)!.value === nyquist ? at.frame + automation.durationFrames : null;
+      automation.lowPassHz.at(-1)!.value === nyquist ? Math.max(at.frame + automation.durationFrames, this.continuationAt ?? 0) : null;
     this.start = {at: {...at}, entryCueId: 'mix-entry'};
     this.entryFrame = entryOffsetFrames;
-    this.finishFrame = at.frame + this.recording.buffer.length - entryOffsetFrames;
+    this.finishFrame = at.frame + this.playbackFrames - entryOffsetFrames;
     this.naturalEndFrame = this.finishFrame;
     this.phase = 'scheduled';
   }
@@ -267,6 +311,11 @@ export class RecordedSource implements PlayableSource {
     this.checkGeneration();
     if (this.clock!.currentFrame < this.mixEntryEndFrame) return false;
     this.mixGraph.restore(); this.mixGraph = null;
+    if (this.continuationNode) {
+      this.node!.onended = null; this.node!.disconnect();
+      this.entryGain!.disconnect(); this.entryGain = null;
+      this.node = this.continuationNode; this.continuationNode = null;
+    }
     this.mixEntryEndFrame = null;
     return true;
   }
@@ -306,6 +355,7 @@ export class RecordedSource implements PlayableSource {
     this.gain!.gain.cancelScheduledValues(when);
     this.gain!.gain.setValueAtTime(0, when);
     this.node!.stop(when);
+    this.continuationNode?.stop(when);
     this.finishFrame = at.frame;
     this.phase = 'stopping';
   }
@@ -319,7 +369,13 @@ export class RecordedSource implements PlayableSource {
       this.node.disconnect();
       this.gain!.disconnect();
     }
+    if (this.continuationNode) {
+      this.continuationNode.onended = null;
+      if (this.start) this.continuationNode.stop(this.context.currentTime);
+      this.continuationNode.disconnect(); this.continuationNode = null;
+    }
     this.mixGraph?.release(); this.mixGraph = null;
+    this.entryGain?.disconnect(); this.entryGain = null;
     this.phase = 'released';
     this.node = null;
     this.gain = null;
@@ -327,6 +383,14 @@ export class RecordedSource implements PlayableSource {
   }
 
   get endFrame(): number { return this.finishFrame; }
+  /** Virtual frames: bounded processed entry followed by untouched native PCM. */
+  get playbackFrames(): number {
+    const native = this.recording.continuation;
+    return this.recording.buffer.length + (native ? native.buffer.length - native.sourceFrame : 0);
+  }
+  get nativeRecording(): DecodedRecording {
+    return this.recording.continuation ? {asset: this.recording.asset, buffer: this.recording.continuation.buffer} : this.recording;
+  }
 
   private checkGeneration(): void {
     requireAudio(this.clock && this.clock.engineGeneration === this.generation && this.context.state !== 'closed',

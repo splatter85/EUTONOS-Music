@@ -9,7 +9,9 @@ import {analyzeMixAudio, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mi
 import {barAtOrAfter, chooseSetTransition, downbeatAt, equalPowerCrossfade, MixAnalysisCache, nextBoundary,
   planRouteFreeTransition, setBarGrid, type MixPreparationRuntime, type SetBarGrid} from '../src/mix-transition.js';
 import {SmallPlayer} from '../src/player.js';
-import {renderTimePitch} from '../src/time-pitch.js';
+import {renderTimePitch, TIME_PITCH_LIMITS} from '../src/time-pitch.js';
+import {SONG_ANALYSIS_WINDOW} from '../src/mix-analysis.js';
+import {RecordedSource, WebAudioClock} from '../src/web-audio.js';
 import {ContextDouble, NodeDouble, ParameterDouble} from './audio-double.js';
 import {buildSyntheticSet, decodePcm16, SYNTHETIC_SET} from './helpers/synthetic-set.js';
 
@@ -27,7 +29,7 @@ class FilterDouble extends NodeDouble {
 /** Decodes the real synthetic PCM, so analysis sees the generated songs. Renders nothing. */
 class SetContext extends ContextDouble {
   decodes = 0;
-  constructor() { super(16000); }
+  constructor(rate = 16000) { super(rate); }
   createBiquadFilter(): BiquadFilterNode { return new FilterDouble(this.audio) as unknown as BiquadFilterNode; }
   createBuffer(count: number, frames: number, rate: number): AudioBuffer {
     return audioBuffer(rate, Array.from({length: count}, () => new Float32Array(frames)));
@@ -437,3 +439,94 @@ test('set player blends 122 -> 128 with a returning time map, then mixes the pro
     player.stop();
   } finally { await set.cleanup(); }
 });
+
+test('180/181s stereo 48k set really blends within the unchanged render budget, joins native B ahead and then mixes out', async () => {
+  const rate = 48000;
+  const songs = [{id: 'long-122', bpm: 122, seconds: 180, stereo: true, transitionEvidence: true},
+    {id: 'long-128', bpm: 128, seconds: 181, stereo: true, transitionEvidence: true}];
+  const set = await buildSyntheticSet(songs, rate);
+  try {
+    const loaded = await loadSet(set), context = new SetContext(rate), base = countingRuntime();
+    const renders: number[] = [], analyzed: number[] = [];
+    const runtime: MixPreparationRuntime = {...base.runtime,
+      analyzeOne: async (audio, signal, options) => { analyzed.push(audio.channels[0]!.length); return base.runtime.analyzeOne!(audio, signal, options); },
+      render: async (audio, options, signal) => { renders.push(audio.channels[0]!.length * audio.channels.length); return base.runtime.render(audio, options, signal); }};
+    const player = new SmallPlayer(context.audio, loaded, null, runtime);
+    await player.playAsset(set.idFor('long-122'));
+    context.advance(0.5);
+    const nativeB = await decodeRecording(loaded, context.audio, loaded.pack.assets.find(a => a.id === set.idFor('long-128'))!);
+    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'});
+    let snap = player.snapshot(), summary = snap.mix!.summary!;
+    assert.equal(summary.recipe, 'blend', JSON.stringify(snap.mix));
+    assert.equal(summary.set!.fromGrid, 'measured'); assert.equal(summary.set!.toGrid, 'measured');
+    const join = summary.nativeJoin!;
+    assert.ok(join && join.at.frame > snap.transitionAt!.frame + Math.round(8 * 60 * rate / summary.fromBpm));
+    assert.equal(snap.transitionEnd!.frame, join.at.frame, 'transition lifecycle includes the tempo return and native join');
+    assert.equal(context.sources.length, 3, 'A plus the bounded processed entry and ahead-scheduled native continuation');
+    const processed = context.sources[1]!, native = context.sources[2]!;
+    assert.equal(native.starts[0]!.when * rate, join.at.frame);
+    assert.equal(native.starts[0]!.offset * rate, join.sourceFrame);
+    assert.equal(processed.buffer!.length, join.outputFrame);
+    for (let c = 0; c < 2; c++) assert.equal(processed.buffer!.getChannelData(c).at(-1), nativeB.buffer.getChannelData(c)[join.sourceFrame - 1], 'last prepared sample is the exact native predecessor');
+    assert.ok(renders[0]! < TIME_PITCH_LIMITS.maxSamples / 4 && renders[0]! < 181 * rate * 2 / 10);
+    assert.equal(TIME_PITCH_LIMITS.maxSamples, 12_000_000); assert.equal(SET_LIMITS.maxDecodedSongBytes, 128 * 1024 * 1024);
+    assert.ok(analyzed.every(frames => frames <= SONG_ANALYSIS_WINDOW.seconds * rate));
+    assert.equal(player.cancelPendingTransition(), true, 'before effect, cancellation releases both incoming one-shots');
+    assert.ok(processed.stops.length > 0 && native.stops.length > 0);
+    assert.equal(player.snapshot().voices.length, 1);
+
+    await player.scheduleMixTo(set.idFor('long-128'), {bars: 4, anchor: 'song'});
+    snap = player.snapshot(); summary = snap.mix!.summary!;
+    await player.pause(); const frozen = player.clock.currentFrame; context.advance(100);
+    assert.equal(player.clock.currentFrame, frozen); await player.resume();
+    const aheadStarts = context.sources.map(n => n.starts.length);
+    context.advance((summary.nativeJoin!.at.frame - player.clock.currentFrame) / rate + 0.01);
+    snap = player.snapshot(); assert.equal(snap.voices.length, 1); assert.equal(snap.now[0], set.idFor('long-128'));
+    assert.deepEqual(context.sources.map(n => n.starts.length), aheadStarts, 'settlement starts no source');
+    const originalNativeNode = context.sources.at(-1)!;
+    const originalEntry = originalNativeNode.starts[0]!;
+    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'});
+    snap = player.snapshot();
+    assert.equal(snap.mix!.summary!.recipe, 'blend', 'native B can be the next outgoing song');
+    assert.equal(snap.transitionAt!.frame,
+      Math.round(originalEntry.when * rate + snap.mix!.summary!.fromExitFrame - originalEntry.offset * rate), 'next exit uses original-song coordinates on the unchanged clock');
+    player.stop();
+    assert.ok(context.sources.slice(-2).every(n => n.stops.length > 0), 'Stop releases entry and future native source');
+
+    // Native-start failure must stop the already-started entry and leave no audible orphan.
+    const fault = new SetContext(rate), create = fault.createBufferSource.bind(fault);
+    fault.createBufferSource = () => {
+      const node = create();
+      if (fault.sources.length === 1) {
+        const stop = node.stop.bind(node);
+        node.stop = when => { stop(when); throw new Error('injected cleanup stop failure'); };
+      }
+      if (fault.sources.length === 2) node.start = () => { throw new Error('injected native start failure'); };
+      return node;
+    };
+    const preparedRecording = {asset: nativeB.asset, buffer: processed.buffer!,
+      processed: {sourceFrames: nativeB.buffer.length, outputFrames: processed.buffer!.length, algorithm: 'eutonos-wsola@1'},
+      continuation: {buffer: nativeB.buffer, sourceFrame: join.sourceFrame}};
+    const source = new RecordedSource(fault.audio, preparedRecording, fault.destination, {allowUnreviewed: true});
+    const clock = new WebAudioClock(fault.audio); await source.prepare(clock);
+    assert.throws(() => source.scheduleMixStart(clock.stamp(100), 0, equalPowerCrossfade(1600, rate).incoming), /injected native start failure/);
+    assert.equal(fault.sources[0]!.stops.length, 1); source.release();
+    assert.ok(fault.sources.every(n => n.connections.length === 0));
+    await checkLateAuto(set, loaded);
+  } finally { await set.cleanup(); }
+});
+
+async function checkLateAuto(set: Awaited<ReturnType<typeof buildSyntheticSet>>, loaded: LoadedBrowserPack): Promise<void> {
+    const context = new SetContext(48000), {runtime} = countingRuntime();
+    const player = new SmallPlayer(context.audio, loaded, null, runtime);
+    await player.playAsset(set.idFor('long-128')); context.advance(110);
+    await player.scheduleMixTo(set.idFor('long-122'), {bars: 64, anchor: 'entry'});
+    const snap = player.snapshot(), summary = snap.mix!.summary!;
+    assert.equal(summary.recipe, 'blend', JSON.stringify(snap.mix));
+    assert.equal(summary.set!.exitBar, 65, 'window-local bar 9 remains song bar 65');
+    assert.ok(summary.fromExitFrame > 119 * 48000);
+    const asset = loaded.pack.assets.find(a => a.id === set.idFor('long-128'))!;
+    const key0 = MixAnalysisCache.key(asset, 48000), keyLater = MixAnalysisCache.key(asset, 48000, 100 * 48000);
+    assert.notEqual(key0, keyLater, 'window coordinates are part of analysis identity');
+    player.stop();
+}
