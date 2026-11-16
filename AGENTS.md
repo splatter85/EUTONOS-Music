@@ -54,6 +54,7 @@ Module states (Docs, NAV, RAM) live in the generated **EUTONOS setup status** bl
 - **Permission entries: blocked.** `add-project` ran with `--no-permissions` because the runtime is dev-linked and the installer was not run (the owner's decision). Nothing was hand-written into `.claude/` or `.codex/`.
 - **Person steps: optional, not done.** Claude Desktop Auto mode and Codex project trust are not set up.
 - **Runtime:** there are no installed launchers. Set `EUTONOS_PYTHON` to the EUTONOS runtime's Python when calling `tools/eutonos_project.py` or `python -m eutonos.*`.
+- **Workflow/closeout CLI:** this repository has no `tools/workflow.py`, and `tools/eutonos_project.py` fails with "EUTONOS runtime missing" unless `EUTONOS_PYTHON` is set. Run it from the EUTONOS source checkout instead: `python tools/workflow.py closeout --root <this repo> --work <work id> --kind ...` (`--work` is required; the error lists candidates such as `campaign-emf-001`). The checkout's location is machine-specific; keep it in the owner's private instructions, not here.
 
 <!-- eutonos:delegation:start -->
 ## EUTONOS delegation
