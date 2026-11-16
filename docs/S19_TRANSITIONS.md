@@ -1,6 +1,6 @@
 # S19 DJ transitions III
 
-Status: **BUILT on the worker branch, pending coordinator review and merge**, on `work/emf-s19-transitions` from origin/main `3cd8d42`. Full-song blends and all five new styles are implemented; both full Windows gates pass at source `fa665ee9101773c8f05f2c35d3c7276765d51083`. No push or merge was performed. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status and [Current Tasks](CURRENT_TASKS.md) owns pickup. [Detailed handoff](handoffs/EMF-S19-HANDOFF.md).
+Status: **IN MAIN for engineering scope (merge `5c4b674`, Windows only)**, built on `work/emf-s19-transitions` from origin/main `3cd8d42`. Full-song blends and all five new styles are implemented; both full Windows gates pass at source `fa665ee9101773c8f05f2c35d3c7276765d51083`. No push or merge was performed. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status and [Current Tasks](CURRENT_TASKS.md) owns pickup. [Detailed handoff](handoffs/EMF-S19-HANDOFF.md).
 
 This is an engineering proof on generated material, not listening acceptance. Windows only; macOS/Linux, real owner songs, physical output and listening are **NOT TESTED**.
 

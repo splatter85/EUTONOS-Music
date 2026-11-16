@@ -4,7 +4,7 @@
 
 **Slice:** EMF-S19 DJ transitions III
 
-**Disposition:** BUILT on `work/emf-s19-transitions`, pending coordinator review, merge and push. Engineering proof only; not accepted MVP.
+**Disposition:** IN MAIN for engineering scope (merge `5c4b674`, Windows only); coordinator re-ran both gates on main and pushed. Engineering proof only; not accepted MVP.
 
 **Environment:** Windows 11, Node v26.13.0, headless Chromium 151.0.7922.34. macOS/Linux not run. Physical output and listening are **NOT TESTED**.
 
