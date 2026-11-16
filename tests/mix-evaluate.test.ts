@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio, type MixPcm} from '../src/mix-analysis.js';
-import {cleanCutAutomation, echoOutAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
-import {chooseEvaluatedMix, evaluateTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio,
+import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, type MixPcm} from '../src/mix-analysis.js';
+import {cleanCutAutomation, crossfadeAutomation, echoOutAutomation, filterSweepAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
+import {chooseEvaluatedMix, evaluateTransition, renderTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio, planTransitionSpec,
   type TransitionEvaluation, type TransitionSpec} from '../src/mix-evaluate.js';
-import type {AutomaticMixPlan} from '../src/mix-planner.js';
+import {LEVEL_MATCH_LIMITS, planAutomaticMix, type LevelMatchPlan, type AutomaticMixPlan} from '../src/mix-planner.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
+import {renderSetBlend} from '../src/mix-transition.js';
+import {renderTimePitch} from '../src/time-pitch.js';
+import {fixturePack} from './audio-double.js';
 
 const rate = 16000, seconds = 14;
 /** Deterministic uniform noise (LCG), independent per seed. */
@@ -36,6 +40,108 @@ function blend(outgoing: MixAutomationPoint[], incoming: MixAutomationPoint[]): 
 }
 const flagged = (e: TransitionEvaluation, metric: string) => e.flags.find(f => f.metric === metric);
 const equalPower = blend(curve(overlap, x => Math.cos(Math.PI * x / 2)), curve(overlap, x => Math.sin(Math.PI * x / 2)));
+
+test('invalid motion metadata is refused before allocation or rate integration', () => {
+  const from = noise(1), to = noise(2);
+  for (const patch of [{entryDelayFrames: NaN}, {entryDelayFrames: 2 ** 32}, {entryDelayFrames: -1},
+    {nativeRate: {pitchMoves: true, outgoing: {start: 0, end: 1, frames: rate}}},
+    {nativeRate: {pitchMoves: true, outgoing: {start: 1, end: 1, frames: NaN}}},
+    {entryDelayFrames: 4, loopExtension: {bars: 4, startFrame: 0, endFrame: 4, frames: 4}}]) {
+    assert.throws(() => renderTransition(from, to, {...equalPower, ...patch} as TransitionSpec), /bounded|Native rate/);
+  }
+});
+
+test('near-EOF native slowdown evaluation retains outgoing audio beyond unity-rate EOF', () => {
+  const sampleRate = 48000, duration = 16800;
+  const channel = Float32Array.from({length: sampleRate}, (_, n) => 0.2 * Math.cos(2 * Math.PI * 440 * n / sampleRate));
+  const pcm = {sampleRate, channels: [channel, Float32Array.from(channel)]};
+  for (const {remaining, end} of [{remaining: 9600, end: 0.05}, {remaining: 16000, end: 0.8}]) {
+    const render = renderTransition(pcm, pcm, {recipe: 'brake', fromStartFrame: sampleRate - remaining,
+      preRollFrames: 0, entryDelayFrames: duration - 960, toEntryFrame: 0, tempoRatio: 1,
+      nativeRate: {pitchMoves: true, outgoing: {start: 1, end, frames: duration}},
+      automation: {outgoing: crossfadeAutomation(duration, sampleRate).outgoing,
+        incoming: crossfadeAutomation(960, sampleRate).incoming}});
+    const late = render.aOut[0]!.subarray(render.S + remaining, render.S + duration);
+    assert.ok(late.some(sample => Math.abs(sample) > 0.001), 'valid native samples remain audible after the old unity-rate EOF');
+    assert.ok(render.aOut[0]!.subarray(render.S + duration - 128, render.S + duration).some(sample => sample !== 0),
+      'the native slowdown runs through its full output envelope');
+    assert.equal(render.aOut[0]![render.S + duration], 0, 'the outgoing graph stops at the output envelope end');
+  }
+});
+
+test('motion evaluator uses explicit native-rate models and actual bounded WSOLA loop-entry PCM with unchanged thresholds', async () => {
+  const pcms = [120, 144, 90, 128].map(bpm => makeSetFixture({id: 'motion', bpm, tonic: bpm === 144 ? 0 : 9, bars: 20, transitionEvidence: true, gain: 0.5}));
+  const analyses = pcms.map(pcm => analyzeMixAudio(pcm)), rows = [];
+  const buffer = (channels: number, frames: number, sampleRate: number): AudioBuffer => {
+    const arrays = Array.from({length: channels}, () => new Float32Array(frames));
+    return {sampleRate, length: frames, numberOfChannels: channels, getChannelData: (i: number) => arrays[i]!,
+      copyToChannel: (samples: Float32Array, i: number) => arrays[i]!.set(samples)} as AudioBuffer;
+  };
+  const context = {sampleRate: rate, createBuffer: buffer} as unknown as BaseAudioContext;
+  const asset = (await fixturePack()).pack.assets[1]!;
+  for (const [recipe, ai, bi] of [['tempo-ramp', 0, 1], ['brake', 2, 3], ['loop-extend', 0, 3]] as const) {
+    const from = pcms[ai]!, to = pcms[bi]!, analysis = {from: analyses[ai]!, to: analyses[bi]!};
+    const plan = planAutomaticMix(analysis.from, analysis.to, {recipe, minimumFromFrame: 4 * rate, returnToOriginalTempo: recipe !== 'brake'});
+    assert.ok(plan.kind === 'mix', JSON.stringify(plan));
+    let prepared: {audio: MixPcm; entryFrame: number} | undefined;
+    if (recipe === 'loop-extend') {
+      const native = buffer(1, to.channels[0]!.length, rate); native.copyToChannel(new Float32Array(to.channels[0]!), 0);
+      const ready = await renderSetBlend(context, {asset, buffer: native}, plan, analysis.to, undefined,
+        {analyze: async () => analysis, render: async (audio, options) => renderTimePitch(audio, options)});
+      prepared = {audio: {sampleRate: rate, channels: [ready.incoming.buffer.getChannelData(0)]}, entryFrame: ready.entryFrame};
+    }
+    const result = evaluateTransition(from, to, planTransitionSpec(plan), analysis, prepared);
+    assert.equal(result.measurements!.boundaryFlux.judged, recipe !== 'brake');
+    assert.equal(result.bSource, recipe === 'tempo-ramp' ? 'native-rate-model' : recipe === 'loop-extend' ? 'prepared' : 'native');
+    const phase = result.measurements!.beatPhase;
+    if (recipe === 'brake') {
+      assert.deepEqual([phase.maxError, phase.meanError, phase.beats, phase.judged], [null, null, 0, false]);
+      assert.match(phase.reason!, /not an independent phase comparison/);
+      assert.equal(flagged(result, 'beatPhase'), undefined, 'an unjudged brake phase is never reported as a measured zero');
+    } else { assert.equal(phase.judged, true); assert.ok(phase.maxError! < 0.05, JSON.stringify(phase)); }
+    assert.equal(result.measurements!.silenceGapMs, 0);
+    rows.push({recipe, verdict: result.verdict, flags: result.flags, bSource: result.bSource, measurements: result.measurements});
+  }
+  console.log('S19 motion evaluator: ' + JSON.stringify(rows));
+});
+
+test('delayed prelude loudness is measured from S while low-end remains a processed-side build-up metric', () => {
+  const duration = 3 * rate, delay = 2 * rate;
+  const spec: TransitionSpec = {recipe: 'loop-extend', fromStartFrame: start, preRollFrames: 0,
+    entryDelayFrames: delay, toEntryFrame: 2 * rate, tempoRatio: 1,
+    automation: {outgoing: automation(duration, [{frame: 0, value: 1}, {frame: rate / 10, value: 0.05},
+      {frame: delay - rate / 10, value: 0.05}, {frame: delay, value: 1}, {frame: duration, value: 0}]),
+      incoming: automation(rate, curve(rate, x => Math.sin(x * Math.PI / 2)))}};
+  const result = evaluateTransition(tone(55, 0.2), noise(2, 0.1), spec);
+  assert.ok(result.measurements!.loudness.momentaryMaxDownLu! < -20, JSON.stringify(result.measurements!.loudness));
+  assert.equal(flagged(result, 'loudness')!.level, 'fail', 'an A-only prelude dip is included before B starts');
+  assert.ok(result.measurements!.lowBuildUp.maxDb! < MIX_EVALUATION_THRESHOLDS.lowBuildUpDb.fail,
+    'processed-side build-up comparison cannot independently flag lost A bass');
+});
+
+test('selected smooth styles retain flux checks; matched loudness uses an explicit gain-adjusted target', () => {
+  const from = noise(1, 0.05), to = noise(2, 0.2), fromLevel = measureMixLevel(from), toLevel = measureMixLevel(to);
+  const fromGain = 0.5, toGain = 10 ** ((fromLevel.lufs! + 20 * Math.log10(fromGain) - toLevel.lufs!) / 20);
+  const levelMatch: LevelMatchPlan = {from: fromLevel, to: toLevel, fromGain, toGain,
+    rawDeltaLu: toLevel.lufs! - fromLevel.lufs!, beforeDeltaLu: toLevel.lufs! - fromLevel.lufs! - 20 * Math.log10(fromGain), matchedDeltaLu: 0,
+    nativeSamplePeak: nativeSamplePeak(to).value, fromNativeSamplePeak: nativeSamplePeak(from).value,
+    incomingPeakBudget: Math.sqrt(LEVEL_MATCH_LIMITS.samplePeakCeiling ** 2 - (nativeSamplePeak(from).value * fromGain) ** 2), ...LEVEL_MATCH_LIMITS};
+  const matched = evaluateTransition(from, to, {...equalPower, recipe: 'loudness-match', levelMatch});
+  assert.equal(matched.verdict, 'pass', JSON.stringify(matched.flags));
+  assert.equal(matched.measurements!.boundaryFlux.judged, true);
+  assert.ok(Math.abs(matched.measurements!.levelMatch!.rawDeltaLu - 12) < 0.1);
+  assert.equal(matched.measurements!.levelMatch!.matchedDeltaLu, 0);
+  assert.ok(Math.abs(matched.measurements!.loudness.shortTermMaxDownLu!) < 0.6, JSON.stringify(matched.measurements!.loudness));
+  const sweep = evaluateTransition(noise(1), noise(2), {...equalPower, recipe: 'filter-sweep', automation: filterSweepAutomation(overlap, rate)});
+  assert.notEqual(sweep.verdict, 'fail', JSON.stringify(sweep.flags));
+  assert.equal(sweep.measurements!.boundaryFlux.judged, true);
+  const bad = {...equalPower, recipe: 'filter-sweep' as const, automation: {outgoing: equalPower.automation.outgoing,
+    incoming: {...equalPower.automation.incoming, gain: [{frame: 0, value: 0}, {frame: overlap - 1, value: 0}, {frame: overlap, value: 1}]}}};
+  assert.equal(evaluateTransition(noise(1), noise(2), bad).verdict, 'fail', 'a renamed abrupt change is still judged');
+  console.log('S19 style evaluator: ' + JSON.stringify([matched, sweep].map(e => ({recipe: e.recipe, verdict: e.verdict, flags: e.flags,
+    peakDbtp: e.measurements!.truePeakDbtp, loudness: e.measurements!.loudness, fluxDb: e.measurements!.boundaryFlux.excessDb,
+    level: e.measurements!.levelMatch}))));
+});
 
 test('thresholds are versioned and labelled experimental', () => {
   assert.equal(MIX_EVALUATION_THRESHOLDS.version, 'mix-evaluation-thresholds@1');

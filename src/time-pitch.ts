@@ -9,6 +9,67 @@ export interface TimePitchPcm {
   readonly sampleRate: number;
   readonly channels: readonly (Float32Array | Float64Array)[];
 }
+/** Native playbackRate motion: pitch moves. Nominal continuous map; browsers apply k-rate blocks. */
+export interface NativeRateRamp {readonly start: number; readonly end: number; readonly frames: number;}
+export function nativeRateInputAt(ramp: NativeRateRamp, output: number): number {
+  if (output <= 0) return output * ramp.start;
+  const t = Math.min(output, ramp.frames);
+  return ramp.start * t + (ramp.end - ramp.start) * t * t / (2 * ramp.frames) + Math.max(0, output - ramp.frames) * ramp.end;
+}
+export function nativeRateOutputAt(ramp: NativeRateRamp, input: number): number {
+  if (input <= 0) return input / ramp.start;
+  const total = (ramp.start + ramp.end) * ramp.frames / 2;
+  if (input >= total) return ramp.frames + (input - total) / ramp.end;
+  const c = (ramp.end - ramp.start) / (2 * ramp.frames);
+  return ramp.start === ramp.end ? input / ramp.start : 2 * input / (ramp.start + Math.sqrt(ramp.start ** 2 + 4 * c * input));
+}
+export function validateNativeRate(ramp: NativeRateRamp, rate: number): void {
+  check([ramp.start, ramp.end].every(v => Number.isFinite(v) && v >= 0.05 && v <= 1.25) &&
+    Number.isSafeInteger(ramp.frames) && ramp.frames >= Math.round(rate * 0.02) && ramp.frames <= rate * 30,
+  'Native rate motion exceeds its finite pitch-moving bounds.');
+}
+export interface PreparedFiniteLoop {
+  readonly processor: 'finite-loop@1'; readonly audio: {readonly sampleRate: number; readonly channels: readonly Float32Array[]};
+  readonly loopFrames: number; readonly tailFrames: number;
+  readonly metrics: {readonly periodicity: number; readonly energyRatio: number; readonly peak: number; readonly seamError: number};
+}
+/** One repeated interval plus a native tail. No indefinite loop or whole-song processing. */
+export function renderFiniteLoop(audio: TimePitchPcm, loopFrames: number, tailFrames: number, bars: 4 | 8,
+  levelGain = 1): PreparedFiniteLoop {
+  const frames = audio.channels[0]?.length ?? 0, rate = audio.sampleRate;
+  check(Number.isInteger(rate) && rate >= 8000 && rate <= 192000 && [1, 2].includes(audio.channels.length) &&
+    Number.isSafeInteger(loopFrames) && loopFrames >= bars * 32 && Number.isSafeInteger(tailFrames) && tailFrames >= rate * 0.02 &&
+    frames === loopFrames + tailFrames && frames * audio.channels.length <= TIME_PITCH_LIMITS.maxSamples &&
+    [4, 8].includes(bars) && Number.isFinite(levelGain) && levelGain > 0 && levelGain <= 4 &&
+    audio.channels.every(c => (c instanceof Float32Array || c instanceof Float64Array) && c.length === frames), 'Finite loop exceeds its PCM/bars budget.');
+  const bar = Math.floor(loopFrames / bars), energies = Array.from({length: bars}, () => 0);
+  let dot = 0, left = 0, right = 0, peak = 0;
+  for (const channel of audio.channels) for (let i = 0; i < frames; i++) {
+    const sample = channel[i]!;
+    check(Number.isFinite(sample) && Math.abs(sample) * levelGain <= TIME_PITCH_LIMITS.peakCeiling + 1e-7, 'Finite loop failed effective sample-peak/finite validation.');
+    peak = Math.max(peak, Math.abs(sample));
+    if (i < loopFrames) energies[Math.min(bars - 1, Math.floor(i / bar))]! += sample * sample;
+    if (i < bar) { const other = channel[loopFrames - bar + i]!; dot += sample * other; left += sample * sample; right += other * other; }
+  }
+  const periodicity = dot / Math.sqrt(left * right), energyRatio = Math.max(...energies) / Math.min(...energies);
+  check(Number.isFinite(periodicity) && periodicity >= 0.35 && energyRatio <= 4 && Math.min(...energies) / bar > 1e-10,
+    'Finite loop lacks stable measured periodicity/energy; this does not establish vocal-free content.');
+  const fade = Math.min(Math.round(rate * 0.02), tailFrames, loopFrames);
+  let seamError = 0, outputPeak = 0;
+  const channels = audio.channels.map(input => {
+    const output = new Float32Array(input);
+    for (let i = 0; i < fade; i++) {
+      const weight = 0.5 - 0.5 * Math.cos(Math.PI * i / (fade - 1));
+      output[i] = input[loopFrames + i]! * (1 - weight) + input[i]! * weight;
+    }
+    seamError = Math.max(seamError, Math.abs(output[0]! - input[loopFrames]!),
+      Math.abs(output[loopFrames - 1]! - input[loopFrames - 1]!), Math.abs(output[loopFrames]! - input[loopFrames]!));
+    for (const sample of output) outputPeak = Math.max(outputPeak, Math.abs(sample));
+    return output;
+  });
+  return {processor: 'finite-loop@1', audio: {sampleRate: rate, channels}, loopFrames, tailFrames,
+    metrics: {periodicity, energyRatio, peak: outputPeak, seamError}};
+}
 export interface TimePitchOptions {
   /** B's output tempo / original tempo. 1.04 makes a 100 BPM recording 104 BPM. */
   readonly tempoRatio: number;

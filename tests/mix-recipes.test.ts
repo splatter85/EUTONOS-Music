@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio, type MixAnalysis, type MixPointCandidate} from '../src/mix-analysis.js';
+import {analyzeMixAudio, nativeSamplePeak, type MixAnalysis, type MixPointCandidate} from '../src/mix-analysis.js';
 import {automaticMixCandidates, planAutomaticMix, type MixPlannerOptions} from '../src/mix-planner.js';
 import {bindEchoReturn, cleanCutAutomation, createMixAutomationGraph, echoOutAutomation,
   mixCurveValue, validateMixAutomation} from '../src/mix-automation.js';
@@ -146,7 +146,8 @@ test('echo partial connect and allocation failures release every node and restor
 });
 function runtime(exits = [4, 8]): MixPreparationRuntime {
   return {analyze: async (from, to) => ({from: evidence(from.channels[0]!.length, exits),
-    to: evidence(to.channels[0]!.length)}), render: async () => { throw Error('Native recipes must not render B'); }};
+    to: evidence(to.channels[0]!.length)}), scanPeak: async audio => nativeSamplePeak(audio),
+    render: async () => { throw Error('Native recipes must not render B'); }};
 }
 async function setup(r = runtime()) {
   const loaded = await fixturePack(), context = new Context();

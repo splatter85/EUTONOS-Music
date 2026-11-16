@@ -83,6 +83,8 @@ export function moveTarget(index: number, delta: -1 | 1, length: number): number
 
 const RECIPE_LABEL: Readonly<Record<string, string>> = {
   blend: 'Beatmatched blend', cut: 'Cut on the beat',
+  'filter-sweep': 'Filter sweep', 'loudness-match': 'Loudness match',
+  'tempo-ramp': 'Tempo ramp (pitch moves)', 'loop-extend': 'Loop extension', 'brake': 'Brake (pitch drops)',
   'fallback-crossfade': 'Plain crossfade (not beatmatched)', 'fallback-cut': 'Clean cut on the bar',
 };
 export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? recipe; }
@@ -99,10 +101,15 @@ export function tempoPercent(ratio: number): string {
  */
 export function describeSetMix(summary: NonNullable<MixSnapshot['summary']>): string {
   const set = summary.set;
-  if (!set) return `${recipeLabel(summary.recipe)}`;
+  const level = summary.levelMatch;
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+  const label = recipeLabel(summary.recipe) + (level ? ` · B level ${signed(20 * Math.log10(level.toGain))} dB · remaining difference ${signed(level.matchedDeltaLu)} LU (measured windows)` : '')
+    + (summary.loopExtension ? ` · adds ${summary.loopExtension.bars} repeated A bars before B enters` : '')
+    + (summary.recipe === 'brake' ? ` · A slows before B enters` : '');
+  if (!set) return label;
   const step = set.anchor === 'entry' ? `Auto every ${set.boundaryBars} bars` : `${set.boundaryBars}-bar boundary`;
   const grids = set.fromGrid === 'measured' && set.toGrid === 'measured' ? 'measured beat grids'
     : `grids: ${set.fromGrid} → ${set.toGrid}`;
-  return `${recipeLabel(summary.recipe)} · leaves on bar ${set.exitBar} of the outgoing song (${step})`
+  return `${label} · ${summary.entryDelayFrames ? 'A effect starts' : 'leaves'} on bar ${set.exitBar} of the outgoing song (${step})`
     + ` · tempo change ${tempoPercent(set.tempoChange)} · ${grids}`;
 }

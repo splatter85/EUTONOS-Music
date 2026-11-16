@@ -7,6 +7,7 @@
  */
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {SmallPlayer} from '../src/player.js';
+import type {MixRecipe} from '../src/mix-planner.js';
 import {DeterministicDj, type DjHandoff} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import type {AudioAsset, MusicState} from '../src/pack-types.js';
@@ -76,6 +77,7 @@ let dj: DeterministicDj | null = null;
 let djPlayer: SmallPlayer | null = null;
 let sampler: SmallPlayer | null = null;
 let handoffMode: DjHandoff = 'direct';
+let mixRecipe: MixRecipe | 'auto' = 'auto';
 let muted = false;
 let pauseReason = '';
 let ownership: Promise<void> | null = null, releaseLock: (() => void) | null = null, leaseEpoch = 0;
@@ -159,7 +161,7 @@ function getDj(): DeterministicDj {
   const route = loaded.pack.routes[0];
   if (!route && !isSet) throw new Error('This pack has no A → B route.');
   djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id);
-  dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode});
+  dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
   return dj;
@@ -208,6 +210,14 @@ function setMode(mode: DjHandoff): void {
 $('mode-direct').addEventListener('click', () => setMode('direct'));
 $('mode-hybrid').addEventListener('click', () => setMode('hybrid'));
 $('mode-mix').addEventListener('click', () => setMode('mix'));
+$('mix-recipe').addEventListener('change', () => {
+  const value = $<HTMLSelectElement>('mix-recipe').value;
+  if (!['auto', 'blend', 'filter-sweep', 'loudness-match', 'cut', 'tempo-ramp', 'loop-extend', 'brake'].includes(value)) return;
+  mixRecipe = value as MixRecipe | 'auto';
+  dj?.setMixOptions({recipe: mixRecipe});
+  // A selector changes future requests only; committed sources and plan data keep ownership.
+  renderDj();
+});
 
 function titleOf(id: string | null): string {
   if (id === null) return 'Nothing';
@@ -277,6 +287,8 @@ function renderDj(): void {
   if (isSet) for (const id of ['queue-a', 'queue-b']) $<HTMLButtonElement>(id).hidden = true;
   setText('mode-direct', packChoice === 'rated' ? 'Direct cut' : 'Crossfade');
   $('rated-transition-help').hidden = packChoice !== 'rated';
+  $('mix-recipe-control').hidden = handoffMode !== 'mix' || packChoice === 'rated';
+  $<HTMLSelectElement>('mix-recipe').disabled = !ready;
   const hold = control?.requested.hold ?? false;
   $('dj-hold').setAttribute('aria-pressed', String(hold)); setText('dj-hold', hold ? 'Hold on' : 'Hold');
   $('mode-direct').setAttribute('aria-checked', String(handoffMode === 'direct'));
@@ -320,7 +332,9 @@ function renderDj(): void {
       ? `${describeSetMix(player.mix.summary)} · starts in ${player.transitionInSeconds.toFixed(1)}s`
     : isSet && player?.mix?.summary?.set && player.transition === 'mixing' ? `Handing over now · ${describeSetMix(player.mix.summary)}`
     : player?.mix?.phase === 'fallback' && player.transition !== 'complete' ? 'Not sure about this pair — using the plain crossfade instead'
-    : player?.mix?.phase === 'mixing' ? `Beatmatching A → B${player.mix.summary ? ` · B ${player.mix.summary.toBpm.toFixed(1)} → ${player.mix.summary.fromBpm.toFixed(1)} BPM${player.mix.summary.pitchSemitones ? ` · key ${player.mix.summary.pitchSemitones > 0 ? '+' : ''}${player.mix.summary.pitchSemitones}` : ''}` : ''}`
+    : player?.mix?.summary && player.transition === 'scheduled' ? `${describeSetMix(player.mix.summary)} · starts in ${player.transitionInSeconds?.toFixed(1)}s`
+    : player?.mix?.phase === 'prelude' ? `A prelude is playing; B has not entered${player.mix.summary ? ` · ${describeSetMix(player.mix.summary)}` : ''}`
+    : player?.mix?.phase === 'mixing' ? `Handing over A → B${player.mix.summary ? ` · ${describeSetMix(player.mix.summary)}` : ''}`
     : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Mix complete'
     : player?.transition === 'scheduled' && player.transitionInSeconds !== null ? `Mix starts in ${player.transitionInSeconds.toFixed(1)}s (on the next phrase)`
     : state === 'playing' ? isSet ? 'Playing — press Next (or turn Auto on) to move to the next queued song' : 'Playing — press “Mix to next” when you want B'

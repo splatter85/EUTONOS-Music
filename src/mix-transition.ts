@@ -1,8 +1,10 @@
-import {analyzeMixPairInWorker, analyzeMixSongInWorker, monoAnalysisCopy, prepareTimePitch} from './mix-prepare.js';
-import {MIX_ANALYSIS_VERSION, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
-import {planAutomaticMix, type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
-import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
-import {cleanCutAutomation, validateMixAutomation, type MixAutomation, type MixAutomationPoint} from './mix-automation.js';
+import {analyzeMixPairInWorker, analyzeMixSongInWorker, monoAnalysisCopy, prepareTimePitch,
+  SONG_ANALYSIS_WINDOW, songLevelWindowFrames, validateSongAnalysis, prepareFiniteLoop, scanNativePeakInWorker} from './mix-prepare.js';
+import {MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, type NativeSamplePeak, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
+import {planAutomaticMix, isBeatmatchedRecipe, withPreparedLevelGain, LEVEL_MATCH_LIMITS,
+  type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
+import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedFiniteLoop, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
+import {cleanCutAutomation, crossfadeAutomation, type MixAutomation} from './mix-automation.js';
 import type {AudioAsset} from './pack-types.js';
 import type {DecodedRecording} from './web-audio.js';
 
@@ -10,18 +12,24 @@ export interface MixPreparationRuntime {
   analyze(from: MixPcm, to: MixPcm, signal?: AbortSignal): Promise<{from: MixAnalysis; to: MixAnalysis}>;
   render(audio: MixPcm, options: TimePitchOptions, signal?: AbortSignal): Promise<PreparedTimePitch>;
   /** S18 optional: one song (mono). Without it, set mode analyzes the mono copy through `analyze`. */
-  analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions): Promise<MixAnalysis>;
+  analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions, levelAudio?: MixPcm): Promise<MixAnalysis>;
+  renderLoop?(audio: MixPcm, loopFrames: number, tailFrames: number, bars: 4 | 8, levelGain: number, signal?: AbortSignal): Promise<PreparedFiniteLoop>;
+  /** Full-song peak only; omission selects bounded browser worker chunks, never synchronous DSP.
+   * Injected non-browser runtimes must provide this capability for native recipes/song analysis. */
+  scanPeak?(audio: MixPcm, signal?: AbortSignal): Promise<NativeSamplePeak>;
 }
 export const browserMixPreparation: MixPreparationRuntime = {
   analyze: analyzeMixPairInWorker,
   render: prepareTimePitch,
   analyzeOne: analyzeMixSongInWorker,
+  renderLoop: prepareFiniteLoop,
+  scanPeak: scanNativePeakInWorker,
 };
 export interface ReadyMixTransition {
   readonly kind: 'ready'; readonly plan: AutomaticMixPlan;
   readonly incoming: DecodedRecording; readonly entryFrame: number;
   readonly processed: PreparedTimePitch | {
-    readonly processor: 'native-pcm@1'; readonly audio: MixPcm;
+    readonly processor: 'native-pcm@1' | 'native-rate@1'; readonly audio: MixPcm;
     readonly mapping: PreparedTimePitch['mapping']; readonly metrics: null;
   };
   readonly analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis};
@@ -30,11 +38,12 @@ export interface ReadyMixTransition {
 /** Choose a later A exit without changing the already rendered B entry or time map. */
 export function replanPreparedMix(ready: ReadyMixTransition, minimumFromFrame: number): MixDecision {
   const {plan, analysis} = ready;
-  return planAutomaticMix(analysis.from,
+  const later = planAutomaticMix(analysis.from,
     {...analysis.to, mixIn: analysis.to.mixIn.filter(c => c.frame === plan.toEntryFrame)},
     {minimumFromFrame, recipe: plan.recipe, echoContentConfirmed: plan.echoContentConfirmed ?? false,
       overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
-      returnToOriginalTempo: plan.returnToOriginalTempo});
+      returnToOriginalTempo: plan.returnToOriginalTempo, ...(plan.levelMatch ? {fromLevelGain: plan.levelMatch.fromGain} : {})});
+  return later.kind === 'mix' && plan.levelMatch ? {...later, levelMatch: plan.levelMatch} : later;
 }
 export type PreparedMixDecision = ReadyMixTransition | {readonly kind: 'fallback'; readonly reason: string};
 
@@ -44,6 +53,49 @@ function checkAbort(signal?: AbortSignal): void {
 function pcm(recording: DecodedRecording): MixPcm {
   return {sampleRate: recording.buffer.sampleRate,
     channels: Array.from({length: recording.buffer.numberOfChannels}, (_, i) => recording.buffer.getChannelData(i))};
+}
+
+/** Copy only the measured loop and handover tail; validate the actual returned PCM independently. */
+export async function prepareOutgoingLoop(context: BaseAudioContext, from: DecodedRecording, plan: AutomaticMixPlan,
+  levelGain: number, signal?: AbortSignal, runtime: MixPreparationRuntime = browserMixPreparation): Promise<AudioBuffer | undefined> {
+  const loop = plan.loopExtension;
+  if (!loop) return undefined;
+  if (!runtime.renderLoop || from.processed || loop.endFrame !== plan.fromExitFrame || loop.endFrame - loop.startFrame !== loop.frames ||
+    loop.startFrame < 0 || loop.endFrame + plan.overlapFrames > from.buffer.length ||
+    (loop.frames + plan.overlapFrames) * from.buffer.numberOfChannels > TIME_PITCH_LIMITS.maxSamples) throw new Error('Loop lacks a bounded native source/worker.');
+  const audio = {sampleRate: context.sampleRate, channels: Array.from({length: from.buffer.numberOfChannels}, (_, c) =>
+    from.buffer.getChannelData(c).subarray(loop.startFrame, loop.endFrame + plan.overlapFrames))};
+  const ready = await runtime.renderLoop(audio, loop.frames, plan.overlapFrames, loop.bars, levelGain, signal);
+  checkAbort(signal);
+  if (ready.processor !== 'finite-loop@1' || ready.loopFrames !== loop.frames || ready.tailFrames !== plan.overlapFrames ||
+    ready.audio.sampleRate !== context.sampleRate || ready.audio.channels.length !== audio.channels.length ||
+    !Number.isFinite(ready.metrics.periodicity) || ready.metrics.periodicity < 0.35 ||
+    !Number.isFinite(ready.metrics.energyRatio) || ready.metrics.energyRatio > 4 || !Number.isFinite(ready.metrics.seamError) || ready.metrics.seamError > 1e-7) throw new Error('Invalid finite loop evidence.');
+  const buffer = context.createBuffer(audio.channels.length, loop.frames + plan.overlapFrames, context.sampleRate);
+  ready.audio.channels.forEach((channel, c) => {
+    if (!(channel instanceof Float32Array) || channel.length !== buffer.length || channel[0] !== audio.channels[c]![loop.frames] ||
+      channel[loop.frames - 1] !== audio.channels[c]![loop.frames - 1] || channel[loop.frames] !== audio.channels[c]![loop.frames]) throw new Error('Finite loop changed a native seam anchor.');
+    for (const value of channel) if (!Number.isFinite(value) || Math.abs(value) * levelGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Invalid effective finite loop PCM.');
+    buffer.copyToChannel(new Float32Array(channel), c);
+  });
+  return buffer;
+}
+
+/** Reconcile the processor's common attenuation before a fixed native-continuation gain. */
+function preparedLevel(plan: AutomaticMixPlan, processed: PreparedTimePitch): {plan: AutomaticMixPlan; pcmScale: number} {
+  const renderGain = processed.metrics.gainApplied;
+  if (!Number.isFinite(renderGain) || renderGain <= 0 || renderGain > 1) throw new Error('Invalid processor normalization receipt.');
+  let peak = 0;
+  for (const channel of processed.audio.channels) for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+  if (!plan.levelMatch) {
+    if (1 / renderGain > LEVEL_MATCH_LIMITS.maxGain + 1e-7 || peak / renderGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7)
+      throw new Error('Processor normalization cannot be compensated within the native-continuation sample-peak ceiling.');
+    return {plan, pcmScale: 1 / renderGain};
+  }
+  const gain = Math.min(plan.levelMatch.toGain, peak ? plan.levelMatch.incomingPeakBudget * renderGain / peak : plan.levelMatch.toGain);
+  if (gain / renderGain > LEVEL_MATCH_LIMITS.maxGain + 1e-7) throw new Error('Processor normalization compensation exceeds the bounded effective gain.');
+  const resolved = withPreparedLevelGain(plan, gain);
+  return {plan: {...resolved, levelMatch: {...resolved.levelMatch!, renderGainApplied: renderGain}}, pcmScale: 1 / renderGain};
 }
 
 /**
@@ -81,13 +133,22 @@ export async function renderPlannedMix(context: BaseAudioContext,
   runtime: MixPreparationRuntime = browserMixPreparation): Promise<ReadyMixTransition> {
   checkAbort(signal);
   const b = pcm(to);
-  if (plan.recipe !== 'blend') {
+  if (plan.recipe === 'tempo-ramp' || plan.recipe === 'brake') {
+    const peak = await (runtime.scanPeak ?? scanNativePeakInWorker)(b, signal);
+    checkAbort(signal);
+    if (peak.version !== 'native-sample-peak@1' || peak.frames !== to.buffer.length || !Number.isFinite(peak.value) ||
+      peak.value < 0 || peak.value > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Native rate entry failed sample-peak/finite validation.');
+    return {kind: 'ready', plan, analysis, entryFrame: plan.toEntryFrame,
+      incoming: {...to, ...(plan.nativeRate?.incoming ? {nativeRate: plan.nativeRate.incoming} : {})},
+      processed: {processor: 'native-rate@1', audio: b, metrics: null,
+        mapping: {inputFrames: to.buffer.length, outputFrames: to.buffer.length, tempoRatio: 1, pitchSemitones: 0, returnToOriginal: null}}};
+  }
+  if (!isBeatmatchedRecipe(plan.recipe)) {
     // Native B is already decoded: do not fabricate a WSOLA render/receipt.
-    for (const channel of b.channels) for (const value of channel) {
-      if (!Number.isFinite(value) || Math.abs(value) > 0.891251) {
-        throw new Error('Native mix audio failed peak/finite validation.');
-      }
-    }
+    const peak = await (runtime.scanPeak ?? scanNativePeakInWorker)(b, signal);
+    checkAbort(signal);
+    if (peak.version !== 'native-sample-peak@1' || peak.frames !== to.buffer.length || !Number.isFinite(peak.value) ||
+      peak.value < 0 || peak.value > 0.891251) throw new Error('Native mix audio failed peak/finite validation.');
     if (plan.toEntryFrame + plan.overlapFrames > to.buffer.length ||
         plan.fromExitFrame + plan.overlapFrames > from.buffer.length) {
       throw new Error('Native mix lifetime does not cover the tail.');
@@ -142,9 +203,10 @@ export async function renderPlannedMix(context: BaseAudioContext,
     throw new Error('Processed entry/overlap exceeds the prepared audio.');
   }
   const buffer = context.createBuffer(processed.audio.channels.length, processed.mapping.outputFrames, context.sampleRate);
-  processed.audio.channels.forEach((channel, i) => buffer.copyToChannel(new Float32Array(channel), i));
+  const level = preparedLevel(plan, processed);
+  processed.audio.channels.forEach((channel, i) => buffer.copyToChannel(Float32Array.from(channel, sample => sample * level.pcmScale), i));
   checkAbort(signal);
-  return {kind: 'ready', plan, entryFrame, processed, analysis,
+  return {kind: 'ready', plan: level.plan, entryFrame, processed, analysis,
     incoming: {asset: to.asset, buffer, processed: {sourceFrames: to.buffer.length,
       outputFrames: buffer.length, algorithm: processed.processor}}};
 }
@@ -177,34 +239,69 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
  */
 export class MixAnalysisCache {
   private readonly entries = new Map<string, Promise<SongAnalysisResult>>();
+  private readonly peaks = new WeakMap<AudioBuffer, Promise<NativeSamplePeak>>();
   constructor(readonly maxEntries = 64) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 2 || maxEntries > 256) throw new Error('Invalid analysis cache size.');
   }
-  static key(asset: AudioAsset, sampleRate: number): string {
-    return `${asset.file.sha256}:${MIX_ANALYSIS_VERSION}:${sampleRate}:mono:${asset.timing?.bpm ?? 'none'}`;
+  static key(asset: AudioAsset, sampleRate: number, startFrame = 0): string {
+    return `${asset.file.sha256}:${MIX_ANALYSIS_VERSION}:${MIX_LEVEL_VERSION}:${sampleRate}:${SONG_ANALYSIS_WINDOW.policy}:${SONG_ANALYSIS_WINDOW.seconds}s:${startFrame}:${asset.timing?.bpm ?? 'none'}`;
   }
   get size(): number { return this.entries.size; }
-  has(asset: AudioAsset, sampleRate: number): boolean { return this.entries.has(MixAnalysisCache.key(asset, sampleRate)); }
-  analyze(recording: DecodedRecording, runtime: MixPreparationRuntime, signal?: AbortSignal): Promise<SongAnalysisResult> {
+  has(asset: AudioAsset, sampleRate: number, startFrame = 0): boolean { return this.entries.has(MixAnalysisCache.key(asset, sampleRate, startFrame)); }
+  analyze(recording: DecodedRecording, runtime: MixPreparationRuntime, signal?: AbortSignal, startFrame = 0): Promise<SongAnalysisResult> {
     const {asset, buffer} = recording;
     if (recording.processed) return Promise.reject(new Error('Analyze the native recording, never a processed render.'));
-    const key = MixAnalysisCache.key(asset, buffer.sampleRate);
+    if (!Number.isSafeInteger(startFrame) || startFrame < 0 || startFrame >= buffer.length) return Promise.reject(new Error('Invalid song analysis window start.'));
+    const key = MixAnalysisCache.key(asset, buffer.sampleRate, startFrame);
     let entry = this.entries.get(key);
     if (entry) {
       this.entries.delete(key); this.entries.set(key, entry); // most recently used last
     } else {
       entry = (async (): Promise<SongAnalysisResult> => {
         try {
-          const channels = Array.from({length: buffer.numberOfChannels}, (_, i) => buffer.getChannelData(i));
+          const channels = Array.from({length: buffer.numberOfChannels}, (_, i) => buffer.getChannelData(i).subarray(startFrame));
           const options: MixAnalysisOptions = asset.timing ? {generationBpm: asset.timing.bpm} : {};
+          const mono = monoAnalysisCopy({sampleRate: buffer.sampleRate, channels});
           let analysis: MixAnalysis;
-          if (runtime.analyzeOne) analysis = await runtime.analyzeOne({sampleRate: buffer.sampleRate, channels}, undefined, options);
+          const levelFrames = songLevelWindowFrames(mono.channels[0].length, buffer.sampleRate, channels.length);
+          if (runtime.analyzeOne) analysis = await runtime.analyzeOne(mono, undefined, options,
+            {sampleRate: buffer.sampleRate, channels: channels.map(c => c.subarray(0, levelFrames))});
           else {
-            const mono = monoAnalysisCopy({sampleRate: buffer.sampleRate, channels});
             analysis = (await runtime.analyze(mono, mono)).from;
           }
-          if (analysis.version !== MIX_ANALYSIS_VERSION || analysis.frames !== buffer.length ||
-            analysis.sampleRate !== buffer.sampleRate) throw new Error('Analysis does not match the decoded song.');
+          validateSongAnalysis(analysis, mono.channels[0].length, buffer.sampleRate);
+          let peakTask = this.peaks.get(buffer);
+          if (!peakTask) {
+            peakTask = (runtime.scanPeak ?? scanNativePeakInWorker)({sampleRate: buffer.sampleRate,
+              channels: Array.from({length: buffer.numberOfChannels}, (_, c) => buffer.getChannelData(c))}).then(peak => {
+              if (peak.version !== 'native-sample-peak@1' || peak.frames !== buffer.length || !Number.isFinite(peak.value) ||
+                peak.value < 0 || peak.value > 16) throw new Error('Native peak evidence does not match the full recording.');
+              return peak;
+            });
+            this.peaks.set(buffer, peakTask);
+            const pending = peakTask;
+            void pending.catch(() => { if (this.peaks.get(buffer) === pending) this.peaks.delete(buffer); });
+          }
+          const peak = await peakTask;
+          // A legacy runtime that measured only the mono tempo copy cannot claim stereo levels.
+          const {level: measuredLevel, ...rawAnalysis} = analysis;
+          analysis = {...rawAnalysis, ...(measuredLevel?.channels === buffer.numberOfChannels ?
+            {level: {...measuredLevel, startFrame: measuredLevel.startFrame + startFrame}} : {})};
+          const cue = (c: MixAnalysis['mixIn'][number]): MixAnalysis['mixIn'][number] => ({...c,
+            frame: c.frame + startFrame, seconds: (c.frame + startFrame) / buffer.sampleRate,
+            ...(c.evidence ? {evidence: {...c.evidence, windowEndFrame: c.evidence.windowEndFrame + startFrame}} : {})});
+          analysis = {...analysis, frames: buffer.length,
+            nativePeak: peak,
+            analyzedWindow: {policy: SONG_ANALYSIS_WINDOW.policy, startFrame, frames: mono.channels[0].length},
+            beatGrid: {...analysis.beatGrid, frames: analysis.beatGrid.frames.map(f => f + startFrame)},
+            structure: {...analysis.structure, downbeatFrames: analysis.structure.downbeatFrames.map(f => f + startFrame),
+              phraseFrames: analysis.structure.phraseFrames.map(f => f + startFrame)},
+            energyCurve: analysis.energyCurve.map(e => ({...e, startFrame: e.startFrame + startFrame, endFrame: e.endFrame + startFrame})),
+            ...(analysis.cueFeatures ? {cueFeatures: analysis.cueFeatures.map(c => ({...c, frame: c.frame + startFrame, endFrame: c.endFrame + startFrame}))} : {}),
+            ...(analysis.vocalSpans ? {vocalSpans: analysis.vocalSpans.map(s => ({startFrame: s.startFrame + startFrame, endFrame: s.endFrame + startFrame}))} : {}),
+            mixIn: analysis.mixIn.filter(c => !startFrame || c.evidence?.kind !== 'track-start').map(cue),
+            mixOut: analysis.mixOut.filter(c => !startFrame || c.evidence?.kind !== 'track-start').map(cue),
+            limitations: [...analysis.limitations, `Only native frames ${startFrame}..${startFrame + mono.channels[0].length} were analyzed; other cue evidence is unavailable.`]};
           return {ok: true, analysis};
         } catch (error) {
           return {ok: false, reason: error instanceof Error ? error.message : String(error)};
@@ -228,12 +325,17 @@ export interface SetBarGrid {
   readonly barFrames: number;
   /** Known downbeats in native song frames; later bars extrapolate at `barFrames`. */
   readonly downbeats: readonly number[];
+  /** Index of the first measured downbeat, counted from the song's original bar origin. */
+  readonly firstBar?: number;
 }
 export function setBarGrid(asset: AudioAsset, analysis: MixAnalysis | null, sampleRate: number): SetBarGrid {
   const structure = analysis?.structure;
   if (analysis && structure && analysis.tempo.bpm !== null && analysis.tempo.confidence >= SET_GRID_LIMITS.tempoConfidence &&
     structure.downbeatConfidence >= SET_GRID_LIMITS.downbeatConfidence && structure.downbeatFrames.length >= 2) {
-    return {source: 'measured', bpm: analysis.tempo.bpm, barFrames: 4 * 60 * sampleRate / analysis.tempo.bpm,
+    const barFrames = 4 * 60 * sampleRate / analysis.tempo.bpm;
+    const requestedOrigin = Math.round((asset.timing?.first_downbeat_frame ?? 0) * sampleRate / asset.file.sample_rate);
+    return {source: 'measured', bpm: analysis.tempo.bpm, barFrames,
+      firstBar: Math.max(0, Math.round((structure.downbeatFrames[0]! - requestedOrigin) / barFrames)),
       downbeats: [...structure.downbeatFrames]};
   }
   const timing = asset.timing;
@@ -242,17 +344,20 @@ export function setBarGrid(asset: AudioAsset, analysis: MixAnalysis | null, samp
     downbeats: [Math.round(timing.first_downbeat_frame * sampleRate / asset.file.sample_rate)]};
 }
 export function downbeatAt(grid: SetBarGrid, bar: number): number {
+  bar -= grid.firstBar ?? 0;
   const known = grid.downbeats.length;
-  if (bar < known) return grid.downbeats[Math.max(0, bar)]!;
+  if (bar < 0) return Math.round(grid.downbeats[0]! + bar * grid.barFrames);
+  if (bar < known) return grid.downbeats[bar]!;
   return Math.round(grid.downbeats[known - 1]! + (bar - known + 1) * grid.barFrames);
 }
 /** Smallest bar index whose downbeat is at or after `frame`. */
 export function barAtOrAfter(grid: SetBarGrid, frame: number): number {
-  if (frame <= grid.downbeats[0]!) return 0;
+  const firstBar = grid.firstBar ?? 0;
+  if (frame <= grid.downbeats[0]!) return Math.max(0, firstBar + Math.ceil((frame - grid.downbeats[0]!) / grid.barFrames));
   const known = grid.downbeats.findIndex(d => d >= frame);
-  if (known >= 0) return known;
+  if (known >= 0) return known + firstBar;
   const last = grid.downbeats.length - 1;
-  let bar = last + Math.max(0, Math.ceil((frame - grid.downbeats[last]!) / grid.barFrames));
+  let bar = firstBar + last + Math.max(0, Math.ceil((frame - grid.downbeats[last]!) / grid.barFrames));
   while (downbeatAt(grid, bar) < frame) bar++;
   while (bar > 0 && downbeatAt(grid, bar - 1) >= frame) bar--;
   return bar;
@@ -291,19 +396,7 @@ export interface RouteFreePlan {
 
 /** Equal-power (sin/cos) gain lanes with neutral filters, as 17-point linear segments. */
 export function equalPowerCrossfade(durationFrames: number, sampleRate: number): {outgoing: MixAutomation; incoming: MixAutomation} {
-  if (!Number.isSafeInteger(durationFrames) || durationFrames < 16) throw new Error('A crossfade needs at least 16 frames.');
-  const steps = 16;
-  const points = (fn: (t: number) => number): MixAutomationPoint[] => Array.from({length: steps + 1}, (_, i) => ({
-    frame: i === steps ? durationFrames : Math.round(i * durationFrames / steps),
-    value: Math.min(1, Math.max(0, fn(i / steps)))}));
-  const neutral = {durationFrames,
-    lowShelfDb: [{frame: 0, value: 0}, {frame: durationFrames, value: 0}],
-    highPassHz: [{frame: 0, value: 0}, {frame: durationFrames, value: 0}],
-    lowPassHz: [{frame: 0, value: sampleRate / 2}, {frame: durationFrames, value: sampleRate / 2}]};
-  const outgoing: MixAutomation = {...neutral, gain: points(t => t >= 1 ? 0 : Math.cos(t * Math.PI / 2))};
-  const incoming: MixAutomation = {...neutral, gain: points(t => t <= 0 ? 0 : t >= 1 ? 1 : Math.sin(t * Math.PI / 2))};
-  validateMixAutomation(outgoing, sampleRate); validateMixAutomation(incoming, sampleRate);
-  return {outgoing, incoming};
+  return crossfadeAutomation(durationFrames, sampleRate);
 }
 
 /**
@@ -342,6 +435,7 @@ export interface SetTransitionInput {
   /** Earliest native A frame for any audible effect, including the preparation allowance. */
   readonly earliestFrame: number;
   readonly boundary: {readonly bars: number; readonly anchorBar: number};
+  readonly options?: MixPlannerOptions;
 }
 interface SetChoiceBase {
   readonly exitBar: number; readonly boundaryBar: number;
@@ -355,6 +449,99 @@ export type SetTransitionChoice =
 /** True when B fits the bounded WSOLA render (frames x channels and seconds). */
 export function fitsBlendRender(frames: number, channels: number, sampleRate: number): boolean {
   return frames * channels <= TIME_PITCH_LIMITS.maxSamples && frames / sampleRate <= TIME_PITCH_LIMITS.maxSeconds;
+}
+
+interface SetBlendWindow {
+  readonly sourceStartFrame: number; readonly sourceEndFrame: number;
+  readonly sourceJoinFrame: number; readonly outputJoinFrame: number;
+  readonly entryFrame: number; readonly options: TimePitchOptions;
+}
+/** Bounded entry/overlap/return window; only a measured downbeat may rejoin native B. */
+function setBlendWindow(plan: AutomaticMixPlan, analysis: MixAnalysis, frames: number): SetBlendWindow {
+  if (!isBeatmatchedRecipe(plan.recipe) || !plan.returnToOriginalTempo || plan.pitchSemitones !== 0 ||
+    analysis.structure.downbeatConfidence < SET_GRID_LIMITS.downbeatConfidence) {
+    throw new Error('A native set join needs zero pitch shift, a tempo return and a measured B downbeat.');
+  }
+  const guard = Math.round(plan.sampleRate * 0.05);
+  const sourceStartFrame = Math.max(0, plan.toEntryFrame - guard);
+  const entryFrame = Math.round((plan.toEntryFrame - sourceStartFrame) / plan.tempoRatio);
+  const afterFrames = entryFrame + plan.overlapFrames;
+  const rampFrames = Math.round(4 * 60 * plan.sampleRate / plan.fromBpm);
+  const returnEndInput = plan.tempoRatio * afterFrames + (plan.tempoRatio + 1) * rampFrames / 2;
+  const sourceJoinFrame = analysis.structure.downbeatFrames.find(frame =>
+    frame >= sourceStartFrame + returnEndInput + guard && frame + guard <= frames &&
+    frame < (analysis.analyzedWindow ? analysis.analyzedWindow.startFrame + analysis.analyzedWindow.frames : analysis.frames));
+  if (sourceJoinFrame === undefined) throw new Error('No measured B downbeat after the overlap and tempo return fits a native join.');
+  const outputJoinFrame = Math.round(afterFrames + rampFrames + sourceJoinFrame - sourceStartFrame - returnEndInput);
+  return {sourceStartFrame, sourceEndFrame: sourceJoinFrame + guard, sourceJoinFrame, outputJoinFrame, entryFrame,
+    options: {tempoRatio: plan.tempoRatio, pitchSemitones: 0, returnToOriginal: {afterFrames, rampFrames}}};
+}
+
+export interface ReadySetBlend {
+  readonly plan: AutomaticMixPlan;
+  readonly incoming: DecodedRecording; readonly entryFrame: number; readonly mapping: PreparedTimePitch['mapping'];
+  readonly sourceStartFrame: number; readonly processor: PreparedTimePitch['processor'];
+  readonly nativeJoin: {readonly sourceFrame: number; readonly outputFrame: number};
+}
+
+/** Set-only render: never send the full song to WSOLA or allocate a full processed song. */
+export async function renderSetBlend(context: BaseAudioContext, to: DecodedRecording, plan: AutomaticMixPlan,
+  analysis: MixAnalysis, signal?: AbortSignal, runtime: MixPreparationRuntime = browserMixPreparation): Promise<ReadySetBlend> {
+  checkAbort(signal);
+  if (to.processed || to.buffer.sampleRate !== context.sampleRate || plan.sampleRate !== context.sampleRate ||
+    analysis.sampleRate !== context.sampleRate || analysis.frames !== to.buffer.length || plan.toFrames !== to.buffer.length) {
+    throw new Error('Set render plan and analysis must bind the native recording on the owner sample rate.');
+  }
+  const window = setBlendWindow(plan, analysis, to.buffer.length);
+  const frames = window.sourceEndFrame - window.sourceStartFrame;
+  if (!fitsBlendRender(frames, to.buffer.numberOfChannels, context.sampleRate)) throw new Error('Set entry window exceeds the bounded render budget.');
+  const input: MixPcm = {sampleRate: context.sampleRate, channels: Array.from({length: to.buffer.numberOfChannels}, (_, c) =>
+    to.buffer.getChannelData(c).subarray(window.sourceStartFrame, window.sourceEndFrame))};
+  const processed = await runtime.render(input, window.options, signal);
+  checkAbort(signal);
+  const back = window.options.returnToOriginal!, ratio = plan.tempoRatio;
+  const expectedFrames = Math.round(back.afterFrames + back.rampFrames + frames -
+    ratio * back.afterFrames - (ratio + 1) * back.rampFrames / 2);
+  if (processed.processor !== 'eutonos-wsola@1' || processed.audio.sampleRate !== context.sampleRate ||
+    processed.mapping.inputFrames !== frames || processed.mapping.outputFrames !== expectedFrames ||
+    processed.mapping.tempoRatio !== ratio || processed.mapping.pitchSemitones !== 0 ||
+    processed.mapping.returnToOriginal?.afterFrames !== back.afterFrames ||
+    processed.mapping.returnToOriginal.rampFrames !== back.rampFrames ||
+    processed.audio.channels.length !== input.channels.length || processed.audio.channels.some(c =>
+      !(c instanceof Float32Array) || c.length !== expectedFrames) ||
+    window.outputJoinFrame <= back.afterFrames + back.rampFrames || window.outputJoinFrame >= expectedFrames ||
+    window.entryFrame + plan.overlapFrames >= window.outputJoinFrame) {
+    throw new Error('Prepared set window does not match its selected transform or native join.');
+  }
+  for (const channel of processed.audio.channels) for (const value of channel) {
+    if (!Number.isFinite(value) || Math.abs(value) > TIME_PITCH_LIMITS.peakCeiling + 1e-7) {
+      throw new Error('Prepared set audio failed peak/finite validation.');
+    }
+  }
+  const level = preparedLevel(plan, processed), levelGain = level.plan.levelMatch?.toGain ?? 1;
+  // WSOLA's local search need not finish at the nominal phase. Replace its final 20 ms with
+  // a complementary PCM crossfade onto the exact native samples preceding the join.
+  // The last prepared sample is native[join-1]; native[join] starts on the same clock next.
+  const buffer = context.createBuffer(input.channels.length, window.outputJoinFrame, context.sampleRate);
+  const crossfadeFrames = Math.min(Math.round(context.sampleRate * 0.02), window.outputJoinFrame - back.afterFrames - back.rampFrames);
+  for (let c = 0; c < input.channels.length; c++) {
+    const channel = Float32Array.from(processed.audio.channels[c]!.subarray(0, window.outputJoinFrame), sample => sample * level.pcmScale);
+    const native = to.buffer.getChannelData(c);
+    for (let i = 0; i < crossfadeFrames; i++) {
+      const at = window.outputJoinFrame - crossfadeFrames + i;
+      const t = i / (crossfadeFrames - 1), weight = 0.5 - 0.5 * Math.cos(Math.PI * t);
+      const sample = native[window.sourceJoinFrame - crossfadeFrames + i]!;
+      if (!Number.isFinite(sample) || Math.abs(sample) * levelGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Native join failed effective sample-peak/finite validation.');
+      channel[at] = channel[at]! * (1 - weight) + sample * weight;
+    }
+    buffer.copyToChannel(channel, c);
+  }
+  checkAbort(signal);
+  return {plan: level.plan, incoming: {asset: to.asset, buffer, processed: {sourceFrames: to.buffer.length,
+    outputFrames: buffer.length, algorithm: processed.processor},
+    continuation: {buffer: to.buffer, sourceFrame: window.sourceJoinFrame}},
+    entryFrame: window.entryFrame, mapping: processed.mapping, sourceStartFrame: window.sourceStartFrame,
+    processor: processed.processor, nativeJoin: {sourceFrame: window.sourceJoinFrame, outputFrame: window.outputJoinFrame}};
 }
 
 /**
@@ -380,13 +567,22 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
       Math.abs(b.frame - frame) < Math.abs(best.frame - frame) ? b : best).bar;
     if (!onBoundary.length) notes.push('No analyzed A cue lies on the requested boundary.');
     else {
-      if (fitsBlendRender(to.frames, to.channels, sampleRate)) {
-        const blend = planAutomaticMix(scoped, to.analysis, {recipe: 'blend', minimumFromFrame: earliestFrame,
-          returnToOriginalTempo: true});
-        if (blend.kind === 'mix') return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
+      const selected = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : 'blend';
+      const blend = selected === 'echo-out' ? {kind: 'fallback' as const, reason: 'Set mode does not offer echo-out.'} :
+        planAutomaticMix(scoped, to.analysis, {...input.options, recipe: selected, minimumFromFrame: earliestFrame,
+          returnToOriginalTempo: !['cut', 'brake'].includes(selected)});
+      if (blend.kind === 'mix') {
+        if (['cut', 'tempo-ramp', 'brake'].includes(blend.recipe) && to.channels <= 2) return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
           boundaryBar: first.bar, fromGrid, toGrid, notes};
-        notes.push(`Blend unavailable: ${blend.reason}`);
-      } else notes.push('Blend unavailable: B exceeds the bounded time-stretch render budget.');
+        try {
+          const window = setBlendWindow(blend, to.analysis, to.frames);
+          if (!fitsBlendRender(window.sourceEndFrame - window.sourceStartFrame, to.channels, sampleRate)) {
+            throw new Error('B entry exceeds the bounded time-stretch render budget.');
+          }
+          return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
+            boundaryBar: first.bar, fromGrid, toGrid, notes};
+        } catch (error) { notes.push(`Blend unavailable: ${error instanceof Error ? error.message : String(error)}`); }
+      } else notes.push(`Blend unavailable: ${blend.reason}`);
       const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
       if (cut.kind === 'mix') return {kind: 'analyzed', plan: cut, exitBar: barOf(cut.fromExitFrame),
         boundaryBar: first.bar, fromGrid, toGrid, notes};

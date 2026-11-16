@@ -1,11 +1,68 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {analyzeMixAudio, type MixAnalysis} from '../src/mix-analysis.js';
-import {camelotKey, harmonicCompatibility, planAutomaticMix, planMixFromAudio} from '../src/mix-planner.js';
+import {automaticMixCandidates, camelotKey, harmonicCompatibility, LEVEL_MATCH_LIMITS, planAutomaticMix, planMixFromAudio} from '../src/mix-planner.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
 
 const a = analyzeMixAudio(makeMixFixture({bpm: 120, tonic: 9}));
 const b = analyzeMixAudio(makeMixFixture({bpm: 124, tonic: 9}));
+
+test('explicit motion styles enforce gap, transposed harmony and measured loop eligibility without changing auto', () => {
+  const make = (bpm: number, tonic = 9) => analyzeMixAudio(makeSetFixture({id: 'motion', bpm, tonic, bars: 20, transitionEvidence: true, gain: 0.5}));
+  const a = make(120), fast = make(144, 0), slow = make(90), matched = make(128);
+  const native = planAutomaticMix(a, fast, {recipe: 'tempo-ramp'});
+  assert.ok(native.kind === 'mix' && native.recipe === 'tempo-ramp');
+  assert.equal(native.pitchSemitones, 0); assert.equal(native.nativeRate!.pitchMoves, true);
+  assert.equal(planAutomaticMix(a, make(144), {recipe: 'tempo-ramp'}).kind, 'fallback', 'native-key relation is insufficient after rate transposition');
+  assert.equal(planAutomaticMix({...a, nativePeak: {...a.nativePeak!, value: 1}}, fast, {recipe: 'tempo-ramp'}).kind, 'fallback');
+  assert.equal(planAutomaticMix(a, matched, {recipe: 'tempo-ramp'}).kind, 'fallback', 'static-comfort pair retains pitch-preserving styles');
+  assert.equal(planAutomaticMix(slow, matched, {recipe: 'brake'}).kind, 'mix');
+  assert.equal(planAutomaticMix(a, matched, {recipe: 'brake'}).kind, 'fallback');
+  const loop = planAutomaticMix(a, matched, {recipe: 'loop-extend'});
+  assert.ok(loop.kind === 'mix' && loop.loopExtension);
+  assert.equal(loop.entryDelayFrames, loop.loopExtension.frames);
+  assert.equal(planAutomaticMix({...a, structure: {...a.structure, downbeatConfidence: 0.1}}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
+  assert.equal(planAutomaticMix({...a, vocalSpans: [{startFrame: 0, endFrame: a.frames}]}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
+  assert.ok(automaticMixCandidates(a, matched).every(p => ['blend', 'echo-out', 'cut'].includes(p.recipe)));
+});
+
+test('selectable filter sweep is a real smooth low-pass lane and auto retains its existing recipes', () => {
+  const plain = planAutomaticMix(a, b), sweep = planAutomaticMix(a, b, {recipe: 'filter-sweep'});
+  assert.ok(plain.kind === 'mix' && sweep.kind === 'mix');
+  assert.equal(sweep.recipe, 'filter-sweep'); assert.equal(sweep.fromExitFrame, plain.fromExitFrame);
+  assert.equal(sweep.automation.outgoing.lowPassHz[0]!.value, a.sampleRate / 2);
+  assert.equal(sweep.automation.outgoing.lowPassHz.at(-1)!.value, 80);
+  assert.equal(sweep.automation.incoming.lowPassHz.at(-1)!.value, a.sampleRate / 2);
+  assert.ok(automaticMixCandidates(a, b).every(p => !['filter-sweep', 'loudness-match'].includes(p.recipe)));
+  assert.equal(planAutomaticMix({...a, key: {...a.key, confidence: 0}}, b, {recipe: 'filter-sweep'}).kind, 'fallback');
+});
+
+test('loudness match uses measured levels, bounded boost, current A gain and combined full-native sample headroom', () => {
+  const pcm = makeMixFixture({bpm: 120}), from = analyzeMixAudio(pcm);
+  const quiet = analyzeMixAudio({...pcm, channels: pcm.channels.map(c => Float32Array.from(c, x => x * 0.25))});
+  const boosted = planAutomaticMix(from, quiet, {recipe: 'loudness-match'});
+  assert.ok(boosted.kind === 'mix', JSON.stringify(boosted));
+  assert.ok(boosted.levelMatch!.toGain > 3.99 && boosted.levelMatch!.toGain <= 4);
+  assert.ok(Math.abs(boosted.levelMatch!.matchedDeltaLu) < 0.01);
+  const repeated = planAutomaticMix(from, quiet, {recipe: 'loudness-match', fromLevelGain: 0.5});
+  assert.ok(repeated.kind === 'mix'); assert.ok(Math.abs(repeated.levelMatch!.toGain - 2) < 0.01);
+  assert.equal(repeated.levelMatch!.fromGain, 0.5);
+  const hotterB = {...quiet, nativePeak: {...quiet.nativePeak!, value: 1}};
+  const capped = planAutomaticMix(from, hotterB, {recipe: 'loudness-match'});
+  assert.ok(capped.kind === 'mix');
+  const match = capped.levelMatch!;
+  assert.ok(Math.hypot(match.fromNativeSamplePeak * match.fromGain, match.nativeSamplePeak * match.toGain) <= LEVEL_MATCH_LIMITS.samplePeakCeiling + 1e-9);
+  assert.ok(match.matchedDeltaLu < -3, 'headroom-limited residual remains reported');
+  for (const invalid of [{...quiet, level: {...quiet.level!, lufs: null}}, {...quiet, nativePeak: undefined},
+    {...quiet, level: {...quiet.level!, version: 'stale'}},
+    {...quiet, level: {...quiet.level!, samplePeak: NaN}},
+    {...quiet, level: {...quiet.level!, samplePeak: -1}},
+    {...quiet, analyzedWindow: {policy: 'song-mono-window@1', startFrame: 1, frames: quiet.frames - 1}}] as unknown as MixAnalysis[]) {
+    assert.equal(planAutomaticMix(from, invalid, {recipe: 'loudness-match'}).kind, 'fallback');
+  }
+  assert.equal(planAutomaticMix({...from, nativePeak: {...from.nativePeak!, value: 1}}, quiet, {recipe: 'loudness-match'}).kind, 'fallback');
+});
 function changed(base: MixAnalysis, patch: Partial<MixAnalysis>): MixAnalysis { return {...base, ...patch}; }
 
 test('Camelot labels match known circle-of-fifths keys, including the wrap', () => {

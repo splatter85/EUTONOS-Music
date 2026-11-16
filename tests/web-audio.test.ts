@@ -3,13 +3,93 @@ import test from 'node:test';
 import {validatePackManifest} from '../src/pack.js';
 import type {AudioAsset, AudioPack} from '../src/pack-types.js';
 import {checkedRoute, cueFrame, planTransition, RecordedSource, WebAudioClock} from '../src/web-audio.js';
-import {bufferDouble, ContextDouble, fixturePack} from './audio-double.js';
+import {bufferDouble, ContextDouble, NodeDouble, ParameterDouble, fixturePack} from './audio-double.js';
+import {crossfadeAutomation, echoOutAutomation} from '../src/mix-automation.js';
 
 const {pack} = await fixturePack();
 const a = pack.assets[0]!;
 const routeId = pack.routes[0]!.id;
 const recording = (asset: AudioAsset, rate: number) => ({asset,
   buffer: bufferDouble(rate, Math.round(asset.file.frames * rate / asset.file.sample_rate), asset.file.channels)});
+
+test('native-rate opt-in voices refuse authored direct/hybrid cue identity timing', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+    type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+  const source = new RecordedSource(context.audio, {...recording(a, 48000), nativeRate: {start: 0.85, end: 1, frames: 48000}}, context.destination, {allowFixtures: true});
+  await source.prepare(clock);
+  assert.throws(() => source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'}), /mapped/);
+  assert.throws(() => source.getValidExits(), /mapped/);
+  source.scheduleMixStart(clock.stamp(4800), 0, crossfadeAutomation(48000, 48000).incoming);
+  assert.throws(() => source.transitionOut('exit', clock.stamp(388800)), /mapped/);
+  source.release();
+});
+
+test('a neutral settled entry retains its playing PCM and future native join through the next exit, cancellation and release', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+    type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+  const native = recording(a, 48000), processed = bufferDouble(48000, 96000, a.file.channels);
+  const source = new RecordedSource(context.audio, {asset: a, buffer: processed,
+    processed: {sourceFrames: native.buffer.length, outputFrames: processed.length, algorithm: 'eutonos-wsola@1'},
+    continuation: {buffer: native.buffer, sourceFrame: 48000}}, context.destination, {allowFixtures: true});
+  await source.prepare(clock);
+  source.scheduleMixStart(clock.stamp(100), 0, crossfadeAutomation(4800, 48000).incoming);
+  const entry = context.sources[0]!, continuation = context.sources[1]!, originalEnd = source.endFrame;
+  context.currentTime = 0.2;
+  assert.equal(source.settleMixEntry(), true);
+  assert.ok(entry.connections.length > 0, 'entry PCM continues through the already scheduled join');
+  assert.throws(() => source.transitionMixOut(clock.stamp(50100), 50000, crossfadeAutomation(9600, 48000).outgoing), /native join/);
+  source.transitionMixOut(clock.stamp(100100), 100000, crossfadeAutomation(9600, 48000).outgoing);
+  assert.equal(source.cancelTransition(), true); assert.equal(source.endFrame, originalEnd);
+  assert.equal(entry.stops.length, 0, 'cancelling the next exit does not stop the current processed entry');
+  assert.deepEqual(continuation.starts, [{when: 96100 / 48000, offset: 1}]);
+  source.release();
+  assert.equal(entry.stops.at(-1), 0.2); assert.equal(continuation.stops.at(-1), 0.2);
+  assert.ok(context.sources.every(node => node.connections.length === 0));
+  assert.ok(context.gains.every(node => node.connections.length === 0));
+});
+
+test('near-EOF native slowdowns use consumed samples and restore the original EOF on cancellation', async () => {
+  for (const {remaining, end} of [{remaining: 9600, end: 0.05}, {remaining: 16000, end: 0.8}])
+  for (const entry of ['authored', 'mix-entry', 'native-rate'] as const) {
+    const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+    Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+      type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+    const recorded = {...recording(a, 48000), ...(entry === 'native-rate' ? {nativeRate: {start: 0.85, end: 1, frames: 48000}} : {})};
+    const source = new RecordedSource(context.audio, recorded, context.destination, {allowFixtures: true});
+    await source.prepare(clock);
+    if (entry === 'authored') source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'});
+    else {
+      source.scheduleMixStart(clock.stamp(4800), 0, crossfadeAutomation(48000, 48000).incoming);
+      context.currentTime = 1.1;
+      assert.equal(source.settleMixEntry(), true);
+    }
+    const originalEnd = source.endFrame, offset = recorded.buffer.length - remaining;
+    const effect = source.clockFrameAtNative(offset), duration = 16800, finish = effect + duration;
+    assert.ok(finish > originalEnd, 'slowdown output extends beyond the old unity-rate EOF');
+    source.transitionMixOut(clock.stamp(effect), offset, crossfadeAutomation(duration, 48000).outgoing,
+      {rate: {start: 1, end, frames: duration}});
+    assert.equal(source.endFrame, finish);
+    assert.equal(context.sources[0]!.stops.at(-1), finish / 48000);
+    assert.equal(context.gains[0]!.gain.calls.at(-1)!.kind, 'cancel', 'an old mix-entry EOF gate cannot silence the slowed tail');
+    assert.equal(source.cancelTransition(), true);
+    assert.equal(source.endFrame, originalEnd);
+    assert.equal(context.sources[0]!.stops.at(-1), originalEnd / 48000);
+    assert.equal(context.gains[0]!.gain.calls.filter(call => call.time === originalEnd / 48000).at(-1)!.kind,
+      entry === 'mix-entry' ? 'set' : 'cancel', 'cancellation preserves the original native-EOF versus explicit-gate policy');
+    assert.deepEqual(context.sources[0]!.playbackRate.calls.slice(-2), [
+      {kind: 'cancel', time: effect / 48000}, {kind: 'set', value: 1, time: effect / 48000}]);
+    assert.throws(() => source.transitionMixOut(clock.stamp(effect), offset,
+      crossfadeAutomation(duration, 48000).outgoing, {rate: {start: 1, end: 1.25, frames: duration}}), /exceeds decoded/);
+    source.transitionMixOut(clock.stamp(effect), offset, crossfadeAutomation(duration, 48000).outgoing,
+      {rate: {start: 1, end, frames: duration}});
+    context.currentTime = effect / 48000;
+    assert.equal(source.cancelTransition(), false, 'a begun slowdown cannot be undone');
+    assert.equal(source.endFrame, finish);
+    source.release();
+  }
+});
 
 /** Metadata-only fixture for checking pickup and selected-entry units. */
 function offsetPack(): AudioPack {
@@ -111,6 +191,25 @@ test('recording lifecycle schedules source and complementary fades on the same a
   assert.equal(context.sources[0]!.connections.length, 0);
   assert.equal(context.gains[0]!.connections.length, 0);
   source.release();
+});
+
+test('fixed level gain is captured and survives caller option mutation and graph automation', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  const options = {allowFixtures: true, levelGain: 0.4};
+  const source = new RecordedSource(context.audio, recording(a, 48000), context.destination, options);
+  options.levelGain = 3;
+  await source.prepare(clock);
+  assert.equal(source.levelGain, 0.4);
+  assert.equal(context.gains[1]!.gain.value, 0.4);
+  options.levelGain = 0.8;
+  source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'});
+  assert.throws(() => source.transitionMixOut(clock.stamp(52800), 48000, echoOutAutomation(120, 48000).outgoing), /unity fixed/);
+  source.transitionOut('exit', clock.stamp(388800));
+  assert.equal(source.levelGain, 0.4);
+  assert.equal(context.gains[1]!.gain.value, 0.4);
+  assert.deepEqual(context.gains[1]!.gain.calls, []);
+  source.release();
+  assert.ok(context.gains.every(g => g.connections.length === 0));
 });
 
 test('release cancels a future start after generation invalidation and is idempotent', async () => {

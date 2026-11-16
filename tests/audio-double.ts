@@ -60,6 +60,7 @@ export class GainDouble extends NodeDouble {
 }
 
 export class SourceDouble extends NodeDouble {
+  readonly playbackRate = new ParameterDouble();
   buffer: AudioBuffer | null = null;
   onended: ((event: Event) => void) | null = null;
   readonly starts: {when: number; offset: number}[] = [];

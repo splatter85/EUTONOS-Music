@@ -151,6 +151,23 @@ export function sweepAutomation(durationFrames: number, sampleRate: number,
   return plan;
 }
 
+/** Neutral equal-power faders shared by native fallback and measured level matching. */
+export function crossfadeAutomation(durationFrames: number, sampleRate: number): {outgoing: MixAutomation; incoming: MixAutomation} {
+  check(Number.isSafeInteger(durationFrames) && durationFrames >= 16, 'A crossfade needs at least 16 frames.');
+  const points = (fn: (t: number) => number): MixAutomationPoint[] => Array.from({length: 17}, (_, i) => ({
+    frame: i === 16 ? durationFrames : Math.round(i * durationFrames / 16), value: Math.max(0, Math.min(1, fn(i / 16)))}));
+  const neutral = {durationFrames, lowShelfDb: lane(durationFrames, 0), highPassHz: lane(durationFrames, 0), lowPassHz: lane(durationFrames, sampleRate / 2)};
+  const outgoing = {...neutral, gain: points(t => t >= 1 ? 0 : Math.cos(t * Math.PI / 2))};
+  const incoming = {...neutral, gain: points(t => t <= 0 ? 0 : t >= 1 ? 1 : Math.sin(t * Math.PI / 2))};
+  validateMixAutomation(outgoing, sampleRate); validateMixAutomation(incoming, sampleRate);
+  return {outgoing, incoming};
+}
+/** Real outgoing low-pass closes while the neutral incoming recording takes over. */
+export function filterSweepAutomation(durationFrames: number, sampleRate: number): {outgoing: MixAutomation; incoming: MixAutomation} {
+  const fade = crossfadeAutomation(durationFrames, sampleRate);
+  return {outgoing: {...sweepAutomation(durationFrames, sampleRate, 'lowpass', 'close'), gain: fade.outgoing.gain}, incoming: fade.incoming};
+}
+
 // Runtime destinations never enter serializable plans or worker messages.
 const echoReturns = new WeakMap<MixAutomation, AudioNode>();
 /** Bind a fresh outgoing automation to the existing owner master. One graph consumes it. */

@@ -2,9 +2,9 @@
 
 **First make a simple standalone music system work. Then connect Mission Control.**
 
-**Status: S01–S09 and S14/S15 DJ transitions are integrated into main.** The first S11 increment supplies the local library and exact recipe replay; [EUTONOS Studio](docs/STUDIO_APP.md) uses it for pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`.** See [Current Tasks](docs/CURRENT_TASKS.md) and the [rated-takes contract](docs/S16_RATED_TAKES.md). After this assignment: S10 owner listening, then S12 Mission Control. The standalone MVP is not accepted.
+**Status: S01–S09, S14/S15 DJ transitions, [S17 phone streaming](docs/S17_PHONE_LISTENING.md) and [S18 set mode](docs/S18_SET_MODE.md) are integrated into main for engineering scope.** [S19 transitions](docs/S19_TRANSITIONS.md) are built on `work/emf-s19-transitions`, pending coordinator review/merge; full Windows gates pass, and listening remains untested. The first S11 increment supplies the local library and exact recipe replay; [EUTONOS Studio](docs/STUDIO_APP.md) uses it for pattern save/restore, while the legacy DJ and sampler pages remain unwired. **EMS-S01 rated export + EMF-S16 intake are COMPLETE for engineering scope; all full gates passed, with local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`.** See [Current Tasks](docs/CURRENT_TASKS.md) and the [rated-takes contract](docs/S16_RATED_TAKES.md). After this assignment: S10 owner listening, then S12 Mission Control. The standalone MVP is not accepted.
 
-**Physical output and human listening are NOT TESTED.** Recent slices ran on Windows only; the rated-takes source checks use Node v26.13.0 and Chromium 151.0.7922.34. macOS/Linux were not run. The project needs Node 24 or newer. The real-FL pack exists only on the owner's PC and is never published. Current work is the rated-takes handoff; S10 owner listening follows. [Current evidence](docs/CURRENT_TASKS.md).
+**Physical output and human listening are NOT TESTED.** Recent slices ran on Windows only; the rated-takes source checks use Node v26.13.0 and Chromium 151.0.7922.34. macOS/Linux were not run. The project needs Node 24 or newer. The real-FL pack exists only on the owner's PC and is never published. Current work is S19 transitions on the worker branch; S10 owner listening follows integration. [Current evidence](docs/CURRENT_TASKS.md).
 
 **Platforms:** Windows, macOS and Linux. Windows leads the first FL Studio/MCP qualification; the shared core and pack format stay portable. There is no automatic CI: run `npm run check` and `npm run check:browser` on each OS you can reach and report which OSes actually ran. The last three-platform results are in the [S04 handoff](docs/handoffs/EMF-S04-HANDOFF.md). Physical output, other browsers and FL adapter compatibility require separate platform-specific verification.
 
@@ -30,7 +30,7 @@ The linked **Sampler & palettes** page at **http://127.0.0.1:4173/procedural.htm
 
 On a Windows PC with FL Studio (closed), `npm run fl:produce` renders and imports the owner-local real-FL pack; then open **http://127.0.0.1:4173/?pack=fl** or choose it in the DJ's **Pack** selector. `npm run check:fl` checks it. [S09 guide](docs/S09_FL_IMPORT.md).
 
-**Phone listening (S17, in progress):** with `npm run demo` running, start `npm run phone` in a second terminal, switch on **Stream to phone** on the DJ page, run `tailscale serve --bg 4180` yourself and open `https://<pc-name>.<tailnet>.ts.net/` on the phone. The phone hears a lossy copy about 2–5 s late. [S17 guide](docs/S17_PHONE_LISTENING.md).
+**Phone streaming (S17, engineering in main; real phone/listening NOT TESTED):** with `npm run demo` running, start `npm run phone` in a second terminal, switch on **Stream to phone** on the DJ page, run `tailscale serve --bg 4180` yourself and open `https://<pc-name>.<tailnet>.ts.net/` on the phone. The design sends a delayed lossy copy of the PC output; real-phone behavior and delay are unverified. [S17 guide](docs/S17_PHONE_LISTENING.md).
 
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
@@ -58,6 +58,8 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S07 integrated demo](docs/S07_APP.md)
 - [EUTONOS Studio](docs/STUDIO_APP.md)
 - [S17 phone listening](docs/S17_PHONE_LISTENING.md)
+- [S18 set mode](docs/S18_SET_MODE.md)
+- [S19 transitions](docs/S19_TRANSITIONS.md)
 - [S09 real FL import](docs/S09_FL_IMPORT.md)
 - [S11 library and recipe studies](docs/S11_LIBRARY.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)

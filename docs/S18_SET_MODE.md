@@ -9,8 +9,8 @@ Let the owner play a DJ **set** made from every take they rated love or like, no
 ## Increments
 
 1. **Rated set intake (in main, Node only).** `importRatedTakes` and `npm run import:rated` accept `--set loved-liked` or `--set TAKE_ID,TAKE_ID,...` and emit one `em.audio-pack.v0` pack with N recordings and `routes: []`. The catalogue records the selection in a new `set` field.
-2. **Set playback (pending merge).** The browser loader and DJ accept a set of 2–32 recordings. In automatic-mix mode they mix any song to any song without authored routes, cache per-song analysis and decode lazily within a memory budget. See [Increment 2](#increment-2-set-playback).
-3. **Set UI (pending merge).** Studio `studio.html?pack=set` shows the set, an editable queue and Next on a 4- or 8-bar boundary. It adds Auto every 16, 32 or 64 bars with an optional loop, and shows the chosen recipe, bar and tempo change. The phone remote gains an Auto button. See [Increment 3](#increment-3-studio-set-page-and-phone).
+2. **Set playback (in main).** The browser loader and DJ accept a set of 2–32 recordings. In automatic-mix mode they mix any song to any song without authored routes, cache per-song analysis and decode lazily within a memory budget. See [Increment 2](#increment-2-set-playback).
+3. **Set UI (in main).** Studio `studio.html?pack=set` shows the set, an editable queue and Next on a 4- or 8-bar boundary. It adds Auto every 16, 32 or 64 bars with an optional loop, and shows the chosen recipe, bar and tempo change. The phone remote gains an Auto button. See [Increment 3](#increment-3-studio-set-page-and-phone).
 
 ## Increment 1 contract
 
@@ -112,6 +112,8 @@ Auto stands for the owner pressing Next again, so its requests use the manual co
 To go back to the pair, rename the folders back. Nothing under `local/` is committed.
 
 ## Limits of increments 2 and 3
+
+These describe S18 as integrated. [S19](S19_TRANSITIONS.md) adds bounded full-song blends and exact native continuation on its worker branch, pending coordinator integration; its generated actual-worker browser evidence updates the full-song budget, native-join and earlier fallback-only coverage limits once integrated. Real owner-song analysis and listening remain unverified.
 
 - **Blend is unavailable for full-length songs.** The time-stretch budget is 12 M samples (frames × channels), so a 180 s stereo song at 44.1 kHz cannot be blended. Those handovers use the analyzed cut or the route-free fallback. Raising this budget is a candidate next slice.
 - **Analysis of real owner songs is unverified.** Synthetic tones give low downbeat confidence, so the browser gate exercised only the route-free fallback with requested grids. Node tests cover the blend path with a controlled analysis.

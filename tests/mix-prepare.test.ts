@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio} from '../src/mix-analysis.js';
-import {renderTimePitch} from '../src/time-pitch.js';
-import {prepareTimePitch, analyzeMixPairInWorker, PREPARE_WORKER_PROTOCOL,
+import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, MIX_ANALYSIS_LIMITS} from '../src/mix-analysis.js';
+import {renderTimePitch, renderFiniteLoop} from '../src/time-pitch.js';
+import {prepareTimePitch, prepareFiniteLoop, scanNativePeakInWorker, NATIVE_PEAK_CHUNK_SAMPLES, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
   type MixWorkerRequest, type MixWorkerResponse} from '../src/mix-prepare.js';
 
 /** A transport double only; native Worker execution is separately checked in Chromium. */
@@ -20,10 +20,13 @@ class TestWorker {
   terminate(): void { this.terminated++; }
   response(): MixWorkerResponse {
     const message = this.message!;
+    if (message.kind === 'peak') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'peak', result: nativeSamplePeak(message.audio)};
+    if (message.kind === 'loop') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'loop',
+      result: renderFiniteLoop(message.audio, message.loopFrames, message.tailFrames, message.bars, message.levelGain)};
     if (message.kind === 'render') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render',
       result: renderTimePitch(message.audio, message.options)};
     if (message.kind === 'analyze-one') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one',
-      result: analyzeMixAudio(message.audio, message.options)};
+      result: {...analyzeMixAudio(message.audio, message.options), level: measureMixLevel(message.levelAudio ?? message.audio)}};
     return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result: {
       from: analyzeMixAudio(message.from), to: analyzeMixAudio(message.to)}};
   }
@@ -42,6 +45,51 @@ async function withWorker(run: () => Promise<void>): Promise<void> {
 const pcm = () => ({sampleRate: 8000, channels: [Float64Array.from({length: 4000}, (_, i) =>
   0.4 * Math.sin(2 * Math.PI * 220 * i / 8000))]});
 
+test('native peak workers scan bounded sequential chunks, preserve stereo/caller PCM, validate receipts and abort', async () => withWorker(async () => {
+  const frames = 8000 * 60 + 7, left = new Float32Array(frames).fill(0.1), right = left.slice();
+  right[frames - 1] = -0.8;
+  const input = {sampleRate: 8000, channels: [left, right]};
+  const task = scanNativePeakInWorker(input), first = TestWorker.instances.at(-1)!;
+  assert.ok(first.message?.kind === 'peak');
+  assert.equal(first.message.audio.channels[0]!.length, 8000 * 60);
+  assert.ok(first.message.audio.channels[0]!.length * 2 <= NATIVE_PEAK_CHUNK_SAMPLES);
+  assert.equal(TestWorker.instances.length, 1, 'only one chunk is resident/in flight');
+  first.reply(); await new Promise(resolve => setImmediate(resolve));
+  const second = TestWorker.instances.at(-1)!;
+  assert.notEqual(second, first); assert.ok(second.message?.kind === 'peak');
+  assert.equal(second.message.audio.channels[0]!.length, 7);
+  second.reply(); const result = await task;
+  assert.deepEqual(result, nativeSamplePeak(input), 'tail peak in the opposite-polarity channel is included');
+  assert.equal(result.frames, frames); assert.equal(left.length, frames); assert.equal(right.at(-1), Math.fround(-0.8));
+  assert.ok(TestWorker.instances.every(w => w.terminated === 1));
+
+  const invalid = scanNativePeakInWorker(pcm()), bad = TestWorker.instances.at(-1)!;
+  bad.reply({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'peak', result: {version: 'native-sample-peak@1', frames: 1, value: 0.4}});
+  await assert.rejects(invalid, /receipt/); assert.equal(bad.terminated, 1);
+  const controller = new AbortController(), pending = scanNativePeakInWorker(input, controller.signal);
+  TestWorker.instances.at(-1)!.reply(); await new Promise(resolve => setImmediate(resolve));
+  const late = TestWorker.instances.at(-1)!, callback = late.onmessage!, receipt = late.response(), count = TestWorker.instances.length;
+  controller.abort(); await assert.rejects(pending, /cancelled/); callback({data: receipt} as MessageEvent<MixWorkerResponse>);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(late.terminated, 1); assert.equal(TestWorker.instances.length, count, 'aborted scan cannot schedule another chunk');
+}));
+
+test('finite loop worker owns private bounded PCM, validates its receipt, aborts and cannot revive a released request', async () => withWorker(async () => {
+  const input = {sampleRate: 8000, channels: [Float32Array.from({length: 80000}, (_, i) => 0.3 * Math.sin(2 * Math.PI * 220 * i / 8000))]};
+  const task = prepareFiniteLoop(input, 64000, 16000, 4, 1), worker = TestWorker.instances.at(-1)!;
+  assert.equal(worker.message!.kind, 'loop'); assert.equal(input.channels[0]!.length, 80000);
+  worker.reply(); const result = await task;
+  assert.equal(result.audio.channels[0]![0], input.channels[0]![64000]); assert.equal(worker.terminated, 1);
+  const malformed = prepareFiniteLoop(input, 64000, 16000, 4, 1), bad = TestWorker.instances.at(-1)!;
+  const response = bad.response(); assert.ok(response.ok && response.kind === 'loop');
+  bad.reply({...response, result: {...response.result, loopFrames: 1}});
+  await assert.rejects(malformed, /receipt/); assert.equal(bad.terminated, 1);
+  const controller = new AbortController(), pending = prepareFiniteLoop(input, 64000, 16000, 4, 1, controller.signal);
+  const late = TestWorker.instances.at(-1)!, callback = late.onmessage!, reply = late.response();
+  controller.abort(); await assert.rejects(pending, /cancelled/); callback({data: reply} as MessageEvent<MixWorkerResponse>);
+  assert.equal(late.terminated, 1);
+}));
+
 test('prepare worker transfers private copies, returns complete output, and terminates', async () => withWorker(async () => {
   const input = pcm(), before = input.channels[0]!.slice();
   const task = prepareTimePitch(input, {tempoRatio: 1.04, pitchSemitones: 1});
@@ -56,6 +104,26 @@ test('prepare worker transfers private copies, returns complete output, and term
   assert.equal(result.audio.channels[0]!.length, Math.round(4000 / 1.04));
   assert.deepEqual(input.channels[0], before);
   assert.equal(worker.onmessage, null);
+}));
+
+test('song worker keeps anti-phase stereo levels independent of the mono tempo copy and caps total level payload at 192k', async () => withWorker(async () => {
+  const rate = 8000, left = Float32Array.from({length: rate * 2}, (_, i) => 0.1 * Math.sin(2 * Math.PI * 440 * i / rate));
+  const stereo = {sampleRate: rate, channels: [left, Float32Array.from(left, x => -x)]};
+  const pending = analyzeMixSongInWorker(stereo), worker = TestWorker.instances.at(-1)!;
+  assert.ok(worker.message?.kind === 'analyze-one');
+  assert.ok(worker.message.audio.channels[0]!.every(x => x === 0), 'anti-phase mono tempo copy cancels');
+  assert.equal(worker.message.levelAudio!.channels.length, 2);
+  worker.reply(); const result = await pending;
+  assert.equal(result.level!.channels, 2); assert.equal(result.level!.lufs, measureMixLevel(stereo).lufs);
+  assert.ok(result.level!.lufs !== null, 'stereo energy did not disappear');
+  const highRate = 192000, long = new Float32Array(highRate * 60);
+  const bounded = analyzeMixSongInWorker({sampleRate: highRate, channels: [long, long]});
+  const high = TestWorker.instances.at(-1)!; assert.ok(high.message?.kind === 'analyze-one');
+  assert.ok(high.message.levelAudio!.channels[0]!.length * 2 <= MIX_ANALYSIS_LIMITS.maxChannelSamples);
+  assert.ok(high.message.audio.channels[0]!.length + high.message.levelAudio!.channels[0]!.length * 2 <= MIX_ANALYSIS_LIMITS.maxChannelSamples, 'entire request stays within the total transfer budget');
+  assert.equal(high.message.audio.channels[0]!.length, highRate * 60, 'mono tempo interval remains separately bounded');
+  high.onerror!({message: 'intentional payload-only test stop'} as ErrorEvent);
+  await assert.rejects(bounded, /intentional payload-only/);
 }));
 
 test('analyze pair uses the worker, preserves both sources and returns two distinct reports', async () => withWorker(async () => {
@@ -132,4 +200,36 @@ test('worker input and time budgets reject invalid requests without constructing
   await assert.rejects(prepareTimePitch({sampleRate: 8000, channels: []}, {tempoRatio: 1}));
   await assert.rejects(analyzeMixPairInWorker({sampleRate: 0, channels: [new Float32Array(100)]}, pcm()));
   assert.equal(TestWorker.instances.length, 0);
+}));
+
+test('song worker bounds a >180s input and rejects invalid evidence coordinates before rebinding', async () => withWorker(async () => {
+  const input = {sampleRate: 8000, channels: [new Float32Array(181 * 8000)]};
+  const task = analyzeMixSongInWorker(input), worker = TestWorker.instances.at(-1)!;
+  assert.equal(worker.message!.kind, 'analyze-one');
+  assert.ok(worker.message!.kind === 'analyze-one');
+  assert.equal(worker.message!.audio.channels[0]!.length, SONG_ANALYSIS_WINDOW.seconds * 8000);
+  worker.reply(); assert.equal((await task).frames, SONG_ANALYSIS_WINDOW.seconds * 8000);
+  assert.equal(input.channels[0]!.length, 181 * 8000, 'native audio was not detached or truncated');
+  for (const corrupt of ['frames', 'beat', 'cue'] as const) {
+    const pending = analyzeMixSongInWorker(pcm()), instance = TestWorker.instances.at(-1)!;
+    const response = instance.response(); assert.ok(response.ok && response.kind === 'analyze-one');
+    const analysis = response.result;
+    const result = corrupt === 'frames' ? {...analysis, frames: 5000}
+      : corrupt === 'beat' ? {...analysis, beatGrid: {...analysis.beatGrid, frames: [NaN]}}
+      : {...analysis, mixIn: [{frame: analysis.frames, seconds: analysis.frames / analysis.sampleRate, confidence: 1, score: 1, reasons: []}]};
+    instance.reply({...response, result});
+    await assert.rejects(pending, /invalid song analysis coordinates/);
+    assert.equal(instance.terminated, 1);
+  }
+  for (const corrupt of ['frames', 'channels', 'peak', 'start'] as const) {
+    const pending = analyzeMixSongInWorker(pcm()), instance = TestWorker.instances.at(-1)!;
+    const response = instance.response(); assert.ok(response.ok && response.kind === 'analyze-one');
+    const level = response.result.level!;
+    const changed = corrupt === 'frames' ? {...level, frames: level.frames - 1}
+      : corrupt === 'channels' ? {...level, channels: 2 as const}
+      : corrupt === 'peak' ? {...level, samplePeak: Infinity} : {...level, startFrame: 1};
+    instance.reply({...response, result: {...response.result, level: changed}});
+    await assert.rejects(pending, /level evidence/);
+    assert.equal(instance.terminated, 1);
+  }
 }));

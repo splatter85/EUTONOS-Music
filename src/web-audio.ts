@@ -2,6 +2,7 @@ import {eligibleForPlayback, quartersToFrames, validatePackManifest} from './pac
 import type {AudioAsset, AudioPack, CueRoute} from './pack-types.js';
 import type {AudioClock, ClockStamp, PlayableSource, SourceExit, SourceStart} from './playable-source.js';
 import {createMixAutomationGraph, validateMixAutomation, type MixAutomation, type MixAutomationGraph} from './mix-automation.js';
+import {nativeRateInputAt, nativeRateOutputAt, validateNativeRate, type NativeRateRamp} from './time-pitch.js';
 
 let nextGeneration = 1;
 
@@ -80,6 +81,9 @@ export interface DecodedRecording {
     readonly outputFrames: number;
     readonly algorithm: string;
   };
+  /** Set-only bounded render, followed by this original buffer at the prepared buffer's EOF. */
+  readonly continuation?: {readonly buffer: AudioBuffer; readonly sourceFrame: number};
+  readonly nativeRate?: NativeRateRamp;
 }
 
 export interface RecordingOptions {
@@ -87,6 +91,8 @@ export interface RecordingOptions {
   readonly allowUnreviewed?: boolean;
   readonly fadeInFrames?: number;
   readonly fadeOutFrames?: number;
+  /** Fixed per-entry gain outside all transition lanes; retained through native continuation. */
+  readonly levelGain?: number;
 }
 
 /** One-shot recording implementation of the S01 shared source seam. */
@@ -97,7 +103,17 @@ export class RecordedSource implements PlayableSource {
   private clock: WebAudioClock | null = null;
   private generation = -1;
   private node: AudioBufferSourceNode | null = null;
+  private continuationNode: AudioBufferSourceNode | null = null;
+  /** Processed entry may still play while its already-scheduled native node owns a future exit. */
+  private finishingEntryNode: AudioBufferSourceNode | null = null;
+  private loopNode: AudioBufferSourceNode | null = null;
+  private loopSplice: {original: GainNode; entry: GainNode} | null = null;
+  private readonly entryRate: NativeRateRamp | null;
+  private exitRate = false;
+  private continuationAt: number | null = null;
   private gain: GainNode | null = null;
+  private entryGain: GainNode | null = null;
+  private levelNode: GainNode | null = null;
   private mixGraph: MixAutomationGraph | null = null;
   private start: SourceStart | null = null;
   private entryFrame = 0;
@@ -108,12 +124,16 @@ export class RecordedSource implements PlayableSource {
   private mixEntryEndFrame: number | null = null;
   private readonly fadeIn: number;
   private readonly fadeOut: number;
+  private readonly fixedLevelGain: number;
 
   constructor(private readonly context: BaseAudioContext, readonly recording: DecodedRecording,
     private readonly destination: AudioNode, private readonly options: RecordingOptions = {}) {
     this.reference = {id: recording.asset.id, revision: recording.asset.revision};
     this.fadeIn = options.fadeInFrames ?? 0;
     this.fadeOut = options.fadeOutFrames ?? 0;
+    this.fixedLevelGain = options.levelGain ?? 1;
+    this.entryRate = recording.nativeRate ? {...recording.nativeRate} : null;
+    requireAudio(Number.isFinite(this.levelGain) && this.levelGain > 0 && this.levelGain <= 4, 'Recording level gain must be positive and at most +12 dB.');
     requireAudio([this.fadeIn, this.fadeOut].every(n => Number.isSafeInteger(n) && n >= 0),
       'Fades must use nonnegative integer output frames.');
   }
@@ -128,6 +148,7 @@ export class RecordedSource implements PlayableSource {
     requireAudio(eligibleForPlayback(asset, this.options.allowFixtures, this.options.allowUnreviewed), 'Recording is not eligible for playback.');
     const sourceFrames = Math.round(asset.file.frames * clock.sampleRate / asset.file.sample_rate);
     const processed = this.recording.processed;
+    if (this.entryRate) { validateNativeRate(this.entryRate, clock.sampleRate); requireAudio(!processed && this.entryRate.end === 1, 'Native entry rate must settle to original PCM at unity.'); }
     if (processed !== undefined) requireAudio(processed && Number.isSafeInteger(processed.sourceFrames) &&
       Math.abs(processed.sourceFrames - sourceFrames) <= 1 &&
       Number.isSafeInteger(processed.outputFrames) && processed.outputFrames > 0 &&
@@ -137,25 +158,60 @@ export class RecordedSource implements PlayableSource {
     requireAudio(buffer.sampleRate === clock.sampleRate && buffer.numberOfChannels === asset.file.channels &&
       (processed !== undefined || Math.abs(buffer.length - sourceFrames) <= 1),
     'Decoded buffer does not match the recording and output sample rate.');
+    const continuation = this.recording.continuation;
+    if (continuation) requireAudio(processed && continuation.buffer.sampleRate === clock.sampleRate &&
+      continuation.buffer.numberOfChannels === asset.file.channels && Math.abs(continuation.buffer.length - sourceFrames) <= 1 &&
+      Number.isSafeInteger(continuation.sourceFrame) && continuation.sourceFrame > 0 && continuation.sourceFrame < continuation.buffer.length,
+    'A native continuation needs the original recording and an explicit native join offset.');
     this.clock = clock;
     this.generation = clock.engineGeneration;
     this.node = this.context.createBufferSource();
     this.node.buffer = buffer;
+    if (this.entryRate) this.node.playbackRate.value = this.entryRate.start;
     this.gain = this.context.createGain();
-    this.node.connect(this.gain);
-    this.gain.connect(this.destination);
+    if (continuation) {
+      this.entryGain = this.context.createGain();
+      this.entryGain.connect(this.gain);
+    }
+    this.node.connect(this.entryGain ?? this.gain);
+    if (this.levelGain !== 1) {
+      this.levelNode = this.context.createGain(); this.levelNode.gain.value = this.levelGain;
+      this.gain.connect(this.levelNode); this.levelNode.connect(this.destination);
+    } else this.gain.connect(this.destination);
+    const entryNode = this.node;
     this.node.onended = () => {
+      entryNode.disconnect();
+      if (continuation) {
+        this.entryGain?.disconnect(); this.entryGain = null;
+        if (this.finishingEntryNode === entryNode) this.finishingEntryNode = null;
+        return; // the already-scheduled native continuation owns EOF
+      }
+      if (this.loopNode) return;
       if (this.phase !== 'released') this.phase = 'ended';
-      this.node?.disconnect();
       this.gain?.disconnect();
+      this.levelNode?.disconnect();
       this.mixGraph?.release(); this.mixGraph = null;
     };
+    if (continuation) {
+      this.continuationNode = this.context.createBufferSource();
+      this.continuationNode.buffer = continuation.buffer;
+      this.continuationNode.connect(this.gain);
+      const nativeNode = this.continuationNode;
+      nativeNode.onended = () => {
+        nativeNode.disconnect();
+        if (this.loopNode) return;
+        if (this.phase !== 'released') this.phase = 'ended';
+        this.gain?.disconnect();
+        this.levelNode?.disconnect();
+        this.mixGraph?.release(); this.mixGraph = null;
+      };
+    }
     this.phase = 'prepared';
   }
 
   scheduleStart(start: SourceStart): void {
     requireAudio(this.phase === 'prepared', 'Prepare before start; start each source once.');
-    requireAudio(!this.recording.processed, 'A processed recording needs an explicit mapped mix entry.');
+    requireAudio(!this.recording.processed && !this.entryRate, 'A processed/native-rate recording needs an explicit mapped mix entry.');
     this.checkStamp(start.at);
     const entry = cueFrame(this.recording.asset, start.entryCueId, 'entry', this.clock!.sampleRate);
     requireAudio(entry < this.recording.buffer.length && entry + this.fadeIn <= this.recording.buffer.length,
@@ -177,19 +233,39 @@ export class RecordedSource implements PlayableSource {
     this.checkStamp(at);
     validateMixAutomation(automation, this.clock!.sampleRate);
     requireAudio(Number.isSafeInteger(entryOffsetFrames) && entryOffsetFrames >= 0 &&
-      entryOffsetFrames + automation.durationFrames <= this.recording.buffer.length,
+      entryOffsetFrames + (this.entryRate ? nativeRateInputAt(this.entryRate, automation.durationFrames) : automation.durationFrames) <= this.recording.buffer.length,
     'Analyzed entry/automation exceeds prepared audio.');
     requireAudio(automation.gain[0]!.value === 0, 'An incoming mix must start at zero gain.');
-    const graph = createMixAutomationGraph(this.context, this.node!, this.gain!, at.frame, automation);
+    const graph = createMixAutomationGraph(this.context, this.node!, this.entryGain ?? this.gain!, at.frame, automation);
+    const lifetime = this.entryRate ? Math.round(nativeRateOutputAt(this.entryRate, this.recording.buffer.length - entryOffsetFrames)) : this.playbackFrames - entryOffsetFrames;
+    let entryStarted = false, nativeStarted = false;
     try {
       // The mix curve owns this entrance; constructor fades belong to authored cues only.
       this.gain!.gain.setValueAtTime(1, at.frame / this.clock!.sampleRate);
       // Gate native filter tails at prepared EOF; onended is cleanup, never an audio deadline.
-      this.gain!.gain.setValueAtTime(0,
-        (at.frame + this.recording.buffer.length - entryOffsetFrames) / this.clock!.sampleRate);
+      // Native playbackRate is k-rate. Let native EOF close B, never gate it at the analytic
+      // endpoint; retain a two-quantum lifecycle guard for the nominal map's block error.
+      if (!this.entryRate) this.gain!.gain.setValueAtTime(0,
+        (at.frame + lifetime) / this.clock!.sampleRate);
+      if (this.entryRate) this.scheduleRate(this.node!, this.entryRate, at.frame);
       this.node!.start(at.frame / this.clock!.sampleRate, entryOffsetFrames / this.clock!.sampleRate);
+      entryStarted = true;
+      if (this.recording.continuation) {
+        this.continuationAt = at.frame + this.recording.buffer.length - entryOffsetFrames;
+        this.continuationNode!.start(this.continuationAt / this.clock!.sampleRate,
+          this.recording.continuation.sourceFrame / this.clock!.sampleRate);
+        nativeStarted = true;
+        // Gate filter tails at the PCM seam, independently of the native continuation.
+        this.entryGain!.gain.setValueAtTime(0, this.continuationAt / this.clock!.sampleRate);
+      }
     } catch (error) {
-      graph.restore(); this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); throw error;
+      // Preserve the scheduling failure even if a native cleanup call also fails. The caller
+      // still releases/disconnects both prepared nodes, including the future continuation.
+      try { if (entryStarted) this.node!.stop(this.context.currentTime); } catch { /* release disconnects it */ }
+      try { if (nativeStarted) this.continuationNode!.stop(this.context.currentTime); } catch { /* release disconnects it */ }
+      try { graph.restore(); } catch { /* caller releases the prepared source */ }
+      try { this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); } catch { /* preserve original error */ }
+      throw error;
     }
     this.mixGraph = graph;
     const nyquist = this.clock!.sampleRate / 2;
@@ -199,14 +275,14 @@ export class RecordedSource implements PlayableSource {
       automation.lowPassHz.at(-1)!.value === nyquist ? at.frame + automation.durationFrames : null;
     this.start = {at: {...at}, entryCueId: 'mix-entry'};
     this.entryFrame = entryOffsetFrames;
-    this.finishFrame = at.frame + this.recording.buffer.length - entryOffsetFrames;
+    this.finishFrame = at.frame + lifetime + (this.entryRate ? 256 : 0);
     this.naturalEndFrame = this.finishFrame;
     this.phase = 'scheduled';
   }
 
   getValidExits(): readonly SourceExit[] {
     requireAudio(this.phase === 'prepared' || this.phase === 'scheduled', 'Source must be ready.');
-    requireAudio(!this.recording.processed, 'Processed audio requires explicitly mapped mix offsets.');
+    requireAudio(!this.recording.processed && !this.entryRate, 'Processed/native-rate audio requires explicitly mapped mix offsets.');
     this.checkGeneration();
     return this.recording.asset.cues.filter(c => c.kind === 'exit').map(c => ({cueId: c.id,
       offsetFrames: cueFrame(this.recording.asset, c.id, 'exit', this.clock!.sampleRate)}));
@@ -215,7 +291,7 @@ export class RecordedSource implements PlayableSource {
   /** The fade starts at the exit cue. A caller may choose its length for this one exit (S05 tail bar). */
   transitionOut(exitCueId: string, at: ClockStamp, fadeOutFrames = this.fadeOut): void {
     requireAudio(this.phase === 'scheduled' && this.start, 'Start before transition; transition once.');
-    requireAudio(!this.recording.processed && !this.mixGraph, 'Use mapped mix offsets for an opt-in processed source.');
+    requireAudio(!this.recording.processed && !this.entryRate && !this.mixGraph, 'Use mapped mix offsets for an opt-in processed/native-rate source.');
     this.checkStamp(at);
     requireAudio(Number.isSafeInteger(fadeOutFrames) && fadeOutFrames >= 0, 'Fades must use nonnegative integer output frames.');
     const expected = this.start.at.frame + cueFrame(this.recording.asset, exitCueId, 'exit', this.clock!.sampleRate) - this.entryFrame;
@@ -232,24 +308,72 @@ export class RecordedSource implements PlayableSource {
   }
 
   /** Exit at the analyzed decoded-frame offset, with every move on the owner clock. */
-  transitionMixOut(at: ClockStamp, sourceOffsetFrames: number, automation: MixAutomation): void {
+  transitionMixOut(at: ClockStamp, sourceOffsetFrames: number, automation: MixAutomation,
+    extra: {readonly rate?: NativeRateRamp; readonly loopBuffer?: AudioBuffer} = {}): void {
     requireAudio(this.phase === 'scheduled' && this.start && !this.mixGraph,
       'Start before a mix exit; one automation graph owns each source.');
     this.checkStamp(at);
     const rate = this.clock!.sampleRate;
+    requireAudio(this.continuationAt === null || at.frame >= this.continuationAt,
+      'A following mix exit must wait for the scheduled native join.');
     validateMixAutomation(automation, rate);
+    requireAudio(!automation.echo || this.levelGain === 1, 'Echo master return requires unity fixed source gain.');
     requireAudio(Number.isSafeInteger(sourceOffsetFrames) && sourceOffsetFrames >= this.entryFrame &&
-      at.frame === this.start.at.frame + sourceOffsetFrames - this.entryFrame,
+      at.frame === (this.entryRate ? this.clockFrameAtNative(sourceOffsetFrames) : this.start.at.frame + sourceOffsetFrames - this.entryFrame),
     'Mix exit must align to the analyzed source offset.');
-    requireAudio(at.frame + automation.durationFrames <= this.finishFrame,
+    if (extra.rate) validateNativeRate(extra.rate, rate);
+    const consumed = extra.rate ? nativeRateInputAt(extra.rate, automation.durationFrames) : automation.durationFrames;
+    requireAudio(extra.loopBuffer ? extra.loopBuffer.length === automation.durationFrames && extra.loopBuffer.sampleRate === rate &&
+      extra.loopBuffer.numberOfChannels === this.recording.buffer.numberOfChannels :
+      sourceOffsetFrames + consumed <= this.playbackFrames &&
+        // A new rate changes the clock-domain EOF; decoded consumption remains the tail bound.
+        (extra.rate !== undefined || at.frame + automation.durationFrames <= this.finishFrame),
       'Mix exit automation exceeds decoded audio.');
     requireAudio(automation.gain[0]!.value === 1 && automation.gain.at(-1)!.value === 0 &&
       automation.lowShelfDb[0]!.value === 0 && automation.highPassHz[0]!.value === 0 &&
       automation.lowPassHz[0]!.value === rate / 2,
     'An outgoing mix starts neutral and ends at zero gain.');
-    const graph = createMixAutomationGraph(this.context, this.node!, this.gain!, at.frame, automation);
-    try { this.node!.stop((at.frame + automation.durationFrames) / rate); }
-    catch (error) { graph.restore(); throw error; }
+    let loop: AudioBufferSourceNode | null = null, graph: MixAutomationGraph | null = null;
+    let original: GainNode | null = null, entry: GainNode | null = null;
+    try {
+      if (extra.loopBuffer) {
+        loop = this.context.createBufferSource(); loop.buffer = extra.loopBuffer;
+        original = this.context.createGain(); entry = this.context.createGain();
+        this.loopSplice = {original, entry};
+        entry.connect(this.gain!); loop.connect(entry);
+      }
+      graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation);
+      if (extra.rate) {
+        // A settled mix entry may have a unity-rate EOF gate beyond this exit's start.
+        this.gain!.gain.cancelScheduledValues(this.naturalEndFrame / rate);
+        this.scheduleRate(this.node!, extra.rate, at.frame); this.exitRate = true;
+      }
+      if (loop) {
+        loop.start(at.frame / rate); loop.stop((at.frame + automation.durationFrames) / rate);
+        // Native-rate k-rate integration can be a quantum away from the nominal sample.
+        // Complementary 20ms branches splice the continuing actual A into the finite loop.
+        const splice = this.loopSplice!, end = (at.frame + Math.round(rate * 0.02)) / rate;
+        splice.entry.gain.setValueAtTime(0, at.frame / rate); splice.entry.gain.linearRampToValueAtTime(1, end);
+        this.node!.disconnect(); this.node!.connect(splice.original); splice.original.connect(this.gain!);
+        splice.original.gain.setValueAtTime(1, at.frame / rate); splice.original.gain.linearRampToValueAtTime(0, end);
+        this.node!.stop(end);
+      } else this.node!.stop((at.frame + automation.durationFrames) / rate);
+    } catch (error) {
+      try { loop?.stop(this.context.currentTime); } catch { /* release below */ }
+      try { graph?.restore(); } catch { /* preserve the scheduling error; caller releases B */ }
+      loop?.disconnect();
+      this.restoreLoopSplice();
+      original?.disconnect(); entry?.disconnect(); // also cover a partial splice allocation
+      if (extra.rate) { this.node!.playbackRate.cancelScheduledValues(at.frame / rate); this.node!.playbackRate.setValueAtTime(1, at.frame / rate); this.exitRate = false; }
+      if (extra.rate && this.start.entryCueId === 'mix-entry' && !this.entryRate)
+        this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
+      try { this.node!.stop(this.naturalEndFrame / rate); } catch { /* retain original scheduling error */ }
+      throw error;
+    }
+    if (loop) {
+      this.loopNode = loop;
+      loop.onended = () => { loop.disconnect(); if (this.phase !== 'released') this.phase = 'ended'; this.gain?.disconnect(); this.levelNode?.disconnect(); this.mixGraph?.release(); this.mixGraph = null; };
+    }
     this.mixGraph = graph;
     this.finishFrame = at.frame + automation.durationFrames;
     this.transitionFrame = at.frame;
@@ -267,6 +391,14 @@ export class RecordedSource implements PlayableSource {
     this.checkGeneration();
     if (this.clock!.currentFrame < this.mixEntryEndFrame) return false;
     this.mixGraph.restore(); this.mixGraph = null;
+    if (this.continuationNode) {
+      if (this.clock!.currentFrame < this.continuationAt!) this.finishingEntryNode = this.node;
+      else {
+        this.node!.onended = null; this.node!.disconnect();
+        this.entryGain?.disconnect(); this.entryGain = null;
+      }
+      this.node = this.continuationNode; this.continuationNode = null;
+    }
     this.mixEntryEndFrame = null;
     return true;
   }
@@ -279,6 +411,9 @@ export class RecordedSource implements PlayableSource {
     this.mixGraph?.restore(); this.mixGraph = null;
     const transitionFrame = this.transitionFrame;
     const rate = this.clock!.sampleRate;
+    if (this.loopNode) { this.loopNode.onended = null; this.loopNode.stop(this.context.currentTime); this.loopNode.disconnect(); this.loopNode = null; }
+    this.restoreLoopSplice();
+    if (this.exitRate) { this.node!.playbackRate.cancelScheduledValues(transitionFrame / rate); this.node!.playbackRate.setValueAtTime(1, transitionFrame / rate); this.exitRate = false; }
     this.gain!.gain.cancelScheduledValues(transitionFrame / rate);
     // A future exit may share a timestamp with an original start-envelope event.
     // Recreate any such event removed by cancelScheduledValues.
@@ -289,7 +424,7 @@ export class RecordedSource implements PlayableSource {
       this.gain!.gain.linearRampToValueAtTime(1, (this.start!.at.frame + this.fadeIn) / rate);
     }
     // S18: a settled mix entry keeps its prepared-EOF gate, which cancelScheduledValues removed.
-    if (this.start!.entryCueId === 'mix-entry') this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
+    if (this.start!.entryCueId === 'mix-entry' && !this.entryRate) this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
     // Web Audio replaces a future scheduled stop when stop() is called again.
     this.node!.stop(this.naturalEndFrame / rate);
     this.finishFrame = this.naturalEndFrame;
@@ -306,6 +441,9 @@ export class RecordedSource implements PlayableSource {
     this.gain!.gain.cancelScheduledValues(when);
     this.gain!.gain.setValueAtTime(0, when);
     this.node!.stop(when);
+    this.continuationNode?.stop(when);
+    this.finishingEntryNode?.stop(when);
+    this.loopNode?.stop(when);
     this.finishFrame = at.frame;
     this.phase = 'stopping';
   }
@@ -319,7 +457,20 @@ export class RecordedSource implements PlayableSource {
       this.node.disconnect();
       this.gain!.disconnect();
     }
+    if (this.continuationNode) {
+      this.continuationNode.onended = null;
+      if (this.start) this.continuationNode.stop(this.context.currentTime);
+      this.continuationNode.disconnect(); this.continuationNode = null;
+    }
+    if (this.finishingEntryNode) {
+      this.finishingEntryNode.onended = null; this.finishingEntryNode.stop(this.context.currentTime);
+      this.finishingEntryNode.disconnect(); this.finishingEntryNode = null;
+    }
+    if (this.loopNode) { this.loopNode.onended = null; this.loopNode.stop(this.context.currentTime); this.loopNode.disconnect(); this.loopNode = null; }
+    this.loopSplice?.original.disconnect(); this.loopSplice?.entry.disconnect(); this.loopSplice = null;
     this.mixGraph?.release(); this.mixGraph = null;
+    this.entryGain?.disconnect(); this.entryGain = null;
+    this.levelNode?.disconnect(); this.levelNode = null;
     this.phase = 'released';
     this.node = null;
     this.gain = null;
@@ -327,6 +478,33 @@ export class RecordedSource implements PlayableSource {
   }
 
   get endFrame(): number { return this.finishFrame; }
+  get levelGain(): number { return this.fixedLevelGain; }
+  get nativeRate(): NativeRateRamp | null { return this.entryRate ? {...this.entryRate} : null; }
+  nativeFrameAtClock(clockFrame: number): number {
+    requireAudio(this.start, 'A native map needs a scheduled start.');
+    return this.entryFrame + Math.ceil(this.entryRate ? nativeRateInputAt(this.entryRate, clockFrame - this.start.at.frame) : clockFrame - this.start.at.frame);
+  }
+  clockFrameAtNative(nativeFrame: number): number {
+    requireAudio(this.start, 'A native map needs a scheduled start.');
+    return this.start.at.frame + Math.round(this.entryRate ? nativeRateOutputAt(this.entryRate, nativeFrame - this.entryFrame) : nativeFrame - this.entryFrame);
+  }
+  private scheduleRate(node: AudioBufferSourceNode, ramp: NativeRateRamp, at: number): void {
+    node.playbackRate.setValueAtTime(ramp.start, at / this.clock!.sampleRate);
+    node.playbackRate.linearRampToValueAtTime(ramp.end, (at + ramp.frames) / this.clock!.sampleRate);
+  }
+  private restoreLoopSplice(): void {
+    if (!this.loopSplice) return;
+    this.loopSplice.original.disconnect(); this.loopSplice.entry.disconnect(); this.loopSplice = null;
+    this.node!.disconnect(); this.node!.connect(this.gain!);
+  }
+  /** Virtual frames: bounded processed entry followed by untouched native PCM. */
+  get playbackFrames(): number {
+    const native = this.recording.continuation;
+    return this.recording.buffer.length + (native ? native.buffer.length - native.sourceFrame : 0);
+  }
+  get nativeRecording(): DecodedRecording {
+    return this.recording.continuation ? {asset: this.recording.asset, buffer: this.recording.continuation.buffer} : this.recording;
+  }
 
   private checkGeneration(): void {
     requireAudio(this.clock && this.clock.engineGeneration === this.generation && this.context.state !== 'closed',

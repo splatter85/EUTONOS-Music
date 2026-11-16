@@ -4,6 +4,8 @@ The experimental `mix` handoff analyzes two recordings, proposes compatible beat
 
 **Physical output and listening NOT TESTED. Detection accuracy on real songs beyond the measured files is unknown.** These features have generated-signal and native browser engineering checks; they do not have listening acceptance. Exact executed commands, counts, versions and measurements are in [the handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md).
 
+[S19 transitions](S19_TRANSITIONS.md) extend the set-mode path with bounded full-song processing, native continuation and explicit styles on a worker branch pending coordinator integration. Its [handoff](handoffs/EMF-S19-HANDOFF.md) owns the new evidence; the original pair route gates and processing budgets below remain in place.
+
 ## Run and use the page
 
 From the repository worktree:
@@ -172,7 +174,7 @@ Rendering is deterministic for the same input. Measured cost on the test PC (Win
 
 That is where the bass swap leaves both A and B shelved and high-passed for about 0.4 s, before B's low band is restored. Log-energy flux also grows when the preceding frame is quiet, so the flux value partly restates the same gap. These are the historical S15 measurements; the branch follow-up below changes this timing. Whether the gap is audible is NOT TESTED.
 
-**Bass-swap follow-up (2026-11-15): PARTIAL, pending coordinator review.** Branch `work/bass-swap-gap` starts at main `6d6c072` in an isolated worktree. B now opens before A closes, removing simultaneous bass suppression while preserving complementary four-second faders. No planner, evaluator, threshold, clock, playback owner or browser defaults changed. The generated 120 BPM pair (`makeMixFixture({bpm: 120, tonic: 9})` for each side, `recipe: 'blend'`) changes as follows, measured offline and not heard:
+**Historical bass-swap follow-up (2026-11-15): WARN/blend accepted and merged at `9700276`.** The coordinator accepted the bounded warning result; strict warning-free PASS remains later work. The following table and worker verification are the historical pre-merge evidence. Branch `work/bass-swap-gap` starts at main `6d6c072` in an isolated worktree. B now opens before A closes, removing simultaneous bass suppression while preserving complementary four-second faders. No planner, evaluator, threshold, clock, playback owner or browser defaults changed. The generated 120 BPM pair (`makeMixFixture({bpm: 120, tonic: 9})` for each side, `recipe: 'blend'`) changes as follows, measured offline and not heard:
 
 | Measurement | Before | After |
 | --- | ---: | ---: |

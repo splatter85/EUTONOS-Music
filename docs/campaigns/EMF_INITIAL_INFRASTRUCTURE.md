@@ -3,8 +3,8 @@
 Campaign ID: `campaign-emf-001`  
 Short ID: `EMF`  
 Owner document: this file  
-Status: **IN_PROGRESS - S01-S09, the first S11 increment and S14/S15 DJ transitions in main; S16 rated-takes intake engineering complete with EMS-S01; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`, then S10 owner listening**
-Recorded 2026-11-03; revised 2026-11-14, America/Chicago
+Status: **IN_PROGRESS — S01–S09, the first S11 increment, S14/S15, S17 streaming and S18 set mode are in main for engineering scope; S16 intake is engineering complete with EMS-S01. S19 transitions are built on the worker branch pending coordinator review/merge; coordinator integration and S10 owner listening remain pending.**
+Recorded 2026-11-03; revised 2026-11-16, America/Chicago
 
 Progress estimate: **unknown**; S01 foundation, S02 player and S03 DJ/request checks pass on Windows, macOS and Linux. The corrected S04 branch passes 130 Node tests, 15 native groups and 11 browser report groups on all three OSes, including zero-error exact same-seed replay at 44.1/48 kHz. S05 adds the checked recording → procedural bridge → recording handoff; it passed 143 Node tests, 19 native groups and 12 browser report groups on Windows only. S06 adds a producer-agnostic importer, the performer palette contract and a mock FL producer (no FL Studio ran); it passed 161 Node tests, 23 native groups and 12 browser report groups on Windows only. S07 links the DJ/bridge and sampler into one demo with the imported mock palette in ordinary playback; it passed 161 Node tests, 23 native groups and 15 browser report groups on Windows only. S08 separately proved a bounded FL Studio authoring path on the Windows PC. Physical output, musical acceptance, the full standalone MVP and broader FL control remain unqualified.
 
@@ -83,6 +83,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF-S16** | **PC (COMPLETE engineering scope, 2026-11-14)** | EMF02/06/12 material and taste | S14, EMS-S01 | Import EMS rated takes as owner-local DJ material through the unchanged pack contract, with ratings as labelled taste data. Validate every take in the catalogue; audition only an explicit equal-requested-BPM pair, unreviewed, with a zero-overlap cut and no harmonic assertion. [Contract](../S16_RATED_TAKES.md); no audio published. |
 | **EMF-S17** | **PC (IN MAIN, engineering scope, 2026-11-15)** | EMF05 listening convenience | S14–S16 DJ | Phone listening to the live PC DJ: observational master-output tap, MediaRecorder → loopback relay → one ffmpeg MP3 stream fanned out to phone listeners; allowlisted phone commands executed through the DJ page's own controls. [Guide](../S17_PHONE_LISTENING.md). Real phone, lock screen and listening NOT TESTED. |
 | **EMF-S18** | **PC (IN MAIN for engineering scope, checked on Windows; increment 1 at `1f62ad4`, increments 2+3 merged at `3cf8421`, 2026-11-15; listening NOT TESTED)** | EMF09/11/13 transitions; EMF06 material | S16 | DJ set mode from every love/like rated take. Increment 1: Node-only set intake into one unreviewed zero-route pack (max 32 takes, 512 MiB). Increment 2: any-to-any automatic mix without authored routes, per-song analysis cache, lazy decoding, measured-or-requested bar grids and a route-free crossfade/cut fallback. Increment 3: Studio set page with queue reorder, Next on a 4/8-bar boundary, Auto every 16/32/64 bars (stop or loop at the end) and phone Auto. [Contract](../S18_SET_MODE.md), [handoff](../handoffs/EMF-S18-HANDOFF.md); Windows only; listening NOT TESTED. |
+| **EMF-S19** | **PC (BUILT on branch; pending coordinator review/merge, 2026-11-16)** | EMF09/11/13 transitions | S18 | Bounded full-song analysis/rendering and measured native joins; all five explicit styles (filter sweep, tempo ramp, finite loop-extend, brake and loudness match) and Studio readout. Windows: 492/492 Node tests and full browser gate pass at `fa665ee`; generated fixtures only, physical output/listening NOT TESTED. Branch `work/emf-s19-transitions`; coordinator integrates/publishes. [Guide](../S19_TRANSITIONS.md), [handoff](../handoffs/EMF-S19-HANDOFF.md). |
 | **EMF-S13** | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
 
 ### Exactly when to involve the PC
@@ -158,6 +159,8 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 
 ## Current checkpoint
 
+**S19 BUILT — pending coordinator review/merge (2026-11-16):** full-song smooth blends and all five explicit transition styles are built on `work/emf-s19-transitions` from `3cd8d42`. Tested source `fa665ee9101773c8f05f2c35d3c7276765d51083`: Windows `check` passes 492/492 tests; full `check:browser` passes including 16 set checks and an actual-worker 180 s → 181 s stereo blend. The original near-EOF P2 and coordinator review findings are fixed; independent delta review KEEP. Brake beat phase is UNJUDGED, clamped blends compensate or refuse, Next can prepare before native join, and peak scans use bounded workers. Filter/tempo/loop generated evaluations retain WARN; thresholds are unchanged. No push, merge, owner audio or listening. [Guide](../S19_TRANSITIONS.md), [handoff](../handoffs/EMF-S19-HANDOFF.md). After integration: S10 PC/owner listening, then S12. Overall effort percentage remains unknown.
+
 ### EMS-S01 + EMF-S16 built and locally verified
 
 **COMPLETE (engineering scope), 2026-11-14; all gates passed; local main integration/readback verified at `7b3b7ae602fab01cb06f8e2ea630e4d40fbe1aae`.** Music source `8e3147814eeb2c2254a1d2c96232a60ad520a40f`; owner-local exporter `8b145c218fd776c0fda8505edae9926a398ed064` integrated and 18 tests passed. Actual export and intake each retain 43 takes (3 love, 6 like, 34 dislike); all 129 export files independently match hashes/bytes. Explicit two-love-take requested-128-BPM audition remains unreviewed and direct zero-overlap only. Studio's 13 checks and server's 7 tests passed; independent final review KEEP after corrections. No public publication, physical output or listening; macOS/Linux not run. [Export handoff](../handoffs/EMS-S01-HANDOFF.md), [intake handoff](../handoffs/EMF-S16-HANDOFF.md). Next: S10 owner listening, then S12.
@@ -171,7 +174,7 @@ All required checks and EMF19 must be satisfied for full completion. A provider 
 - **Integration:** merged into main as `17279e5`.
 - **Checks (Windows only):** on main, 408/408 Node tests and `check:browser` (37 results plus the Studio's 10 checks) passed. macOS and Linux were not run.
 - **Owner-local FL pair:** A reads 60 BPM marked ambiguous, or 120 with a hint. No automatic candidate qualifies, so the DJ uses the authored crossfade.
-- **Open:** the evaluator is not wired live. It flags a 0.4 s low-band gap in the S14 bass swap, measured but not heard. Listening is NOT TESTED.
+- **Open:** the evaluator is not wired live. Its original 0.4 s S14 bass-swap finding was addressed by merged `9700276`; the generated target is now admitted WARN/blend, with strict PASS still open. [Measurements](../DJ_TRANSITIONS.md). Listening is NOT TESTED.
 
 See the [S15 handoff](../handoffs/EMF-S15-HANDOFF.md).
 
