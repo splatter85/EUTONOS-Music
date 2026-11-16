@@ -10,7 +10,7 @@
 
 **Base:** origin/main `3cd8d42ac74ab91b499064369ed51802d57c1572`.
 
-**Final tested source:** `9719024767e5571b47d5d45322b0745182a4faeb`. The later containing documentation SHA is reported in the chat handback; it cannot name itself here.
+**Final tested source:** `fa665ee9101773c8f05f2c35d3c7276765d51083` (coordinator review fixes, 2026-11-16). The later containing documentation SHA is reported in the chat handback; it cannot name itself here.
 
 **Delivery:** local worker commits/readback only, no push or merge. The coordinator owns integration, publication and native filing.
 
@@ -39,7 +39,9 @@ Auto's default recipe order remains unchanged; new styles are opt-ins. Requested
 - `acfd1ebe2106e261b9cbc67c76267e81665101cb`: full-song analysis/window rendering/native continuation.
 - `f8499c30eb46d0d459dab66a76449e1f54720187`: loudness match/filter sweep and their browser paths.
 - `cf1d8a5830aab00fdb6642f67baaf4122b905f85`: tempo ramp, finite loop extension and brake.
-- `9719024767e5571b47d5d45322b0745182a4faeb`: final source after independent review's near-EOF rate-map fix.
+- `9719024767e5571b47d5d45322b0745182a4faeb`: original handback source after the near-EOF rate-map fix.
+- `492c6b9663eb83b0fd4d6066099a379fe9132302`: coordinator review fixes and bounded peak workers.
+- `fa665ee9101773c8f05f2c35d3c7276765d51083`: injected Node runtime peak capabilities, final tested source.
 - Documentation checkpoints preserve recovery history; the final docs reconcile S17/S18's in-main state and mark S19 pending coordinator integration.
 
 Principal paths: `src/mix-analysis.ts`, `audio-analysis.ts`, `mix-prepare.ts`, `mix-worker.ts`, `mix-transition.ts`, `mix-planner.ts`, `mix-automation.ts`, `mix-evaluate.ts`, `time-pitch.ts`, `web-audio.ts`, `player.ts`, `dj.ts`; `web/studio.html`, `web/studio.ts`, `web/set-mode.ts`; existing affected tests and `tests/helpers/synthetic-set.ts`; additive checks in `scripts/set-browser-check.ts`.
@@ -52,10 +54,10 @@ All final gates ran on Windows at the exact tested source above, before the fina
 
 | Command/check | Result |
 | --- | --- |
-| `npm.cmd run check` | PASS: 489/489 Node tests, 0 failures/skips; deterministic fixture verification, all six WAV metadata/hash checks and S11 library demo pass. |
+| `npm.cmd run check` | PASS: 492/492 Node tests, 0 failures/skips; deterministic fixture verification, all six WAV metadata/hash checks and S11 library demo pass. |
 | `npm.cmd run check:browser` | PASS: 24 native offline checks, 16 browser checks, 4 S11 groups / 24 paired cases, 15 Studio checks, 21 mix results, 8 phone checks and 16 set checks; reports contain no errors. |
 | `git diff --check` | PASS |
-| Tracked Markdown relative file targets | 102 Markdown files / 859 relative file targets; 0 missing. |
+| Tracked Markdown relative file targets | 102 Markdown files / 860 relative file targets; 0 missing. |
 | macOS / Linux / physical output / listening / real owner songs | NOT RUN / NOT TESTED |
 
 ### Full-song and browser measurements
@@ -77,9 +79,9 @@ The numeric `mix-evaluation-thresholds@1` values are unchanged. WARN is admissib
 | Filter sweep | WARN: loudness | -14.692 | -0.002 / -1.616 | 3.728 |
 | Tempo ramp | WARN: loudness, low-band build-up | -14.644 | +1.247 / -0.641 | 3.000 |
 | Loop-extend | WARN: loudness, low-band build-up | -14.485 | +2.670 / -1.098 | 5.724 |
-| Brake | PASS, intentional cut-like boundary | -14.430 | 0 / -0.008 | 36.785, measured but unjudged |
+| Brake | PASS for judged metrics; phase UNJUDGED | -14.430 | 0 / -0.008 | 36.785, measured but unjudged |
 
-Brake judges B's entry beat only; A intentionally leaves the grid, and its intentional boundary flux is not scored as smooth-blend flux. The report discloses that scope. Smooth styles retain through-overlap phase/flux evaluation. Runtime peak admission is a **sample-peak** bound, not a true-peak limiter; true peak above is the offline evaluator's measurement.
+Brake beat phase is **UNJUDGED**, with null errors and an explicit reason: B cue membership is not an independent comparison with A's changing grid. Intentional boundary flux is also unjudged. Its overall PASS refers only to the remaining judged metrics; it does not qualify beat alignment. Smooth styles retain through-overlap phase/flux evaluation. Runtime peak admission is a **sample-peak** bound, not a true-peak limiter; true peak above is the offline evaluator's measurement.
 
 Loudness fixture: raw B−A difference **12.036820 LU**, before matching relative to A's fixed gain **18.057420 LU**, matched difference **0 LU** (`fromGain=.5`, `toGain=.125063040189`). Matching and targets describe bounded measured windows, not whole songs.
 
@@ -101,12 +103,29 @@ A separate read-only Sol/high review found one reproducible P2, fixed before ful
 | Native-rate → loop phase is only nominal | Scheduled complementary 20 ms branch splice rather than a hard switch at an assumed sample phase; actual browser jump check. |
 | **P2 near-EOF slowdown lifetime uses old unity duration** | Validate integrated native consumption, allow output duration beyond old unity EOF, and use inverse-rate output availability offline. Preserve old EOF for pre-S cancellation; near-EOF admission/exhaustion regressions. The two new regressions failed before the fix; the focused run passes 5/5. Obsolete unity EOF gain gates are cleared for the slowdown and restored on cancellation/rollback. |
 
-No known unaddressed source finding remains from the bounded review. WARN metrics and unqualified inputs below remain explicit risks.
+### Coordinator review corrections (2026-11-16)
+
+The coordinator independently found three medium issues after the original worker handback. Source `492c6b9663eb83b0fd4d6066099a379fe9132302` addresses them and the low items below. Independent delta review returned KEEP. The final tested source adds the Node runtime capability correction; both replacement full gates pass as recorded above.
+
+| Coordinator item | Correction / disposition |
+| --- | --- |
+| M1: brake phase is zero by cue membership | Report beat phase **UNJUDGED**, null errors, `judged:false` and a reason. A displaced B grid cannot manufacture a phase pass. Numerical thresholds are unchanged. |
+| M2: clamped processed body joins louder native B | Always undo processor normalization, within existing sample-peak/effective-gain limits; otherwise refuse preparation and use the labeled fallback. A genuine peak-clamped render covers refusal. |
+| M3: transition slot stays busy until native join | Free the set slot at max(outgoing envelope/tail end, incoming fade end). Retain the finishing prepared node plus already-scheduled native node within B's voice. Next/DJ preparation is accepted before the join; the new exit must be at/after the join. Cancellation preserves it; Stop/release handle both nodes. |
+| L4: delayed S→T measurement scope | Loudness and low-band build-up windows span S→E. Loudness uses continuing A through the prelude, covered by an injected-delay-dip regression. Build-up compares processed sides and cannot independently establish bass-loss continuity in A-only material. |
+| L5: loop allocation before protected cleanup | Allocate/connect the loop and splice branches inside the guarded block; clean partial allocations/connections on throw. Four allocation/connect failure modes are covered. |
+| L6: whole-native peak scan on UI thread | Use sequential worker chunks capped at 3,000,000 channel samples / 60 s, with private copies, validated chunk receipts, cached full-recording provenance, failed-cache eviction and abort checks. Non-browser injected runtimes provide `scanPeak`; browser omission uses worker transport, exercised by the full gate. |
+| L7: 20 ms comb-filter risk | Explicit S10 listening check for phase/comb-filter coloration at processed/native and loop splices; sample continuity does not establish sound quality. |
+
+Focused Windows checks: build PASS; 10 distinct affected tests PASS across two filtered runs, then one affected lifecycle recheck PASS. Independent read-only Sol/high review of `0524ed0` → `492c6b9` returned KEEP with no material findings; it inspected source/regressions and reused focused execution evidence, running no tests itself. The final full gate initially exposed three Node-only recipe tests whose injected runtimes omitted the new peak-scan capability. Their providers now explicitly inject the pure scanner, with the runtime contract documented; no synchronous browser fallback was added. The affected recipe tests pass within the final 492/492 run. Both full gates now pass at the final tested source, including real browser peak-worker transport. WARN metrics and unqualified inputs remain explicit risks.
+
+The first restricted full-gate attempt could not connect to loopback test servers (`EACCES`); the authorized run then exposed the three missing Node runtime capabilities described above. Those are fixed and the final gates both exit 0. Failed logs are preserved as `artifacts/s19/review-check.sandbox.log` and `review-check.integration.log`; final logs/exit readbacks are `review-check.log`, `review-browser.log` and their `.exit` files. No runtime setting or external installation changed.
 
 ## Limits and delivery boundary
 
 - Generated fixtures establish engineering behavior only. Real owner songs, musical artifacts, physical output, listening, real phone/lock-screen behavior, other browser versions and macOS/Linux remain unverified.
 - Selected-minute evidence cannot establish whole-song tempo stability, local harmony, stems or vocal-free content. Loop periodicity/energy checks and supplied vocal exclusions are heuristics.
+- The 20 ms processed/native and loop splices may have phase or comb-filter coloration; actual listening is required.
 - WSOLA can smear/repeat transients. The native-rate map is nominal because browser playback-rate automation is block-rate; pitch movement is deliberate for ramp/brake.
 - Filter, tempo and loop fixtures still WARN; thresholds were not relaxed. No blanket claim is made for arbitrary pairs, seeds or source rates.
 - `workflow prepare closeout` returned its semantic prompts after retrying with metadata access. Native filing would write catalog/work/RAM records excluded by this assignment, so no filing ran and no receipt is claimed. The coordinator owns that step.
