@@ -1,6 +1,6 @@
 # EMF-S18 DJ set mode
 
-Scope: **EMF-S18, IN PROGRESS.** Increment 1 (rated set intake) is in main. Increments 2 (set playback) and 3 (Studio set UI and phone Auto) are built on `work/emf-s18-set-mode` and are **pending coordinator merge**. Evidence is in the [EMF-S18 handoff](handoffs/EMF-S18-HANDOFF.md). The [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status; [Current Tasks](CURRENT_TASKS.md) owns pickup. This slice builds on [S16 rated takes](S16_RATED_TAKES.md).
+Scope: **EMF-S18, IN MAIN (engineering scope, Windows only).** Increment 1 (rated set intake), increment 2 (set playback) and increment 3 (Studio set UI and phone Auto) are in main (merge `3cf8421`). Listening is NOT TESTED. Evidence is in the [EMF-S18 handoff](handoffs/EMF-S18-HANDOFF.md). The [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status; [Current Tasks](CURRENT_TASKS.md) owns pickup. This slice builds on [S16 rated takes](S16_RATED_TAKES.md).
 
 ## Goal
 

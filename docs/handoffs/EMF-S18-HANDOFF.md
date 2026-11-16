@@ -2,7 +2,7 @@
 
 **Campaign:** EMF / `campaign-emf-001`
 **Slice:** EMF-S18 DJ set mode
-**Disposition:** IN PROGRESS. Increments 2 and 3 are **pending coordinator merge**. Increment 1 is in main at `1f62ad4`.
+**Disposition:** IN MAIN for engineering scope (Windows only). Increment 1 at `1f62ad4`; increments 2 and 3 reviewed (two medium findings fixed in `1e9c49f`) and merged at `3cf8421`. Listening, real songs and the real phone are NOT TESTED.
 **Environment:** PC. Windows 11 Pro, Node v26.13.0, headless Chromium 151.0.7922.34.
 **Inspected base SHA / branch:** main `9700276` → branch `work/emf-s18-set-mode` (worktree `.claude/worktrees/emf-s18-set-mode`).
 **Publication:** local branch commits only. Nothing was pushed or merged; the coordinator owns integration.
@@ -140,4 +140,4 @@ Last verified state: branch head after the docs commit, with both gates passing 
 
 ## Closeout
 
-The campaign and Current Tasks rows say "pending coordinator merge". This file and the S18 contract are updated on the branch. The coordinator publishes, merges and sends the owner mini handoff.
+Coordinator merged into main at `3cf8421` after review, re-ran `npm run check` and `npm run check:browser` on main (Windows), updated the campaign and Current Tasks rows and pushed.
