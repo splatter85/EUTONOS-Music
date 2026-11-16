@@ -751,7 +751,10 @@ export class SmallPlayer {
       outgoing.transitionMixOut(effect, exitBuffer - plan.preRollFrames, outgoingAutomation,
         {...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}), ...(loopBuffer ? {loopBuffer} : {})});
       const joinAt = prepared.nativeJoin ? this.clock.stamp(at.frame + prepared.nativeJoin.outputFrame - prepared.entryFrame) : null;
-      const end = joinAt ?? this.clock.stamp(at.frame + plan.overlapFrames);
+      // The next request may prepare while B returns to native tempo; its voice still owns
+      // both the finishing entry and the ahead-scheduled native join.
+      const end = this.clock.stamp(Math.max(effect.frame + plan.automation.outgoing.durationFrames,
+        at.frame + plan.automation.incoming.durationFrames));
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'},
         set: {asset: toAsset, offset: prepared.entryFrame, mapping: prepared.mapping,
           ...(prepared.sourceStartFrame !== undefined ? {sourceStartFrame: prepared.sourceStartFrame} : {}),

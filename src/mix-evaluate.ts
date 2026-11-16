@@ -94,8 +94,9 @@ export interface TransitionMeasurements {
     readonly shortTermMaxUpLu: number | null; readonly shortTermMaxDownLu: number | null;
   };
   readonly lowBuildUp: {readonly maxDb: number | null; readonly band: string | null};
-  /** Null when no analyses were supplied or no B beat falls inside the compared window. */
-  readonly beatPhase: {readonly maxError: number | null; readonly meanError: number | null; readonly beats: number};
+  /** Unjudged when no independent shared grid is available; never turn cue membership into a pass. */
+  readonly beatPhase: {readonly maxError: number | null; readonly meanError: number | null; readonly beats: number;
+    readonly judged: boolean; readonly reason?: string};
   readonly boundaryFlux: {readonly excessDb: number | null; readonly atFrame: number | null; readonly judged: boolean};
   readonly sampleJumpRatio: number | null;
   readonly silenceGapMs: number;
@@ -353,15 +354,14 @@ function windows(length: number, size: number, hop: number, from: number, to: nu
  * beat grids mapped through the spec, not beats detected in the rendered mix. */
 function beatPhase(render: TransitionRender, spec: TransitionSpec,
   analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis}): TransitionMeasurements['beatPhase'] {
+  const unjudged = (reason: string): TransitionMeasurements['beatPhase'] =>
+    ({maxError: null, meanError: null, beats: 0, judged: false, reason});
+  if (spec.recipe === 'brake') return unjudged('Brake deliberately leaves A\'s grid; B cue membership is not an independent phase comparison.');
   const fromBpm = analysis.from.tempo.bpm;
   if (fromBpm === null || !analysis.from.beatGrid.frames.length || !analysis.to.beatGrid.frames.length) {
-    return {maxError: null, meanError: null, beats: 0};
+    return unjudged('Both measured beat grids are required.');
   }
   const rate = render.sampleRate, period = 60 * rate / fromBpm;
-  if (spec.recipe === 'brake') {
-    const error = Math.min(...analysis.to.beatGrid.frames.map(f => Math.abs(f - spec.toEntryFrame))) / (60 * rate / analysis.to.tempo.bpm!);
-    return {maxError: error, meanError: error, beats: 1}; // B entry only; A deliberately leaves its grid
-  }
   if (spec.nativeRate?.incoming) {
     const ramps = spec.nativeRate;
     const grid = analysis.from.beatGrid.frames.map(f => render.S + nativeRateOutputAt(ramps.outgoing, f - spec.fromStartFrame));
@@ -372,11 +372,11 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
         const speed = ramps.outgoing.start + (ramps.outgoing.end - ramps.outgoing.start) * k / ramps.outgoing.frames;
         return distance / (period / speed);
       });
-    return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length, beats: errors.length} : {maxError: null, meanError: null, beats: 0};
+    return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length, beats: errors.length, judged: true} : unjudged('No B beat falls inside the compared window.');
   }
   const aIndex = (f: number) => render.S + (f - spec.fromStartFrame) + (spec.entryDelayFrames ?? 0);
   const grid = analysis.from.beatGrid.frames.map(aIndex).filter(n => n <= render.T + period);
-  if (!grid.length) return {maxError: null, meanError: null, beats: 0};
+  if (!grid.length) return unjudged('No A beat falls inside the compared window.');
   // Cut and echo keep B at its native tempo by design, so only B's entry beat is judged.
   const native = spec.recipe === 'cut' || spec.recipe === 'echo-out';
   const end = native ? render.T + period * 1.01 : Math.max(render.E, render.T + 4 * period);
@@ -385,9 +385,9 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
     .map(g => render.T + (g - spec.toEntryFrame) / spec.tempoRatio)
     .filter(n => n >= render.T - 1 && n <= end)
     .map(n => { const x = (n - anchor) / period; return Math.abs(x - Math.round(x)); });
-  if (!errors.length) return {maxError: null, meanError: null, beats: 0};
+  if (!errors.length) return unjudged('No B beat falls inside the compared window.');
   return {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length,
-    beats: errors.length};
+    beats: errors.length, judged: true};
 }
 
 /** All measurements on one render. Pure and deterministic. */
@@ -499,7 +499,8 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
     loudness: {momentaryMaxUpLu: momentary.up, momentaryMaxDownLu: momentary.down,
       shortTermMaxUpLu: shortTerm.up, shortTermMaxDownLu: shortTerm.down},
     lowBuildUp: {maxDb: lowMax, band: lowBand},
-    beatPhase: analysis ? beatPhase(render, spec, analysis) : {maxError: null, meanError: null, beats: 0},
+    beatPhase: analysis ? beatPhase(render, spec, analysis) : {maxError: null, meanError: null, beats: 0,
+      judged: false, reason: 'No measured beat analyses were supplied.'},
     boundaryFlux: {excessDb: excess, atFrame: excessAt, judged: isSmoothRecipe(spec.recipe)},
     sampleJumpRatio: jump, silenceGapMs: gap * 10, stereoCorrelation: correlation,
     ...(spec.levelMatch ? {levelMatch: {rawDeltaLu: spec.levelMatch.rawDeltaLu, beforeDeltaLu: spec.levelMatch.beforeDeltaLu,
@@ -522,7 +523,7 @@ export function judgeTransition(recipe: MixRecipe, m: TransitionMeasurements): O
     .filter((v): v is number => v !== null);
   check('loudness', loud.length ? Math.max(...loud) : null, t.loudnessLu, 'largest deviation from the A-to-B interpolation, either direction');
   check('lowBuildUp', m.lowBuildUp.maxDb, t.lowBuildUpDb, m.lowBuildUp.band ?? undefined);
-  check('beatPhase', m.beatPhase.maxError, t.beatPhase);
+  if (m.beatPhase.judged) check('beatPhase', m.beatPhase.maxError, t.beatPhase);
   if (m.boundaryFlux.judged) check('boundaryFlux', m.boundaryFlux.excessDb, t.boundaryFluxDb);
   check('sampleJump', m.sampleJumpRatio, t.sampleJumpRatio);
   check('silenceGap', m.silenceGapMs, t.silenceGapMs);

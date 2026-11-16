@@ -93,11 +93,30 @@ test('motion evaluator uses explicit native-rate models and actual bounded WSOLA
     const result = evaluateTransition(from, to, planTransitionSpec(plan), analysis, prepared);
     assert.equal(result.measurements!.boundaryFlux.judged, recipe !== 'brake');
     assert.equal(result.bSource, recipe === 'tempo-ramp' ? 'native-rate-model' : recipe === 'loop-extend' ? 'prepared' : 'native');
-    assert.ok(result.measurements!.beatPhase.maxError! < 0.05, JSON.stringify(result.measurements!.beatPhase));
+    const phase = result.measurements!.beatPhase;
+    if (recipe === 'brake') {
+      assert.deepEqual([phase.maxError, phase.meanError, phase.beats, phase.judged], [null, null, 0, false]);
+      assert.match(phase.reason!, /not an independent phase comparison/);
+      assert.equal(flagged(result, 'beatPhase'), undefined, 'an unjudged brake phase is never reported as a measured zero');
+    } else { assert.equal(phase.judged, true); assert.ok(phase.maxError! < 0.05, JSON.stringify(phase)); }
     assert.equal(result.measurements!.silenceGapMs, 0);
     rows.push({recipe, verdict: result.verdict, flags: result.flags, bSource: result.bSource, measurements: result.measurements});
   }
   console.log('S19 motion evaluator: ' + JSON.stringify(rows));
+});
+
+test('delayed prelude loudness is measured from S while low-end remains a processed-side build-up metric', () => {
+  const duration = 3 * rate, delay = 2 * rate;
+  const spec: TransitionSpec = {recipe: 'loop-extend', fromStartFrame: start, preRollFrames: 0,
+    entryDelayFrames: delay, toEntryFrame: 2 * rate, tempoRatio: 1,
+    automation: {outgoing: automation(duration, [{frame: 0, value: 1}, {frame: rate / 10, value: 0.05},
+      {frame: delay - rate / 10, value: 0.05}, {frame: delay, value: 1}, {frame: duration, value: 0}]),
+      incoming: automation(rate, curve(rate, x => Math.sin(x * Math.PI / 2)))}};
+  const result = evaluateTransition(tone(55, 0.2), noise(2, 0.1), spec);
+  assert.ok(result.measurements!.loudness.momentaryMaxDownLu! < -20, JSON.stringify(result.measurements!.loudness));
+  assert.equal(flagged(result, 'loudness')!.level, 'fail', 'an A-only prelude dip is included before B starts');
+  assert.ok(result.measurements!.lowBuildUp.maxDb! < MIX_EVALUATION_THRESHOLDS.lowBuildUpDb.fail,
+    'processed-side build-up comparison cannot independently flag lost A bass');
 });
 
 test('selected smooth styles retain flux checks; matched loudness uses an explicit gain-adjusted target', () => {

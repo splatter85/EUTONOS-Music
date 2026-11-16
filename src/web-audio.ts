@@ -104,6 +104,8 @@ export class RecordedSource implements PlayableSource {
   private generation = -1;
   private node: AudioBufferSourceNode | null = null;
   private continuationNode: AudioBufferSourceNode | null = null;
+  /** Processed entry may still play while its already-scheduled native node owns a future exit. */
+  private finishingEntryNode: AudioBufferSourceNode | null = null;
   private loopNode: AudioBufferSourceNode | null = null;
   private loopSplice: {original: GainNode; entry: GainNode} | null = null;
   private readonly entryRate: NativeRateRamp | null;
@@ -179,7 +181,12 @@ export class RecordedSource implements PlayableSource {
     const entryNode = this.node;
     this.node.onended = () => {
       entryNode.disconnect();
-      if (continuation || this.loopNode) return; // a scheduled owned continuation owns EOF
+      if (continuation) {
+        this.entryGain?.disconnect(); this.entryGain = null;
+        if (this.finishingEntryNode === entryNode) this.finishingEntryNode = null;
+        return; // the already-scheduled native continuation owns EOF
+      }
+      if (this.loopNode) return;
       if (this.phase !== 'released') this.phase = 'ended';
       this.gain?.disconnect();
       this.levelNode?.disconnect();
@@ -265,7 +272,7 @@ export class RecordedSource implements PlayableSource {
     // Only an entry that ends exactly neutral may later be replaced by the direct connection.
     this.mixEntryEndFrame = !automation.echo && automation.gain.at(-1)!.value === 1 &&
       automation.lowShelfDb.at(-1)!.value === 0 && automation.highPassHz.at(-1)!.value === 0 &&
-      automation.lowPassHz.at(-1)!.value === nyquist ? Math.max(at.frame + automation.durationFrames, this.continuationAt ?? 0) : null;
+      automation.lowPassHz.at(-1)!.value === nyquist ? at.frame + automation.durationFrames : null;
     this.start = {at: {...at}, entryCueId: 'mix-entry'};
     this.entryFrame = entryOffsetFrames;
     this.finishFrame = at.frame + lifetime + (this.entryRate ? 256 : 0);
@@ -307,6 +314,8 @@ export class RecordedSource implements PlayableSource {
       'Start before a mix exit; one automation graph owns each source.');
     this.checkStamp(at);
     const rate = this.clock!.sampleRate;
+    requireAudio(this.continuationAt === null || at.frame >= this.continuationAt,
+      'A following mix exit must wait for the scheduled native join.');
     validateMixAutomation(automation, rate);
     requireAudio(!automation.echo || this.levelGain === 1, 'Echo master return requires unity fixed source gain.');
     requireAudio(Number.isSafeInteger(sourceOffsetFrames) && sourceOffsetFrames >= this.entryFrame &&
@@ -324,14 +333,16 @@ export class RecordedSource implements PlayableSource {
       automation.lowShelfDb[0]!.value === 0 && automation.highPassHz[0]!.value === 0 &&
       automation.lowPassHz[0]!.value === rate / 2,
     'An outgoing mix starts neutral and ends at zero gain.');
-    const loop = extra.loopBuffer ? this.context.createBufferSource() : null;
-    if (loop) {
-      loop.buffer = extra.loopBuffer!;
-      this.loopSplice = {original: this.context.createGain(), entry: this.context.createGain()};
-      this.loopSplice.entry.connect(this.gain!); loop.connect(this.loopSplice.entry);
-    }
-    const graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation);
+    let loop: AudioBufferSourceNode | null = null, graph: MixAutomationGraph | null = null;
+    let original: GainNode | null = null, entry: GainNode | null = null;
     try {
+      if (extra.loopBuffer) {
+        loop = this.context.createBufferSource(); loop.buffer = extra.loopBuffer;
+        original = this.context.createGain(); entry = this.context.createGain();
+        this.loopSplice = {original, entry};
+        entry.connect(this.gain!); loop.connect(entry);
+      }
+      graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation);
       if (extra.rate) {
         // A settled mix entry may have a unity-rate EOF gate beyond this exit's start.
         this.gain!.gain.cancelScheduledValues(this.naturalEndFrame / rate);
@@ -349,9 +360,10 @@ export class RecordedSource implements PlayableSource {
       } else this.node!.stop((at.frame + automation.durationFrames) / rate);
     } catch (error) {
       try { loop?.stop(this.context.currentTime); } catch { /* release below */ }
-      try { graph.restore(); } catch { /* preserve the scheduling error; caller releases B */ }
+      try { graph?.restore(); } catch { /* preserve the scheduling error; caller releases B */ }
       loop?.disconnect();
       this.restoreLoopSplice();
+      original?.disconnect(); entry?.disconnect(); // also cover a partial splice allocation
       if (extra.rate) { this.node!.playbackRate.cancelScheduledValues(at.frame / rate); this.node!.playbackRate.setValueAtTime(1, at.frame / rate); this.exitRate = false; }
       if (extra.rate && this.start.entryCueId === 'mix-entry' && !this.entryRate)
         this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
@@ -380,8 +392,11 @@ export class RecordedSource implements PlayableSource {
     if (this.clock!.currentFrame < this.mixEntryEndFrame) return false;
     this.mixGraph.restore(); this.mixGraph = null;
     if (this.continuationNode) {
-      this.node!.onended = null; this.node!.disconnect();
-      this.entryGain!.disconnect(); this.entryGain = null;
+      if (this.clock!.currentFrame < this.continuationAt!) this.finishingEntryNode = this.node;
+      else {
+        this.node!.onended = null; this.node!.disconnect();
+        this.entryGain?.disconnect(); this.entryGain = null;
+      }
       this.node = this.continuationNode; this.continuationNode = null;
     }
     this.mixEntryEndFrame = null;
@@ -427,6 +442,7 @@ export class RecordedSource implements PlayableSource {
     this.gain!.gain.setValueAtTime(0, when);
     this.node!.stop(when);
     this.continuationNode?.stop(when);
+    this.finishingEntryNode?.stop(when);
     this.loopNode?.stop(when);
     this.finishFrame = at.frame;
     this.phase = 'stopping';
@@ -445,6 +461,10 @@ export class RecordedSource implements PlayableSource {
       this.continuationNode.onended = null;
       if (this.start) this.continuationNode.stop(this.context.currentTime);
       this.continuationNode.disconnect(); this.continuationNode = null;
+    }
+    if (this.finishingEntryNode) {
+      this.finishingEntryNode.onended = null; this.finishingEntryNode.stop(this.context.currentTime);
+      this.finishingEntryNode.disconnect(); this.finishingEntryNode = null;
     }
     if (this.loopNode) { this.loopNode.onended = null; this.loopNode.stop(this.context.currentTime); this.loopNode.disconnect(); this.loopNode = null; }
     this.loopSplice?.original.disconnect(); this.loopSplice?.entry.disconnect(); this.loopSplice = null;

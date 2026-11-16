@@ -1,6 +1,6 @@
 import {analyzeMixPairInWorker, analyzeMixSongInWorker, monoAnalysisCopy, prepareTimePitch,
-  SONG_ANALYSIS_WINDOW, songLevelWindowFrames, validateSongAnalysis, prepareFiniteLoop} from './mix-prepare.js';
-import {MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, nativeSamplePeak, type NativeSamplePeak, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
+  SONG_ANALYSIS_WINDOW, songLevelWindowFrames, validateSongAnalysis, prepareFiniteLoop, scanNativePeakInWorker} from './mix-prepare.js';
+import {MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, type NativeSamplePeak, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
 import {planAutomaticMix, isBeatmatchedRecipe, withPreparedLevelGain, LEVEL_MATCH_LIMITS,
   type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
 import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedFiniteLoop, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
@@ -14,12 +14,15 @@ export interface MixPreparationRuntime {
   /** S18 optional: one song (mono). Without it, set mode analyzes the mono copy through `analyze`. */
   analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions, levelAudio?: MixPcm): Promise<MixAnalysis>;
   renderLoop?(audio: MixPcm, loopFrames: number, tailFrames: number, bars: 4 | 8, levelGain: number, signal?: AbortSignal): Promise<PreparedFiniteLoop>;
+  /** Full-song peak only; browser default scans bounded worker chunks, never main-thread DSP. */
+  scanPeak?(audio: MixPcm, signal?: AbortSignal): Promise<NativeSamplePeak>;
 }
 export const browserMixPreparation: MixPreparationRuntime = {
   analyze: analyzeMixPairInWorker,
   render: prepareTimePitch,
   analyzeOne: analyzeMixSongInWorker,
   renderLoop: prepareFiniteLoop,
+  scanPeak: scanNativePeakInWorker,
 };
 export interface ReadyMixTransition {
   readonly kind: 'ready'; readonly plan: AutomaticMixPlan;
@@ -79,11 +82,15 @@ export async function prepareOutgoingLoop(context: BaseAudioContext, from: Decod
 
 /** Reconcile the processor's common attenuation before a fixed native-continuation gain. */
 function preparedLevel(plan: AutomaticMixPlan, processed: PreparedTimePitch): {plan: AutomaticMixPlan; pcmScale: number} {
-  if (!plan.levelMatch) return {plan, pcmScale: 1};
   const renderGain = processed.metrics.gainApplied;
   if (!Number.isFinite(renderGain) || renderGain <= 0 || renderGain > 1) throw new Error('Invalid processor normalization receipt.');
   let peak = 0;
   for (const channel of processed.audio.channels) for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+  if (!plan.levelMatch) {
+    if (1 / renderGain > LEVEL_MATCH_LIMITS.maxGain + 1e-7 || peak / renderGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7)
+      throw new Error('Processor normalization cannot be compensated within the native-continuation sample-peak ceiling.');
+    return {plan, pcmScale: 1 / renderGain};
+  }
   const gain = Math.min(plan.levelMatch.toGain, peak ? plan.levelMatch.incomingPeakBudget * renderGain / peak : plan.levelMatch.toGain);
   if (gain / renderGain > LEVEL_MATCH_LIMITS.maxGain + 1e-7) throw new Error('Processor normalization compensation exceeds the bounded effective gain.');
   const resolved = withPreparedLevelGain(plan, gain);
@@ -126,7 +133,10 @@ export async function renderPlannedMix(context: BaseAudioContext,
   checkAbort(signal);
   const b = pcm(to);
   if (plan.recipe === 'tempo-ramp' || plan.recipe === 'brake') {
-    for (const channel of b.channels) for (const value of channel) if (!Number.isFinite(value) || Math.abs(value) > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Native rate entry failed sample-peak/finite validation.');
+    const peak = await (runtime.scanPeak ?? scanNativePeakInWorker)(b, signal);
+    checkAbort(signal);
+    if (peak.version !== 'native-sample-peak@1' || peak.frames !== to.buffer.length || !Number.isFinite(peak.value) ||
+      peak.value < 0 || peak.value > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Native rate entry failed sample-peak/finite validation.');
     return {kind: 'ready', plan, analysis, entryFrame: plan.toEntryFrame,
       incoming: {...to, ...(plan.nativeRate?.incoming ? {nativeRate: plan.nativeRate.incoming} : {})},
       processed: {processor: 'native-rate@1', audio: b, metrics: null,
@@ -134,11 +144,10 @@ export async function renderPlannedMix(context: BaseAudioContext,
   }
   if (!isBeatmatchedRecipe(plan.recipe)) {
     // Native B is already decoded: do not fabricate a WSOLA render/receipt.
-    for (const channel of b.channels) for (const value of channel) {
-      if (!Number.isFinite(value) || Math.abs(value) > 0.891251) {
-        throw new Error('Native mix audio failed peak/finite validation.');
-      }
-    }
+    const peak = await (runtime.scanPeak ?? scanNativePeakInWorker)(b, signal);
+    checkAbort(signal);
+    if (peak.version !== 'native-sample-peak@1' || peak.frames !== to.buffer.length || !Number.isFinite(peak.value) ||
+      peak.value < 0 || peak.value > 0.891251) throw new Error('Native mix audio failed peak/finite validation.');
     if (plan.toEntryFrame + plan.overlapFrames > to.buffer.length ||
         plan.fromExitFrame + plan.overlapFrames > from.buffer.length) {
       throw new Error('Native mix lifetime does not cover the tail.');
@@ -229,7 +238,7 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
  */
 export class MixAnalysisCache {
   private readonly entries = new Map<string, Promise<SongAnalysisResult>>();
-  private readonly peaks = new WeakMap<AudioBuffer, NativeSamplePeak>();
+  private readonly peaks = new WeakMap<AudioBuffer, Promise<NativeSamplePeak>>();
   constructor(readonly maxEntries = 64) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 2 || maxEntries > 256) throw new Error('Invalid analysis cache size.');
   }
@@ -260,11 +269,19 @@ export class MixAnalysisCache {
             analysis = (await runtime.analyze(mono, mono)).from;
           }
           validateSongAnalysis(analysis, mono.channels[0].length, buffer.sampleRate);
-          let peak = this.peaks.get(buffer);
-          if (!peak) {
-            peak = nativeSamplePeak({sampleRate: buffer.sampleRate, channels: Array.from({length: buffer.numberOfChannels}, (_, c) => buffer.getChannelData(c))});
-            this.peaks.set(buffer, peak);
+          let peakTask = this.peaks.get(buffer);
+          if (!peakTask) {
+            peakTask = (runtime.scanPeak ?? scanNativePeakInWorker)({sampleRate: buffer.sampleRate,
+              channels: Array.from({length: buffer.numberOfChannels}, (_, c) => buffer.getChannelData(c))}).then(peak => {
+              if (peak.version !== 'native-sample-peak@1' || peak.frames !== buffer.length || !Number.isFinite(peak.value) ||
+                peak.value < 0 || peak.value > 16) throw new Error('Native peak evidence does not match the full recording.');
+              return peak;
+            });
+            this.peaks.set(buffer, peakTask);
+            const pending = peakTask;
+            void pending.catch(() => { if (this.peaks.get(buffer) === pending) this.peaks.delete(buffer); });
           }
+          const peak = await peakTask;
           // A legacy runtime that measured only the mono tempo copy cannot claim stereo levels.
           const {level: measuredLevel, ...rawAnalysis} = analysis;
           analysis = {...rawAnalysis, ...(measuredLevel?.channels === buffer.numberOfChannels ?

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio, measureMixLevel, MIX_ANALYSIS_LIMITS} from '../src/mix-analysis.js';
+import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, MIX_ANALYSIS_LIMITS} from '../src/mix-analysis.js';
 import {renderTimePitch, renderFiniteLoop} from '../src/time-pitch.js';
-import {prepareTimePitch, prepareFiniteLoop, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
+import {prepareTimePitch, prepareFiniteLoop, scanNativePeakInWorker, NATIVE_PEAK_CHUNK_SAMPLES, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
   type MixWorkerRequest, type MixWorkerResponse} from '../src/mix-prepare.js';
 
 /** A transport double only; native Worker execution is separately checked in Chromium. */
@@ -20,6 +20,7 @@ class TestWorker {
   terminate(): void { this.terminated++; }
   response(): MixWorkerResponse {
     const message = this.message!;
+    if (message.kind === 'peak') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'peak', result: nativeSamplePeak(message.audio)};
     if (message.kind === 'loop') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'loop',
       result: renderFiniteLoop(message.audio, message.loopFrames, message.tailFrames, message.bars, message.levelGain)};
     if (message.kind === 'render') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render',
@@ -43,6 +44,35 @@ async function withWorker(run: () => Promise<void>): Promise<void> {
 }
 const pcm = () => ({sampleRate: 8000, channels: [Float64Array.from({length: 4000}, (_, i) =>
   0.4 * Math.sin(2 * Math.PI * 220 * i / 8000))]});
+
+test('native peak workers scan bounded sequential chunks, preserve stereo/caller PCM, validate receipts and abort', async () => withWorker(async () => {
+  const frames = 8000 * 60 + 7, left = new Float32Array(frames).fill(0.1), right = left.slice();
+  right[frames - 1] = -0.8;
+  const input = {sampleRate: 8000, channels: [left, right]};
+  const task = scanNativePeakInWorker(input), first = TestWorker.instances.at(-1)!;
+  assert.ok(first.message?.kind === 'peak');
+  assert.equal(first.message.audio.channels[0]!.length, 8000 * 60);
+  assert.ok(first.message.audio.channels[0]!.length * 2 <= NATIVE_PEAK_CHUNK_SAMPLES);
+  assert.equal(TestWorker.instances.length, 1, 'only one chunk is resident/in flight');
+  first.reply(); await new Promise(resolve => setImmediate(resolve));
+  const second = TestWorker.instances.at(-1)!;
+  assert.notEqual(second, first); assert.ok(second.message?.kind === 'peak');
+  assert.equal(second.message.audio.channels[0]!.length, 7);
+  second.reply(); const result = await task;
+  assert.deepEqual(result, nativeSamplePeak(input), 'tail peak in the opposite-polarity channel is included');
+  assert.equal(result.frames, frames); assert.equal(left.length, frames); assert.equal(right.at(-1), Math.fround(-0.8));
+  assert.ok(TestWorker.instances.every(w => w.terminated === 1));
+
+  const invalid = scanNativePeakInWorker(pcm()), bad = TestWorker.instances.at(-1)!;
+  bad.reply({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'peak', result: {version: 'native-sample-peak@1', frames: 1, value: 0.4}});
+  await assert.rejects(invalid, /receipt/); assert.equal(bad.terminated, 1);
+  const controller = new AbortController(), pending = scanNativePeakInWorker(input, controller.signal);
+  TestWorker.instances.at(-1)!.reply(); await new Promise(resolve => setImmediate(resolve));
+  const late = TestWorker.instances.at(-1)!, callback = late.onmessage!, receipt = late.response(), count = TestWorker.instances.length;
+  controller.abort(); await assert.rejects(pending, /cancelled/); callback({data: receipt} as MessageEvent<MixWorkerResponse>);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(late.terminated, 1); assert.equal(TestWorker.instances.length, count, 'aborted scan cannot schedule another chunk');
+}));
 
 test('finite loop worker owns private bounded PCM, validates its receipt, aborts and cannot revive a released request', async () => withWorker(async () => {
   const input = {sampleRate: 8000, channels: [Float32Array.from({length: 80000}, (_, i) => 0.3 * Math.sin(2 * Math.PI * 220 * i / 8000))]};

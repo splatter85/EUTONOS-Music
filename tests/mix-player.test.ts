@@ -39,6 +39,7 @@ class MixContext extends ContextDouble {
 const inline: MixPreparationRuntime = {
   analyze: async (from, to) => ({from: analyzeMixAudio(from), to: analyzeMixAudio(to)}),
   render: async (audio, options) => renderTimePitch(audio, options),
+  scanPeak: async audio => nativeSamplePeak(audio),
   renderLoop: async (audio, loop, tail, bars, gain) => renderFiniteLoop(audio, loop, tail, bars, gain),
 };
 async function setup(runtime: MixPreparationRuntime = inline) {
@@ -121,6 +122,14 @@ test('level matching compensates real WSOLA normalization and permits a safely a
   const recording = {asset: {...template, file: {...template.file, frames: buffer.length}, timing: {...template.timing!, bars: 16}}, buffer};
   const ready = await renderSetBlend(context.audio, recording, plan, b, undefined, inline);
   assert.ok(ready.plan.levelMatch!.renderGainApplied! < 1, 'real processor needed normalization');
+  const ordinary = planAutomaticMix(a, b, {recipe: 'blend', returnToOriginalTempo: true});
+  assert.ok(ordinary.kind === 'mix', JSON.stringify(ordinary));
+  let normalized = false;
+  await assert.rejects(renderSetBlend(context.audio, recording, ordinary, b, undefined,
+    {...inline, render: async (...args) => {
+      const result = await inline.render(...args); normalized = result.metrics.gainApplied < 1; return result;
+    }}), /normalization cannot be compensated/);
+  assert.equal(normalized, true, 'genuine clamped WSOLA PCM cannot quietly hand over to unity native audio');
   const gain = ready.plan.levelMatch!.toGain;
   const last = ready.incoming.buffer.getChannelData(0).at(-1)!;
   assert.equal(last, buffer.getChannelData(0)[ready.nativeJoin.sourceFrame - 1]);

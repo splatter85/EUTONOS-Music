@@ -5,7 +5,7 @@ import test from 'node:test';
 import {decodeRecording, loadBrowserPack, SET_LIMITS, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {CONTROL_VERSION, ControlContract, type ControlRequest} from '../src/control.js';
 import {DeterministicDj} from '../src/dj.js';
-import {analyzeMixAudio, measureMixLevel, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mix-analysis.js';
+import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mix-analysis.js';
 import {barAtOrAfter, chooseSetTransition, downbeatAt, equalPowerCrossfade, MixAnalysisCache, nextBoundary,
   planRouteFreeTransition, prepareMixTransition, setBarGrid, type MixPreparationRuntime, type SetBarGrid} from '../src/mix-transition.js';
 import {SmallPlayer} from '../src/player.js';
@@ -42,10 +42,11 @@ class SetContext extends ContextDouble {
   }
 }
 function countingRuntime() {
-  const calls = {analyzeOne: 0, analyze: 0, render: 0};
+  const calls = {analyzeOne: 0, analyze: 0, render: 0, peak: 0};
   const runtime: MixPreparationRuntime = {
     analyze: async (from, to) => { calls.analyze++; return {from: analyzeMixAudio(from), to: analyzeMixAudio(to)}; },
     render: async (audio, options) => { calls.render++; return renderTimePitch(audio, options); },
+    scanPeak: async audio => { calls.peak++; return nativeSamplePeak(audio); },
     renderLoop: async (audio, loop, tail, bars, gain) => renderFiniteLoop(audio, loop, tail, bars, gain),
     analyzeOne: async (audio, _signal, options, levelAudio) => { calls.analyzeOne++; return {...analyzeMixAudio(audio, options), level: measureMixLevel(levelAudio ?? audio)}; },
   };
@@ -114,6 +115,9 @@ test('analysis cache keys by audio hash, analysis version, rate and requested BP
     const [a, b] = await Promise.all([cache.analyze(recording, runtime), cache.analyze(recording, runtime)]);
     assert.equal(calls.analyzeOne, 1);
     assert.ok(a.ok && b.ok && a.analysis === b.analysis);
+    assert.equal(calls.peak, 1);
+    await cache.analyze(recording, runtime, undefined, 1);
+    assert.equal(calls.peak, 1, 'a second evidence window reuses the full-native peak receipt');
     // Without analyzeOne the mono copy goes through the pair analyzer, still once.
     const plain = new MixAnalysisCache(), counted = countingRuntime(), {analyzeOne: _, ...pairOnly} = counted.runtime;
     assert.ok((await plain.analyze(recording, pairOnly)).ok);
@@ -462,7 +466,7 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.equal(summary.set!.fromGrid, 'measured'); assert.equal(summary.set!.toGrid, 'measured');
     const join = summary.nativeJoin!;
     assert.ok(join && join.at.frame > snap.transitionAt!.frame + Math.round(8 * 60 * rate / summary.fromBpm));
-    assert.equal(snap.transitionEnd!.frame, join.at.frame, 'transition lifecycle includes the tempo return and native join');
+    assert.ok(snap.transitionEnd!.frame < join.at.frame, 'A handover slot ends before B finishes its owned tempo return');
     assert.equal(context.sources.length, 3, 'A plus the bounded processed entry and ahead-scheduled native continuation');
     const processed = context.sources[1]!, native = context.sources[2]!;
     assert.equal(native.starts[0]!.when * rate, join.at.frame);
@@ -480,12 +484,30 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     snap = player.snapshot(); summary = snap.mix!.summary!;
     await player.pause(); const frozen = player.clock.currentFrame; context.advance(100);
     assert.equal(player.clock.currentFrame, frozen); await player.resume();
+    const originalEntryNode = context.sources.at(-2)!, originalNativeNode = context.sources.at(-1)!;
+    const originalEntry = originalNativeNode.starts[0]!;
+    context.advance((snap.transitionEnd!.frame - player.clock.currentFrame) / rate + 0.01);
+    snap = player.snapshot();
+    assert.equal(snap.voices.length, 1); assert.equal(snap.transition, 'none');
+    assert.ok(player.clock.currentFrame < summary.nativeJoin!.at.frame);
+    assert.ok(originalEntryNode.connections.length > 0, 'the processed B entry remains owned and audible before its native join');
+    const rendersBefore = renders.length;
+    await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'});
+    const following = player.snapshot();
+    assert.ok(renders.length > rendersBefore, 'Next preparation actually starts before the prior native join');
+    assert.ok(following.mix!.earliestEffect!.frame >= summary.nativeJoin!.at.frame, 'new effect waits for native source coordinates');
+    assert.equal(following.transitionAt!.frame,
+      Math.round(originalEntry.when * rate + following.mix!.summary!.fromExitFrame - originalEntry.offset * rate));
+    assert.equal(player.cancelPendingTransition(), true);
+    assert.equal(originalEntryNode.stops.length, 0, 'cancelling Next preserves the still-finishing B entry');
+    assert.deepEqual(originalNativeNode.starts, [originalEntry], 'the original native join is never restarted');
+    assert.equal(originalNativeNode.stops.at(-1)! * rate, player.snapshot().voices[0]!.endFrame,
+      'cancelling the new exit restores the original B native EOF');
+    assert.ok(context.sources.slice(-2).every(n => n.connections.length === 0), 'only the new future incoming branches are released');
     const aheadStarts = context.sources.map(n => n.starts.length);
     context.advance((summary.nativeJoin!.at.frame - player.clock.currentFrame) / rate + 0.01);
     snap = player.snapshot(); assert.equal(snap.voices.length, 1); assert.equal(snap.now[0], set.idFor('long-128'));
     assert.deepEqual(context.sources.map(n => n.starts.length), aheadStarts, 'settlement starts no source');
-    const originalNativeNode = context.sources.at(-1)!;
-    const originalEntry = originalNativeNode.starts[0]!;
     await player.scheduleMixTo(set.idFor('long-122'), {bars: 4, anchor: 'song'});
     snap = player.snapshot();
     assert.equal(snap.mix!.summary!.recipe, 'blend', 'native B can be the next outgoing song');
@@ -535,9 +557,10 @@ async function checkSelectedSetRecipes(set: Awaited<ReturnType<typeof buildSynth
   dj.setMixOptions({recipe: 'filter-sweep'});
   assert.equal(dj.snapshot().player.mix!.summary!.recipe, 'loudness-match', 'future choice does not alter committed effect');
   const starts = context.sources.map(n => n.starts.length);
-  context.advance((summary.nativeJoin!.at.frame - player.clock.currentFrame) / rate + 0.01);
+  context.advance((snap.transitionEnd!.frame - player.clock.currentFrame) / rate + 0.01);
   snap = dj.snapshot().player;
   assert.equal(snap.now[0], set.idFor('long-128'));
+  assert.ok(player.clock.currentFrame < summary.nativeJoin!.at.frame, 'DJ Next is accepted during the still-owned tempo return');
   assert.deepEqual(context.sources.map(n => n.starts.length), starts);
   // Requeue A so a second match must use the gain already audible on B.
   await dj.request(req({type: 'queueTrack', trackId: set.idFor('long-122')}, rev()));
@@ -624,11 +647,25 @@ test('explicit native ramp, brake and finite loop own real clock motion, cancell
       player.stop(); assert.ok(context.sources.every(n => n.connections.length === 0), 'Stop releases every live/future owned branch');
     }
     await checkLoopDj(set, loaded);
-    for (const failure of ['start', 'stop'] as const) {
+    for (const failure of ['start', 'stop', 'allocation', 'splice-gain', 'connect', 'graph'] as const) {
       const context = new SetContext(), create = context.createBufferSource.bind(context);
+      const gains = context.createGain.bind(context), filters = context.createBiquadFilter.bind(context);
+      let spliceGains = 0;
+      context.createGain = () => {
+        if (context.sources.length === 4 && failure === 'splice-gain' && ++spliceGains === 2) throw new Error('injected loop splice gain failure');
+        return gains();
+      };
+      context.createBiquadFilter = () => {
+        if (context.sources.length === 4 && failure === 'graph') throw new Error('injected loop graph failure');
+        return filters();
+      };
       context.createBufferSource = () => {
+        if (context.sources.length === 3 && failure === 'allocation') throw new Error('injected loop allocation failure');
         const node = create();
-        if (context.sources.length === 4) node[failure] = () => { throw new Error(`injected loop ${failure} failure`); };
+        if (context.sources.length === 4) {
+          if (failure === 'start' || failure === 'stop') node[failure] = () => { throw new Error(`injected loop ${failure} failure`); };
+          if (failure === 'connect') node.connect = () => { throw new Error('injected loop connect failure'); };
+        }
         return node;
       };
       const {runtime} = countingRuntime(), player = new SmallPlayer(context.audio, loaded, null, runtime);
@@ -638,6 +675,7 @@ test('explicit native ramp, brake and finite loop own real clock motion, cancell
       assert.equal(player.snapshot().voices.length, 1); assert.equal(player.snapshot().voices[0]!.endFrame, end);
       assert.equal(context.sources[0]!.stops.at(-1)! * 16000, end);
       assert.ok(context.sources.slice(1).every(n => n.connections.length === 0), 'failed loop and both B branches disconnected');
+      assert.ok(context.gains.slice(2).every(n => n.connections.length === 0), 'partially allocated splice/graph gains are released');
       assert.equal(context.sources[0]!.connections.length, 1, 'A direct graph restored'); player.stop();
     }
     for (const failure of ['late', 'unstable'] as const) {

@@ -380,7 +380,7 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
           nativeRate: {outgoing: ramp, pitchMoves: true},
           automation: {outgoing: {...open, gain: [{frame: 0, value: 1}, {frame: handover - Math.round(base.sampleRate * 0.02), value: 1}, {frame: handover, value: 0.15}, {frame: frames, value: 0}]},
             incoming: crossfadeAutomation(frames - handover, base.sampleRate).incoming},
-          reasons: ['Short finite native slowdown with pitch drop and gain fade; B enters on its measured downbeat before A closes. Only entry beat phase is compared.']});
+          reasons: ['Short finite native slowdown with pitch drop and gain fade; B enters on its measured downbeat before A closes. Shared-grid beat phase is unjudged.']});
       }
     } else if (isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp') {
       const blend = styledBlend(from, to, options);

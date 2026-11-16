@@ -25,6 +25,31 @@ test('native-rate opt-in voices refuse authored direct/hybrid cue identity timin
   source.release();
 });
 
+test('a neutral settled entry retains its playing PCM and future native join through the next exit, cancellation and release', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+    type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+  const native = recording(a, 48000), processed = bufferDouble(48000, 96000, a.file.channels);
+  const source = new RecordedSource(context.audio, {asset: a, buffer: processed,
+    processed: {sourceFrames: native.buffer.length, outputFrames: processed.length, algorithm: 'eutonos-wsola@1'},
+    continuation: {buffer: native.buffer, sourceFrame: 48000}}, context.destination, {allowFixtures: true});
+  await source.prepare(clock);
+  source.scheduleMixStart(clock.stamp(100), 0, crossfadeAutomation(4800, 48000).incoming);
+  const entry = context.sources[0]!, continuation = context.sources[1]!, originalEnd = source.endFrame;
+  context.currentTime = 0.2;
+  assert.equal(source.settleMixEntry(), true);
+  assert.ok(entry.connections.length > 0, 'entry PCM continues through the already scheduled join');
+  assert.throws(() => source.transitionMixOut(clock.stamp(50100), 50000, crossfadeAutomation(9600, 48000).outgoing), /native join/);
+  source.transitionMixOut(clock.stamp(100100), 100000, crossfadeAutomation(9600, 48000).outgoing);
+  assert.equal(source.cancelTransition(), true); assert.equal(source.endFrame, originalEnd);
+  assert.equal(entry.stops.length, 0, 'cancelling the next exit does not stop the current processed entry');
+  assert.deepEqual(continuation.starts, [{when: 96100 / 48000, offset: 1}]);
+  source.release();
+  assert.equal(entry.stops.at(-1), 0.2); assert.equal(continuation.stops.at(-1), 0.2);
+  assert.ok(context.sources.every(node => node.connections.length === 0));
+  assert.ok(context.gains.every(node => node.connections.length === 0));
+});
+
 test('near-EOF native slowdowns use consumed samples and restore the original EOF on cancellation', async () => {
   for (const {remaining, end} of [{remaining: 9600, end: 0.05}, {remaining: 16000, end: 0.8}])
   for (const entry of ['authored', 'mix-entry', 'native-rate'] as const) {

@@ -1,7 +1,7 @@
 import {TIME_PITCH_LIMITS, TIME_PITCH_PROCESSOR,
   type PreparedTimePitch, type PreparedFiniteLoop, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
 import {MIX_ANALYSIS_LIMITS, MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, mixLevelWindowFrames,
-  type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
+  type MixAnalysis, type MixAnalysisOptions, type NativeSamplePeak} from './mix-analysis.js';
 
 /** A selected minute of real evidence. Grid extrapolation is not additional cue evidence. */
 export {SONG_ANALYSIS_WINDOW} from './mix-analysis.js';
@@ -57,6 +57,7 @@ export const PREPARE_WORKER_PROTOCOL = 'eutonos.mix-preparation.v1' as const;
 export interface MixPairAnalysis {readonly from: MixAnalysis; readonly to: MixAnalysis;}
 export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'loop';
   readonly audio: TimePitchPcm; readonly loopFrames: number; readonly tailFrames: number; readonly bars: 4 | 8; readonly levelGain: number} |
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'peak'; readonly audio: TimePitchPcm} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly kind: 'render'; readonly audio: TimePitchPcm; readonly options: TimePitchOptions} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze';
@@ -65,6 +66,7 @@ export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCO
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze-one';
   readonly audio: TimePitchPcm; readonly levelAudio?: TimePitchPcm; readonly options: MixAnalysisOptions};
 export type MixWorkerResponse = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'loop'; readonly result: PreparedFiniteLoop} |
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'peak'; readonly result: NativeSamplePeak} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly ok: true; readonly kind: 'render'; readonly result: PreparedTimePitch} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'analyze';
@@ -83,6 +85,32 @@ function privateCopy(audio: TimePitchPcm): {sampleRate: number; channels: (Float
       || channel.length !== frames)) throw new Error('Mix preparation input exceeds its PCM budget or is invalid.');
   return {sampleRate: audio.sampleRate, channels: audio.channels.map(channel => channel instanceof Float32Array
     ? new Float32Array(channel) : new Float64Array(channel))};
+}
+
+/** Peak-only worker jobs copy at most 60 seconds / one quarter of the existing transfer cap.
+ * Sequential chunks retain caller buffers and never allocate a whole-song processed copy. */
+export const NATIVE_PEAK_CHUNK_SAMPLES = TIME_PITCH_LIMITS.maxSamples / 4;
+export async function scanNativePeakInWorker(audio: TimePitchPcm, signal?: AbortSignal): Promise<NativeSamplePeak> {
+  const frames = audio.channels[0]?.length ?? 0, channels = audio.channels.length;
+  if (!Number.isInteger(audio.sampleRate) || audio.sampleRate < 8000 || audio.sampleRate > 192000 ||
+    ![1, 2].includes(channels) || !frames || audio.channels.some(c =>
+      !(c instanceof Float32Array || c instanceof Float64Array) || c.length !== frames)) throw new Error('Invalid native peak input.');
+  const chunkFrames = Math.min(audio.sampleRate * 60, Math.floor(NATIVE_PEAK_CHUNK_SAMPLES / channels));
+  let value = 0;
+  for (let start = 0; start < frames; start += chunkFrames) {
+    if (signal?.aborted) throw new Error('Mix preparation was cancelled.');
+    const end = Math.min(frames, start + chunkFrames);
+    const copy = privateCopy({sampleRate: audio.sampleRate, channels: audio.channels.map(c => c.subarray(start, end))});
+    const peak = await runWorker({protocol: PREPARE_WORKER_PROTOCOL, kind: 'peak', audio: copy},
+      copy.channels.map(c => c.buffer), data => {
+        if (!data.ok || data.kind !== 'peak' || data.result?.version !== 'native-sample-peak@1' ||
+          data.result.frames !== end - start || !Number.isFinite(data.result.value) || data.result.value < 0 || data.result.value > 16)
+          throw new Error('Invalid native peak worker receipt.');
+        return data.result;
+      }, signal, 30000);
+    value = Math.max(value, peak.value);
+  }
+  return {version: 'native-sample-peak@1', frames, value};
 }
 
 function runWorker<T>(message: MixWorkerRequest, transfer: ArrayBuffer[], validate: (response: MixWorkerResponse) => T,
