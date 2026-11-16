@@ -174,6 +174,19 @@ test('chooser keeps the best passing candidate, or falls back when all fail', ()
   assert.equal(chooseEvaluatedMix(noise(1), noise(2), []).kind, 'fallback');
 });
 
+test('generated 120 BPM bass handover avoids evaluator failures and keeps the blend admitted', () => {
+  const from = makeMixFixture({bpm: 120, tonic: 9}), to = makeMixFixture({bpm: 120, tonic: 9});
+  const decision = planEvaluatedMixFromAudio(from, to, {recipe: 'blend'});
+  assert.equal(decision.evaluations.length, 1, 'judge the blend itself, without a cut/echo fallback');
+  const evaluation = decision.evaluations[0]!;
+  assert.equal(evaluation.thresholds, 'mix-evaluation-thresholds@1');
+  assert.equal(evaluation.recipe, 'blend');
+  assert.notEqual(evaluation.verdict, 'fail', JSON.stringify(evaluation));
+  assert.ok(!evaluation.flags.some(flag => flag.level === 'fail'), JSON.stringify(evaluation.flags));
+  assert.equal(decision.kind, 'mix');
+  assert.equal(evaluation.bSource, 'native');
+});
+
 test('analysis-to-evaluation pipeline on generated fixtures reports a decision and its cost', () => {
   const from = makeMixFixture({bpm: 120, tonic: 9}), to = makeMixFixture({bpm: 120, tonic: 9});
   const started = performance.now();

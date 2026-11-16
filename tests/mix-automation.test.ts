@@ -31,14 +31,26 @@ const recording = () => ({asset, buffer: bufferDouble(rate,
   Math.round(asset.file.frames * rate / asset.file.sample_rate), asset.file.channels)});
 const shape = () => bassSwapAutomation(rate, rate);
 
-test('bass swap has complementary attenuation and delays incoming bass release until outgoing cut', () => {
+test('bass swap keeps complementary gain and opens incoming bass before outgoing attenuation', () => {
   const plan = shape();
   validateMixAutomation(plan.outgoing, rate); validateMixAutomation(plan.incoming, rate);
   for (const frame of [0, 12000, 24000, 36000, 48000]) {
     assert.ok(Math.abs(mixCurveValue(plan.outgoing.gain, frame) + mixCurveValue(plan.incoming.gain, frame) - 1) < 1e-12);
   }
-  assert.equal(mixCurveValue(plan.incoming.lowShelfDb, 24000), -24);
-  assert.equal(mixCurveValue(plan.outgoing.lowShelfDb, 24000), -24);
+  for (let frame = 0; frame <= rate; frame += 480) {
+    assert.ok(mixCurveValue(plan.outgoing.lowShelfDb, frame) === 0 ||
+      mixCurveValue(plan.incoming.lowShelfDb, frame) === 0, 'one shelf stays neutral throughout the handover');
+    assert.ok(mixCurveValue(plan.outgoing.highPassHz, frame) === 0 ||
+      mixCurveValue(plan.incoming.highPassHz, frame) === 0, 'both lanes must never be high-passed together');
+  }
+  assert.equal(mixCurveValue(plan.incoming.lowShelfDb, 0), -24);
+  assert.equal(mixCurveValue(plan.incoming.highPassHz, 0), 500);
+  assert.equal(mixCurveValue(plan.incoming.lowShelfDb, rate * 0.4), 0);
+  assert.equal(mixCurveValue(plan.incoming.highPassHz, rate * 0.4), 0);
+  assert.equal(mixCurveValue(plan.outgoing.lowShelfDb, rate * 0.6), 0);
+  assert.equal(mixCurveValue(plan.outgoing.highPassHz, rate * 0.6), 0);
+  assert.equal(mixCurveValue(plan.outgoing.lowShelfDb, rate), -24);
+  assert.equal(mixCurveValue(plan.outgoing.highPassHz, rate), 1000);
   assert.equal(mixCurveValue(plan.outgoing.gain, 48000), 0);
   assert.equal(mixCurveValue(plan.incoming.highPassHz, 48000), 0);
   assert.equal(mixCurveValue(plan.incoming.lowShelfDb, 48000), 0);
