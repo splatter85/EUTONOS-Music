@@ -8,6 +8,14 @@ import {cleanCutAutomation, crossfadeAutomation, type MixAutomation} from './mix
 import type {AudioAsset} from './pack-types.js';
 import type {DecodedRecording} from './web-audio.js';
 
+import {evidenceSpan as songEvidenceSpan, mergeSongWindows, songWindowStarts, SONG_MERGE_POLICY} from './mix-analysis.js';
+import {echoOutAutomation as routeEchoAutomation} from './mix-automation.js';
+import {harmonicCompatibility, MIX_PLANNER_VERSION} from './mix-planner.js';
+import {chooseChoreography, ENTRY_POLICY as SET_ENTRY_POLICY, entrySkipCost as setEntrySkipCost, exploreChoice, makeTransitionPlanRecord,
+  meetTempo, tempoGapPolicy, TRANSITION_POLICY_VERSION, type ExploreChoice, type PairFeatures, type SetRecipe, type TempoGapDecision,
+  type TransitionPlanRecord, type TransitionStyle} from '../web/transition-policy.js';
+import {CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyParams} from '../web/eq-choreography.js';
+
 export interface MixPreparationRuntime {
   analyze(from: MixPcm, to: MixPcm, signal?: AbortSignal): Promise<{from: MixAnalysis; to: MixAnalysis}>;
   render(audio: MixPcm, options: TimePitchOptions, signal?: AbortSignal): Promise<PreparedTimePitch>;
@@ -42,6 +50,11 @@ export function replanPreparedMix(ready: ReadyMixTransition, minimumFromFrame: n
     {...analysis.to, mixIn: analysis.to.mixIn.filter(c => c.frame === plan.toEntryFrame)},
     {minimumFromFrame, recipe: plan.recipe, echoContentConfirmed: plan.echoContentConfirmed ?? false,
       overlapBeats: plan.overlapBeats, pitchSemitones: plan.pitchSemitones,
+      // S21: keep the recipe options a replan must reproduce (choreography, meeting tempo, tempo return, harmony mode).
+      ...(plan.choreography ? {choreography: plan.choreography.params, harmonicMode: 'limited' as const} : {}),
+      ...(plan.meet ? {meetBpm: plan.meet.bpm} : {}),
+      ...(plan.tempoReturn ? {tempoReturn: {bars: Math.max(1, Math.round(plan.tempoReturn.rampFrames * (plan.meet?.bpm ?? plan.fromBpm) /
+        (4 * 60 * plan.sampleRate))), curve: plan.tempoReturn.curve}} : {}),
       returnToOriginalTempo: plan.returnToOriginalTempo, ...(plan.levelMatch ? {fromLevelGain: plan.levelMatch.fromGain} : {})});
   return later.kind === 'mix' && plan.levelMatch ? {...later, levelMatch: plan.levelMatch} : later;
 }
@@ -246,6 +259,39 @@ export class MixAnalysisCache {
   static key(asset: AudioAsset, sampleRate: number, startFrame = 0): string {
     return `${asset.file.sha256}:${MIX_ANALYSIS_VERSION}:${MIX_LEVEL_VERSION}:${sampleRate}:${SONG_ANALYSIS_WINDOW.policy}:${SONG_ANALYSIS_WINDOW.seconds}s:${startFrame}:${asset.timing?.bpm ?? 'none'}`;
   }
+  private readonly songs = new Map<string, Promise<SongAnalysisResult>>();
+  /**
+   * S21 whole-song analysis: bounded 60 s windows every 48 s (each through `analyze`, so every
+   * window keeps its own cache entry and the 180 s render cap is untouched), merged by
+   * song-window-merge@1. A partial failure merges the windows that succeeded and says so.
+   */
+  analyzeSong(recording: DecodedRecording, runtime: MixPreparationRuntime, signal?: AbortSignal): Promise<SongAnalysisResult> {
+    const {asset, buffer} = recording;
+    if (recording.processed) return Promise.reject(new Error('Analyze the native recording, never a processed render.'));
+    const key = `${MixAnalysisCache.key(asset, buffer.sampleRate)}:${SONG_MERGE_POLICY.policy}`;
+    let task = this.songs.get(key);
+    if (task) { this.songs.delete(key); this.songs.set(key, task); }
+    else {
+      task = (async (): Promise<SongAnalysisResult> => {
+        const results: SongAnalysisResult[] = [];
+        // Windows run in order: a shared worker is not flooded and the first window warms quickly.
+        for (const start of songWindowStarts(buffer.length, buffer.sampleRate)) results.push(await this.analyze(recording, runtime, undefined, start));
+        const ok = results.filter((r): r is Extract<SongAnalysisResult, {ok: true}> => r.ok);
+        if (!ok.length) return results[0] ?? {ok: false, reason: 'No song window could be analyzed.'};
+        try {
+          const merged = mergeSongWindows(ok.map(r => r.analysis));
+          return {ok: true, analysis: ok.length < results.length ? {...merged, limitations: [...merged.limitations,
+            `${results.length - ok.length} of ${results.length} song windows failed analysis; their regions have no cue evidence.`]} : merged};
+        } catch (error) { return {ok: false, reason: error instanceof Error ? error.message : String(error)}; }
+      })();
+      this.songs.set(key, task);
+      const settled = task;
+      void settled.then(result => { if (!result.ok && this.songs.get(key) === settled) this.songs.delete(key); });
+      while (this.songs.size > 16) this.songs.delete(this.songs.keys().next().value!);
+    }
+    return raceAbort(task, signal);
+  }
+  hasSong(asset: AudioAsset, sampleRate: number): boolean { return this.songs.has(`${MixAnalysisCache.key(asset, sampleRate)}:${SONG_MERGE_POLICY.policy}`); }
   get size(): number { return this.entries.size; }
   has(asset: AudioAsset, sampleRate: number, startFrame = 0): boolean { return this.entries.has(MixAnalysisCache.key(asset, sampleRate, startFrame)); }
   analyze(recording: DecodedRecording, runtime: MixPreparationRuntime, signal?: AbortSignal, startFrame = 0): Promise<SongAnalysisResult> {
@@ -374,6 +420,8 @@ export function nextBoundary(grid: SetBarGrid, anchorBar: number, bars: number,
   return {bar, frame: downbeatAt(grid, bar)};
 }
 
+/** Later A bars tried (after the earlier feasible ones) before a clean cut is accepted. */
+export const ROUTE_FREE_LATER_BARS = 2;
 export const ROUTE_FREE_LIMITS = Object.freeze({
   /** Treated as the same tempo: four-bar crossfade. */
   equalTempo: 0.005,
@@ -381,11 +429,12 @@ export const ROUTE_FREE_LIMITS = Object.freeze({
   crossfadeTempo: 0.08,
   equalTempoBars: 4, nearTempoBars: 1,
 });
-export type RouteFreeRecipe = 'fallback-crossfade' | 'fallback-cut';
+export type RouteFreeRecipe = 'fallback-crossfade' | 'fallback-echo-reset' | 'fallback-cut';
 export interface RouteFreePlan {
   readonly kind: 'route-free'; readonly recipe: RouteFreeRecipe;
+  /** B enters here; for the echo reset A's dry fade and echo send start `preRollFrames` earlier. */
   readonly fromExitFrame: number; readonly toEntryFrame: number;
-  readonly overlapFrames: number; readonly preRollFrames: 0; readonly bars: number;
+  readonly overlapFrames: number; readonly preRollFrames: number; readonly bars: number;
   readonly fromBpm: number; readonly toBpm: number;
   /** B always plays at its native tempo here; this is the tempo change heard at the handover. */
   readonly tempoChange: number;
@@ -399,32 +448,70 @@ export function equalPowerCrossfade(durationFrames: number, sampleRate: number):
   return crossfadeAutomation(durationFrames, sampleRate);
 }
 
+/** S21 route-free echo reset: A's high-pass rises during the two-beat dry fade; the echo tail carries B in. */
+export function echoResetAutomation(bpm: number, sampleRate: number): ReturnType<typeof routeEchoAutomation> {
+  const echo = routeEchoAutomation(Math.min(180, Math.max(60, bpm)), sampleRate);
+  const d = echo.outgoing.durationFrames;
+  return {...echo, outgoing: {...echo.outgoing,
+    highPassHz: [{frame: 0, value: 0}, {frame: echo.preRollFrames, value: 400}, {frame: d, value: 400}]}};
+}
+
 /**
- * Route-free set fallback at an exact A downbeat: an equal-power crossfade when the tempi are
- * close (4 bars when equal, 1 bar within 8%), otherwise a 10 ms clean cut onto B's first
- * downbeat. B is never time-stretched here and no authored route is consulted.
+ * Route-free set fallback at an exact A downbeat. In order: an equal-power crossfade when the
+ * tempi are close (4 bars when equal, 1 bar within 8%); the S21 filtered echo reset (any tempo
+ * gap, B on its measured phrase entry); a 10 ms clean cut only when `allowCut` and nothing else
+ * fits. B is never time-stretched here and no authored route is consulted.
  */
 export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readonly frames: number},
   to: {readonly grid: SetBarGrid; readonly frames: number}, exitFrame: number,
-  sampleRate: number): RouteFreePlan | {readonly kind: 'unavailable'; readonly reason: string} {
+  sampleRate: number, options: {readonly entryFrame?: number; readonly exclude?: readonly string[]; readonly allowCut?: boolean;
+    readonly earliestFrame?: number} = {}): RouteFreePlan | {readonly kind: 'unavailable'; readonly reason: string} {
   const tempoChange = to.grid.bpm / from.grid.bpm, gap = Math.abs(tempoChange - 1);
-  const entry = to.grid.downbeats[0]!;
-  const options: number[] = gap < ROUTE_FREE_LIMITS.equalTempo
-    ? [ROUTE_FREE_LIMITS.equalTempoBars, ROUTE_FREE_LIMITS.nearTempoBars, 0]
-    : gap <= ROUTE_FREE_LIMITS.crossfadeTempo ? [ROUTE_FREE_LIMITS.nearTempoBars, 0] : [0];
-  for (const bars of options) {
-    const automation = bars ? equalPowerCrossfade(Math.round(bars * from.grid.barFrames), sampleRate)
-      : cleanCutAutomation(sampleRate);
+  const entry = options.entryFrame ?? to.grid.downbeats[0]!;
+  const exclude = options.exclude ?? [];
+  const pct = `${tempoChange >= 1 ? '+' : ''}${((tempoChange - 1) * 100).toFixed(1)}%`;
+  const crossfades: number[] = exclude.includes('fallback-crossfade') ? [] : gap < ROUTE_FREE_LIMITS.equalTempo
+    ? [ROUTE_FREE_LIMITS.equalTempoBars, ROUTE_FREE_LIMITS.nearTempoBars]
+    : gap <= ROUTE_FREE_LIMITS.crossfadeTempo ? [ROUTE_FREE_LIMITS.nearTempoBars] : [];
+  const base = {kind: 'route-free' as const, fromExitFrame: exitFrame, toEntryFrame: entry, fromBpm: from.grid.bpm, toBpm: to.grid.bpm,
+    tempoChange, fromGrid: from.grid.source, toGrid: to.grid.source};
+  for (const bars of crossfades) {
+    const automation = equalPowerCrossfade(Math.round(bars * from.grid.barFrames), sampleRate);
     const overlapFrames = automation.incoming.durationFrames;
     if (exitFrame < 0 || exitFrame + overlapFrames > from.frames || entry + overlapFrames > to.frames) continue;
-    const pct = `${tempoChange >= 1 ? '+' : ''}${((tempoChange - 1) * 100).toFixed(1)}%`;
-    return {kind: 'route-free', recipe: bars ? 'fallback-crossfade' : 'fallback-cut', fromExitFrame: exitFrame,
-      toEntryFrame: entry, overlapFrames, preRollFrames: 0, bars, fromBpm: from.grid.bpm, toBpm: to.grid.bpm,
-      tempoChange, fromGrid: from.grid.source, toGrid: to.grid.source, automation,
-      reason: bars ? `Route-free ${bars}-bar equal-power crossfade (tempo change ${pct}; B at its own tempo).`
-        : `Route-free clean cut on the downbeat (tempo change ${pct} is too large to crossfade).`};
+    return {...base, recipe: 'fallback-crossfade', overlapFrames, preRollFrames: 0, bars, automation,
+      reason: `Route-free ${bars}-bar equal-power crossfade (tempo change ${pct}; B at its own tempo).`};
+  }
+  if (!exclude.includes('fallback-echo-reset') && !exclude.includes('echo-reset')) {
+    const echo = echoResetAutomation(from.grid.bpm, sampleRate);
+    const start = exitFrame - echo.preRollFrames;
+    // The deck consumes A for the whole outgoing automation (the dry part is silent after the exit).
+    if (start >= (options.earliestFrame ?? 0) && start >= 0 && start + echo.outgoing.durationFrames <= from.frames &&
+      entry + echo.tailFrames <= to.frames) {
+      return {...base, recipe: 'fallback-echo-reset', overlapFrames: echo.tailFrames, preRollFrames: echo.preRollFrames, bars: 0,
+        automation: {outgoing: echo.outgoing, incoming: echo.incoming},
+        reason: `Route-free filtered echo reset: A's echo tail carries B in on its own tempo (tempo change ${pct}). No beat match is attempted.`};
+    }
+  }
+  if (options.allowCut !== false && !exclude.includes('cut') && !exclude.includes('fallback-cut')) {
+    const automation = cleanCutAutomation(sampleRate), overlapFrames = automation.incoming.durationFrames;
+    if (exitFrame >= 0 && exitFrame + overlapFrames <= from.frames && entry + overlapFrames <= to.frames) {
+      return {...base, recipe: 'fallback-cut', overlapFrames, preRollFrames: 0, bars: 0, automation,
+        reason: `Route-free clean cut on the downbeat (last resort: every other handover was unavailable; tempo change ${pct}).`};
+    }
   }
   return {kind: 'unavailable', reason: 'Song A has too little audio left for a route-free handover at that bar.'};
+}
+
+/** Best measured B phrase entry under the S21 skip cost and earlier-entry tie rule (null = none). */
+export function routeFreeEntry(to: MixAnalysis | null, frames: number, styleAllowsSkip = false): number | null {
+  if (!to) return null;
+  const phrases = new Set(to.structure.phraseFrames);
+  const items = to.mixIn.filter(c => phrases.has(c.frame) || c.evidence?.kind === 'boundary');
+  if (!items.length) return to.structure.phraseFrames[0] ?? null;
+  const adjusted = (c: MixAnalysis['mixIn'][number]) => c.score - setEntrySkipCost(c.frame, frames, styleAllowsSkip);
+  const best = Math.max(...items.map(adjusted));
+  return items.filter(c => adjusted(c) >= best - SET_ENTRY_POLICY.tieWindow).sort((a, b) => a.frame - b.frame)[0]!.frame;
 }
 
 export interface SetTransitionInput {
@@ -436,10 +523,22 @@ export interface SetTransitionInput {
   readonly earliestFrame: number;
   readonly boundary: {readonly bars: number; readonly anchorBar: number};
   readonly options?: MixPlannerOptions;
+  /** S21: recipes already rejected (by render or pre-check) for this request; tried candidates skip them. */
+  readonly exclude?: readonly string[];
+  /** S21 seeded explore mode (bounded variation; null/absent = deterministic Auto). */
+  readonly explore?: {readonly seed: number} | null;
+  readonly style?: TransitionStyle;
+  /** Longest choreography overlap the bounded render and pre-check allow (default 26 s). */
+  readonly maxOverlapSeconds?: number;
 }
 interface SetChoiceBase {
   readonly exitBar: number; readonly boundaryBar: number;
   readonly fromGrid: SetBarGrid; readonly toGrid: SetBarGrid; readonly notes: readonly string[];
+  /** S21: tempo-gap decision, candidates rejected before this one, and the explore draw. */
+  readonly policy?: TempoGapDecision;
+  readonly rejected?: readonly {readonly recipe: string; readonly reason: string}[];
+  readonly explore?: ExploreChoice;
+  readonly why?: readonly string[];
 }
 export type SetTransitionChoice =
   | (SetChoiceBase & {readonly kind: 'analyzed'; readonly plan: AutomaticMixPlan})
@@ -466,15 +565,18 @@ function setBlendWindow(plan: AutomaticMixPlan, analysis: MixAnalysis, frames: n
   const sourceStartFrame = Math.max(0, plan.toEntryFrame - guard);
   const entryFrame = Math.round((plan.toEntryFrame - sourceStartFrame) / plan.tempoRatio);
   const afterFrames = entryFrame + plan.overlapFrames;
-  const rampFrames = Math.round(4 * 60 * plan.sampleRate / plan.fromBpm);
+  // S21: the plan may carry a longer smoothstep return; both curves integrate to the linear mean.
+  const rampFrames = plan.tempoReturn?.rampFrames ?? Math.round(4 * 60 * plan.sampleRate / plan.fromBpm);
+  const curve = plan.tempoReturn?.curve ?? 'linear';
   const returnEndInput = plan.tempoRatio * afterFrames + (plan.tempoRatio + 1) * rampFrames / 2;
+  const evidenceEnd = songEvidenceSpan(analysis).end;
   const sourceJoinFrame = analysis.structure.downbeatFrames.find(frame =>
-    frame >= sourceStartFrame + returnEndInput + guard && frame + guard <= frames &&
-    frame < (analysis.analyzedWindow ? analysis.analyzedWindow.startFrame + analysis.analyzedWindow.frames : analysis.frames));
+    frame >= sourceStartFrame + returnEndInput + guard && frame + guard <= frames && frame < evidenceEnd);
   if (sourceJoinFrame === undefined) throw new Error('No measured B downbeat after the overlap and tempo return fits a native join.');
   const outputJoinFrame = Math.round(afterFrames + rampFrames + sourceJoinFrame - sourceStartFrame - returnEndInput);
   return {sourceStartFrame, sourceEndFrame: sourceJoinFrame + guard, sourceJoinFrame, outputJoinFrame, entryFrame,
-    options: {tempoRatio: plan.tempoRatio, pitchSemitones: 0, returnToOriginal: {afterFrames, rampFrames}}};
+    options: {tempoRatio: plan.tempoRatio, pitchSemitones: 0,
+      returnToOriginal: {afterFrames, rampFrames, ...(curve === 'smoothstep' ? {curve} : {})}}};
 }
 
 export interface ReadySetBlend {
@@ -544,14 +646,41 @@ export async function renderSetBlend(context: BaseAudioContext, to: DecodedRecor
     processor: processed.processor, nativeJoin: {sourceFrame: window.sourceJoinFrame, outputFrame: window.outputJoinFrame}};
 }
 
+/** S21 recipes that render B through the bounded WSOLA window with a native join. */
+const SET_STRETCHED: readonly string[] = ['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle'];
+
 /**
- * S18 set transition choice, in order: analyzed blend (tempo-matched, returning to B's own
- * tempo), analyzed cut, then the route-free fallback. Analyzed recipes may only use A exits
- * on the requested boundary bars; echo is not offered in set mode.
+ * S21: identity of one parameterisation for the retry exclusion list: recipe, requested-boundary exit bar,
+ * overlap and choreography (name, gap). Route-free and cut plans keep their plain recipe names, which
+ * `planRouteFreeTransition` already understands.
+ */
+export function transitionSignature(plan: AutomaticMixPlan | RouteFreePlan, exitBar: number): string {
+  if (plan.recipe === 'cut' || !('overlapBeats' in plan)) return plan.recipe;
+  const c = plan.choreography?.params;
+  return [plan.recipe, `bar${exitBar}`, `ov${c?.overlapBars ?? plan.overlapBeats / 4}`, c ? `${c.name}${c.gapBars ? `-gap${c.gapBars}` : ''}` : 'plain'].join(':');
+}
+
+/** Pair features for choreography choice, measured from the scoped A cues and B entries. */
+function pairFeatures(from: MixAnalysis, to: MixAnalysis, bpm: number, maxOverlapSeconds: number, style?: TransitionStyle): PairFeatures {
+  const mean = (xs: number[]): number => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.5;
+  const densityA = mean(from.mixOut.map(c => c.evidence?.interference).filter((x): x is number => typeof x === 'number'));
+  const densityB = mean(to.mixIn.slice(0, 4).map(c => c.evidence?.salience).filter((x): x is number => typeof x === 'number'));
+  const keyed = from.key.tonic !== null && to.key.tonic !== null && Math.min(from.key.confidence, to.key.confidence) >= 0.55;
+  const harmonic = keyed ? harmonicCompatibility({tonic: from.key.tonic!, mode: from.key.mode!}, {tonic: to.key.tonic!, mode: to.key.mode!}).score : null;
+  return {densityA, densityB, harmonic, bpm, maxOverlapSeconds, ...(style ? {style} : {})};
+}
+
+/**
+ * S21 set transition choice. Candidates come from the tempo-gap policy (transition-policy@1) in
+ * band order; rhythm recipes need a confident beat grid, and a weak key only limits sustained
+ * harmonic overlap (mid-carve or bass-drop choreography). Every analyzed recipe may only use A
+ * exits on the requested boundary bars. The route-free echo reset needs only grids; a clean cut
+ * is chosen only when every other candidate is rejected or when the owner selects it.
  */
 export function chooseSetTransition(input: SetTransitionInput): SetTransitionChoice {
   const {from, to, sampleRate, earliestFrame, boundary} = input;
-  const notes: string[] = [];
+  const notes: string[] = [], rejected: {recipe: string; reason: string}[] = [];
+  const exclude = new Set(input.exclude ?? []);
   const fromGrid = setBarGrid(from.asset, from.analysis, sampleRate);
   const toGrid = setBarGrid(to.asset, to.analysis, sampleRate);
   if (fromGrid.source === 'requested') notes.push('A uses its requested grid (not measured).');
@@ -559,6 +688,17 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
   const first = nextBoundary(fromGrid, boundary.anchorBar, boundary.bars, earliestFrame);
   const second = first.bar + boundary.bars;
   const boundaries = [first, {bar: second, frame: downbeatAt(fromGrid, second)}];
+  const owner = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : null;
+  const beatConfident = !!from.analysis && !!to.analysis && [from.analysis, to.analysis].every(a =>
+    a.beatGrid.confidence >= SET_GRID_LIMITS.tempoConfidence && a.structure.downbeatConfidence >= SET_GRID_LIMITS.downbeatConfidence);
+  const policy = tempoGapPolicy(fromGrid.bpm, toGrid.bpm, {beatConfident});
+  const order: string[] = owner ? [owner, ...(owner === 'cut' ? [] : ['echo-reset'])] : [...policy.recipes];
+  const why = [...policy.reasons];
+  if (owner) why.push(`Owner selected ${owner}.`);
+  const maxOverlapSeconds = input.maxOverlapSeconds ?? 26;
+  let explore: ExploreChoice | undefined;
+  const base = (exitBar: number) => ({exitBar, boundaryBar: first.bar, fromGrid, toGrid, notes, policy, rejected, why,
+    ...(explore ? {explore} : {})});
   if (from.analysis && to.analysis) {
     const tolerance = Math.round(fromGrid.barFrames / 8);
     const onBoundary = from.analysis.mixOut.filter(c => boundaries.some(b => Math.abs(c.frame - b.frame) <= tolerance));
@@ -567,38 +707,126 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
       Math.abs(b.frame - frame) < Math.abs(best.frame - frame) ? b : best).bar;
     if (!onBoundary.length) notes.push('No analyzed A cue lies on the requested boundary.');
     else {
-      const selected = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : 'blend';
-      const blend = selected === 'echo-out' ? {kind: 'fallback' as const, reason: 'Set mode does not offer echo-out.'} :
-        planAutomaticMix(scoped, to.analysis, {...input.options, recipe: selected, minimumFromFrame: earliestFrame,
-          returnToOriginalTempo: !['cut', 'brake'].includes(selected)});
-      if (blend.kind === 'mix') {
-        if (['cut', 'tempo-ramp', 'brake'].includes(blend.recipe) && to.channels <= 2) return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
-          boundaryBar: first.bar, fromGrid, toGrid, notes};
-        try {
-          const window = setBlendWindow(blend, to.analysis, to.frames);
-          if (!fitsBlendRender(window.sourceEndFrame - window.sourceStartFrame, to.channels, sampleRate)) {
-            throw new Error('B entry exceeds the bounded time-stretch render budget.');
+      const features = pairFeatures(scoped, to.analysis, fromGrid.bpm, maxOverlapSeconds, input.style);
+      const auto = chooseChoreography(features);
+      if (input.explore) explore = exploreChoice(input.explore.seed, features, Math.min(3, to.analysis.mixIn.length));
+      const choreography: ChoreographyParams = input.options?.choreography ?? explore?.choreography ?? auto.params;
+      const cuesAt = (bar: number): MixAnalysis['mixOut'] => onBoundary.filter(c => Math.abs(c.frame - downbeatAt(fromGrid, bar)) <= tolerance);
+      const safeCarve: ChoreographyParams = {name: 'mid-carve', overlapBars: 8, swapMs: CHOREOGRAPHY_LIMITS.swapMs.default};
+      for (const recipe of order) {
+        if (recipe === 'echo-reset' || recipe === 'cut') break; // route-free and last-resort handled below
+        const stretched = SET_STRETCHED.includes(recipe);
+        const meet = recipe === 'meet-in-middle';
+        const usesChoreo = ['blend', 'meet-in-middle'].includes(recipe);
+        const planWith = (chosen: ChoreographyParams, scope: MixAnalysis): MixDecision => planAutomaticMix(scope, to.analysis!, {...input.options, recipe: recipe as NonNullable<MixPlannerOptions['recipe']>,
+          minimumFromFrame: earliestFrame, returnToOriginalTempo: stretched, harmonicMode: 'limited',
+          ...(usesChoreo ? {choreography: chosen} : {}),
+          ...(explore ? {entryRank: explore.entryIndex} : {}),
+          ...(meet ? {meetBpm: meetTempo(fromGrid.bpm, toGrid.bpm, explore?.meetFraction ?? 0.5),
+            tempoReturn: {bars: policy.perDeckChange > 0.05 ? 8 : 4, curve: 'smoothstep' as const}} :
+            stretched && policy.band === 'stretched' ? {tempoReturn: {bars: 4, curve: 'smoothstep' as const}} : {}),
+          ...(recipe === 'echo-out' ? {echoHeuristic: true} : {})});
+        // S21: one rejected parameterisation (overlap, boundary, choreography) never removes the recipe family:
+        // the next variant of the same recipe is tried before the next recipe. A request-fixed choreography stays fixed.
+        const fixed = !!input.options?.choreography;
+        const variants: {choreo: ChoreographyParams; scope: MixAnalysis}[] = [{choreo: choreography, scope: scoped},
+          ...boundaries.map(b => ({choreo: choreography, scope: {...scoped, mixOut: cuesAt(b.bar)}})).filter(v => v.scope.mixOut.length),
+          ...(usesChoreo && !fixed ? [auto.params, safeCarve].map(choreo => ({choreo, scope: scoped})) : [])];
+        const said = new Set<string>();
+        const reject = (reason: string): void => { if (!said.has(reason)) { said.add(reason); rejected.push({recipe, reason}); } };
+        for (const variant of variants) {
+          let plan = planWith(variant.choreo, variant.scope), exploreRefused = false;
+          // S21: an explore draw the planner refuses is never recorded; fall back to the Auto choreography.
+          if (plan.kind !== 'mix' && usesChoreo && explore && !fixed && variant.choreo === explore.choreography) {
+            const retry = planWith(auto.params, variant.scope);
+            if (retry.kind === 'mix') {
+              exploreRefused = true;
+              notes.push(`Explore draw ${explore.choreography.name} (${explore.choreography.overlapBars} bars) was refused (${plan.reason}); using the Auto choreography.`);
+              plan = retry;
+            }
           }
-          return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
-            boundaryBar: first.bar, fromGrid, toGrid, notes};
-        } catch (error) { notes.push(`Blend unavailable: ${error instanceof Error ? error.message : String(error)}`); }
-      } else notes.push(`Blend unavailable: ${blend.reason}`);
-      const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
-      if (cut.kind === 'mix') return {kind: 'analyzed', plan: cut, exitBar: barOf(cut.fromExitFrame),
-        boundaryBar: first.bar, fromGrid, toGrid, notes};
-      notes.push(`Analyzed cut unavailable: ${cut.reason}`);
+          if (plan.kind !== 'mix') { reject(plan.reason); continue; }
+          if (exclude.has(transitionSignature(plan, barOf(plan.fromExitFrame)))) { reject('The same parameters were rejected earlier for this request.'); continue; }
+          if (['tempo-ramp', 'brake'].includes(plan.recipe) && to.channels > 2) { reject('Native-rate render needs a prepared B.'); continue; }
+          if (stretched) {
+            try {
+              const window = setBlendWindow(plan, to.analysis, to.frames);
+              if (!fitsBlendRender(window.sourceEndFrame - window.sourceStartFrame, to.channels, sampleRate)) {
+                throw new Error('B entry exceeds the bounded time-stretch render budget.');
+              }
+            } catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
+          }
+          if (plan.choreography) why.push(...(fixed ? ['Choreography fixed by the request.'] :
+            explore && !exploreRefused && variant.choreo === explore.choreography ? [`Explore seed ${explore.seed} drew ${plan.choreography.params.name}.`] : auto.reasons));
+          if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
+          return {kind: 'analyzed', plan, ...base(barOf(plan.fromExitFrame))};
+        }
+      }
     }
   } else notes.push('Analysis unavailable for at least one song.');
-  // Route-free: the requested boundary first, then earlier feasible bars that are still in the future.
-  for (let bar = first.bar; bar >= 0; bar--) {
-    const frame = downbeatAt(fromGrid, bar);
-    if (frame < earliestFrame) break;
-    const plan = planRouteFreeTransition({grid: fromGrid, frames: from.frames}, {grid: toGrid, frames: to.frames},
-      frame, sampleRate);
-    if (plan.kind === 'route-free') {
-      if (bar !== first.bar) notes.push(`Requested bar ${first.bar + 1} lacks audio; using bar ${bar + 1}.`);
-      return {kind: 'route-free', plan, exitBar: bar, boundaryBar: first.bar, fromGrid, toGrid, notes};
+  // Route-free: crossfade (close tempi) or the filtered echo reset; a clean cut only as the last resort
+  // or when the owner chose it. The requested boundary first, then earlier feasible future bars.
+  const entry = routeFreeEntry(to.analysis, to.frames) ?? undefined;
+  const allowCut = owner === 'cut' || order.includes('cut');
+  const tryRouteFree = (cut: boolean): SetTransitionChoice | null => {
+    // Earlier feasible bars first (more audio left in A), then up to two later bars: the echo needs its
+    // pre-roll before the exit, which can leave the requested bar itself short of the earliest effect frame.
+    const bars: number[] = [];
+    for (let bar = first.bar; bar >= 0 && downbeatAt(fromGrid, bar) >= earliestFrame; bar--) bars.push(bar);
+    for (let bar = first.bar + 1; bar <= first.bar + ROUTE_FREE_LATER_BARS; bar++) bars.push(bar);
+    for (const bar of bars) {
+      const frame = downbeatAt(fromGrid, bar);
+      const plan = planRouteFreeTransition({grid: fromGrid, frames: from.frames}, {grid: toGrid, frames: to.frames},
+        frame, sampleRate, {...(entry !== undefined ? {entryFrame: entry} : {}), exclude: [...exclude], allowCut: cut, earliestFrame});
+      if (plan.kind === 'route-free') {
+        if (bar !== first.bar) notes.push(`Requested bar ${first.bar + 1} lacks ${bar > first.bar ? 'room for the effect pre-roll' : 'audio'}; using bar ${bar + 1}.`);
+        if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
+        return {kind: 'route-free', plan, ...base(bar)};
+      }
     }
+    return null;
+  };
+  // An owner-selected analyzed cut keeps the S18 analyzed cut before any route-free plan.
+  if (owner === 'cut' && from.analysis && to.analysis) {
+    const scoped = {...from.analysis, mixOut: from.analysis.mixOut.filter(c => boundaries.some(b => Math.abs(c.frame - b.frame) <= Math.round(fromGrid.barFrames / 8)))};
+    const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
+    if (cut.kind === 'mix') return {kind: 'analyzed', plan: cut, ...base(boundaries.reduce((b, x) => Math.abs(x.frame - cut.fromExitFrame) < Math.abs(b.frame - cut.fromExitFrame) ? x : b).bar)};
+  }
+  const smooth = owner === 'cut' ? null : tryRouteFree(false);
+  if (smooth) return smooth;
+  if (allowCut && !exclude.has('cut')) {
+    // Last resort: the analyzed cut (exact cue) before the route-free cut.
+    if (from.analysis && to.analysis && owner !== 'cut') {
+      const scoped = {...from.analysis, mixOut: from.analysis.mixOut.filter(c => boundaries.some(b => Math.abs(c.frame - b.frame) <= Math.round(fromGrid.barFrames / 8)))};
+      const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
+      if (cut.kind === 'mix') {
+        if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
+        notes.push('Clean cut chosen only because every other candidate was rejected.');
+        return {kind: 'analyzed', plan: cut, ...base(boundaries.reduce((b, x) => Math.abs(x.frame - cut.fromExitFrame) < Math.abs(b.frame - cut.fromExitFrame) ? x : b).bar)};
+      }
+    }
+    const cut = tryRouteFree(true);
+    if (cut) return cut;
   }
   return {kind: 'unavailable', reason: 'No future bar of A leaves room for a handover; A will finish naturally.', notes};
+}
+
+/** S21 versioned, replayable record of the exact plan scheduled (ratings attach to it). */
+export function setTransitionRecord(choice: Exclude<SetTransitionChoice, {kind: 'unavailable'}>,
+  from: {readonly id: string; readonly sha256: string}, to: {readonly id: string; readonly sha256: string; readonly frames: number},
+  sampleRate: number, mode: 'auto' | 'explore' | 'manual', seed: number | null = null): TransitionPlanRecord {
+  const plan = choice.plan;
+  const choreography = choice.kind === 'analyzed' ? plan.kind === 'mix' && 'choreography' in plan ? plan.choreography?.params ?? null : null : null;
+  const meet = choice.kind === 'analyzed' && 'meet' in plan ? plan.meet ?? null : null;
+  const entryRank = choice.kind === 'analyzed' && 'entry' in plan ? plan.entry?.rank ?? null : null;
+  const overlapBars = choreography ? choreography.overlapBars : choice.kind === 'analyzed' ? (plan as AutomaticMixPlan).overlapBeats / 4 : choice.plan.bars || null;
+  return makeTransitionPlanRecord({mode, seed: choice.explore?.seed ?? seed,
+    versions: {policy: TRANSITION_POLICY_VERSION, planner: MIX_PLANNER_VERSION, analysis: `${MIX_ANALYSIS_VERSION}+${SONG_MERGE_POLICY.policy}`,
+      choreography: CHOREOGRAPHY_VERSION, safety: 'transition-safety@1'},
+    from: {id: from.id, sha256: from.sha256, bpm: plan.fromBpm, exitFrame: plan.fromExitFrame, exitBar: choice.exitBar + 1},
+    to: {id: to.id, sha256: to.sha256, bpm: plan.toBpm, entryFrame: plan.toEntryFrame, entrySeconds: plan.toEntryFrame / sampleRate,
+      skippedFraction: plan.toEntryFrame / to.frames, entryRank},
+    sampleRate, tempo: {gap: choice.policy?.gap ?? Math.abs(plan.toBpm / plan.fromBpm - 1), band: choice.policy?.band ?? 'normal', meetBpm: meet?.bpm ?? null},
+    recipe: plan.recipe as SetRecipe | RouteFreeRecipe, choreography, overlapBars,
+    why: [...(choice.why ?? [])], rejected: [...(choice.rejected ?? [])]});
 }

@@ -113,6 +113,19 @@ try {
   const exitBar = Number(/bar (\d+) of the outgoing/.exec(planned)![1]);
   assert.equal((exitBar - 1) % 4, 0, `Next lands on a 4-bar boundary (bar ${exitBar})`);
   assert.match(planned, /tempo change (?:\+)?0\.0%/, '174 -> 174 control fixture');
+  // S21 readout: recipe with its tempo band, EQ choreography, where B enters and why (plan data only).
+  await waitText(page, 'set-why-recipe', /tempo gap 0\.0% \(normal\)/, 10000);
+  await waitText(page, 'set-why-entry', /B enters at \d+:\d\d \(\d+% in/, 10000);
+  // S21: no start bias, so B may enter a phrase into the song; Auto counts from that entry.
+  const [, entryMin, entrySec] = /B enters at (\d+):(\d\d)/.exec((await page.locator('#set-why-entry').textContent())!)!;
+  const entryBars = Math.round((Number(entryMin) * 60 + Number(entrySec)) / (4 * 60 / 174));
+  assert.ok((await page.locator('#set-why-choreo').textContent())!.length > 10, 'choreography described');
+  assert.match((await page.locator('#set-why-mode').textContent())!, /^auto · plan tp-[0-9a-f]{8}$/);
+  await page.locator('#set-why summary').click();
+  await page.locator('#set-why [data-rate="like"]').click();
+  await waitText(page, 'set-why-rating', /Saved "like" for plan tp-[0-9a-f]{8} \(1 rated\)/, 5000);
+  report.checks.push('S21 readout shows recipe, tempo band, choreography, B entry and plan id; a rating attaches to that exact plan');
+  await page.locator('#set-explore-seed').fill('7'); await page.locator('#set-explore').check();
   assert.match(await text(page, 'dj-next-title'), /synthetic-174-b/);
   await waitText(page, 'dj-now', /^Synthetic 174 BPM \(synthetic-174-b\)$/, 40000);
   report.checks.push(`Next moves 174-c -> 174-b (not catalogue order) on bar ${exitBar} of the outgoing song; recipe and tempo change shown`);
@@ -125,7 +138,9 @@ try {
   const auto = await text(page, 'set-mix');
   report.plans.push(auto);
   const autoBar = Number(/bar (\d+) of the outgoing/.exec(auto)![1]);
-  assert.ok(autoBar >= 14 && autoBar <= 17, `Auto leaves 16 bars after entry or the last full bar before the end (bar ${autoBar})`);
+  await waitText(page, 'set-why-mode', /^explore \(seed 7\) · plan tp-/, 10000);
+  report.checks.push('Seeded explore (seed 7) labels the next plan record as explore with its seed');
+  assert.ok(autoBar >= 14 && autoBar <= 17 + entryBars + 1, `Auto leaves 16 bars after entry (about ${entryBars} bars into B) or the last full bar before the end (bar ${autoBar})`);
   assert.match(await text(page, 'dj-next-title'), /synthetic-174-a/);
   await waitText(page, 'dj-now', /^Synthetic 174 BPM \(synthetic-174-a\)$/, 60000);
   report.checks.push(`one Auto step moves 174-b -> 174-a on bar ${autoBar} (anchored to 174-b's entry), driven by the snapshot tick`);
@@ -165,7 +180,8 @@ try {
     if (!a!.ok || !b!.ok) throw new Error('Actual song worker analysis unavailable.');
     const results = [];
     for (const recipe of ['blend', 'filter-sweep', 'loudness-match'] as const) {
-    const offline = new OfflineAudioContext(2, rate * 35, rate);
+    // S21 phrase overlaps and the smoothstep return place the native join later: render 50 s.
+    const offline = new OfflineAudioContext(2, rate * 50, rate);
     const choice = chooseSetTransition({from: {asset: from!.asset, analysis: a!.analysis, frames: from!.buffer.length},
       to: {asset: to!.asset, analysis: b!.analysis, frames: to!.buffer.length, channels: 2},
       sampleRate: rate, earliestFrame: 3 * rate, boundary: {bars: 4, anchorBar: 0}, options: {recipe}});
@@ -205,7 +221,8 @@ try {
   });
   for (const nativeJoin of nativeJoins) {
   assert.equal(nativeJoin.measuredJoin, true);
-  assert.ok(nativeJoin.preparedSamples < 12_000_000 / 4 && nativeJoin.preparedSamples < nativeJoin.originalSamples / 10, JSON.stringify(nativeJoin));
+  // S21: longer phrase overlaps lengthen the entry render; the 12M-sample budget is unchanged (bounded to 30 s stereo here).
+  assert.ok(nativeJoin.preparedSamples < 12_000_000 / 4 && nativeJoin.preparedSamples < 30 * 48000 * 2, JSON.stringify(nativeJoin));
   assert.ok(nativeJoin.analyzedFrames.every(n => n <= 60 * 48000));
   assert.ok(nativeJoin.seamError < 1e-5 && nativeJoin.nativeError < 1e-5, JSON.stringify(nativeJoin));
   assert.deepEqual(nativeJoin.levelChannels, [2, 2]);

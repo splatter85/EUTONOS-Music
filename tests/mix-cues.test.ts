@@ -62,7 +62,8 @@ test('drop and breakdown yield asymmetric candidates and relative energy valleys
   assert.ok(a.mixOut.some(c => Math.abs(c.seconds - 40) < 0.03 && c.evidence!.boundary > 0.08));
   assert.ok(a.mixOut.some(c => c.evidence?.kind === 'low-interference'));
   assert.notDeepEqual(a.mixIn.map(c => c.frame), a.mixOut.map(c => c.frame));
-  assert.ok(a.mixIn.every(c => c.frame < a.frames * 0.6));
+  // S21: entries may lie anywhere before the last 10%; earliness earns nothing.
+  assert.ok(a.mixIn.every(c => c.frame < a.frames * 0.9));
   assert.ok(a.mixOut.every(c => c.frame >= a.frames * 0.25 && c.frame < a.frames * 0.9));
 });
 

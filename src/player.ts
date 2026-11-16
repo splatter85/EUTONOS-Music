@@ -10,8 +10,10 @@ import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioCloc
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
 import {isBeatmatchedRecipe, type AutomaticMixPlan, type LevelMatchPlan, type MixPlannerOptions, type MixRecipe} from './mix-planner.js';
 import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
+import {setTransitionRecord} from './mix-transition.js';
+import type {TransitionPlanRecord} from '../web/transition-policy.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  replanPreparedMix, renderSetBlend, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -31,11 +33,17 @@ export interface HybridSnapshot {
   readonly toStart: ClockStamp;
   readonly end: ClockStamp;
 }
+/** S21: Next waits at most this long for whole-song B analysis, then uses a bounded non-cut fallback. */
+export const SET_SONG_ANALYSIS_DEADLINE_MS = 6000;
+/** S21: candidates tried per handover request before the transition is refused. */
+export const SET_CANDIDATE_ATTEMPTS = 5;
 export interface MixSnapshot {
   readonly phase: 'preparing' | 'scheduled' | 'prelude' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
   readonly reason: string;
   /** Experimental offline model of this selected DJ plan, not listening or manual-control qualification. */
   readonly precheck?: PrecheckReport;
+  /** S21: the scheduled clean cut was reached only after measured pre-check FAILs; its own PASS is not a plain pass. */
+  readonly fallbackAfterFailedPrecheck?: {readonly failedChecks: number; readonly last: string};
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
@@ -58,6 +66,12 @@ export interface MixSnapshot {
 }
 /** S18: what the set DJ chose and why, for display and receipts. Plan data, not listening evidence. */
 export interface SetMixDetail {
+  /** S21: the versioned, replayable plan record of exactly this handover (ratings attach to it). */
+  readonly transition?: TransitionPlanRecord;
+  /** S21 readout: choreography description, B entry and the policy's reasons. */
+  readonly choreography?: string;
+  readonly entry?: {readonly seconds: number; readonly fraction: number; readonly rank: number | null};
+  readonly why?: readonly string[];
   readonly fromId: string; readonly toId: string;
   readonly exitBar: number; readonly boundaryBar: number;
   readonly boundaryBars: number; readonly anchor: SetBoundary['anchor'];
@@ -655,7 +669,7 @@ export class SmallPlayer {
 
   /** Live UI supplies the worker dependency; test/offline consumers can supply their own gate. */
   private async checkSelectedMix(request: PrecheckRequest, signal: AbortSignal,
-    current: () => boolean): Promise<PrecheckReport | null> {
+    current: () => boolean, retry = false): Promise<PrecheckReport | null | false> {
     if (!this.mixPrecheck) return null;
     this.mix = {phase: 'preparing', summary: null, reason: 'Checking the selected DJ plan before scheduling audio…'};
     let report: PrecheckReport;
@@ -667,6 +681,12 @@ export class SmallPlayer {
     }
     if (!current()) return null;
     const allowed = report.status === 'pass' || report.status === 'warn';
+    // A worker error is not a candidate defect, so only a measured FAIL tries the next candidate.
+    if (!allowed && retry && report.status === 'fail') {
+      // S21: a rejected candidate is excluded and the next one is tried; nothing was scheduled.
+      this.mix = {phase: 'preparing', summary: null, precheck: report, reason: precheckLabel(report) + '. Trying the next handover candidate…'};
+      return false;
+    }
     const reason = precheckLabel(report) + (allowed ? '. Your manual controls still apply.' : '. The playing song is unchanged.');
     this.mix = {phase: allowed ? 'preparing' : 'unavailable', summary: null, reason, precheck: report};
     requireAudio(allowed, reason);
@@ -681,7 +701,31 @@ export class SmallPlayer {
     requireAudio(this.routeFree, 'Warm-up needs a set pack.');
     this.retainSetSongs([assetId]);
     const recording = await this.decodeSetSong(assetId);
-    return this.analyses.analyze(recording, this.mixRuntime);
+    return this.analyses.analyzeSong(recording, this.mixRuntime);
+  }
+
+  /** S21 seeded explore mode for set handovers (null = deterministic Auto). Seeds advance per handover. */
+  setTransitionExplore(seed: number | null): void {
+    requireAudio(seed === null || Number.isSafeInteger(seed) && seed >= 0 && seed < 2 ** 31, 'Explore seed must be an integer from 0.');
+    this.explore = seed === null ? null : {seed, next: seed};
+  }
+  get transitionExplore(): number | null { return this.explore?.seed ?? null; }
+  private explore: {seed: number; next: number} | null = null;
+
+  /** Whole-song B analysis, bounded by a deadline so Next never waits on new analysis for long. */
+  private incomingAnalysis(recording: DecodedRecording, signal: AbortSignal): Promise<SongAnalysisResult> {
+    const task = this.analyses.analyzeSong(recording, this.mixRuntime);
+    task.catch(() => undefined);
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) { reject(new Error('Mix preparation cancelled.')); return; }
+      const timer = setTimeout(() => { cleanup(); resolve({ok: false,
+        reason: 'Whole-song analysis of B is still running; a bounded non-cut handover is used (analysis continues for later).'}); },
+      SET_SONG_ANALYSIS_DEADLINE_MS);
+      const abort = (): void => { cleanup(); reject(new Error('Mix preparation cancelled.')); };
+      const cleanup = (): void => { clearTimeout(timer); signal.removeEventListener('abort', abort); };
+      signal.addEventListener('abort', abort, {once: true});
+      task.then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(error); });
+    });
   }
 
   /**
@@ -733,7 +777,7 @@ export class SmallPlayer {
       fromAnalysis.catch(() => undefined);
       const toRecording = await this.decodeSetSong(targetId);
       if (!current()) return;
-      const [a, b] = await Promise.all([fromAnalysis, this.analyses.analyze(toRecording, this.mixRuntime, controller.signal)]);
+      const [a, b] = await Promise.all([fromAnalysis, this.incomingAnalysis(toRecording, controller.signal)]);
       if (!current()) return;
       const analysisA = a.ok ? a.analysis : null, analysisB = b.ok ? b.analysis : null;
       // Native A frame now, and the earliest native A frame with a two-second preparation allowance.
@@ -752,67 +796,92 @@ export class SmallPlayer {
       const grid = setBarGrid(fromSet.asset, analysisA, rate);
       const anchorBar = boundary.anchor === 'song' ? 0 : Math.max(0,
         Math.round((toNative(fromSet.offset) - downbeatAt(grid, 0)) / grid.barFrames));
+      // S21: candidates are tried in policy order; a render, deadline or pre-check rejection excludes
+      // that recipe and the next candidate is prepared. Nothing is scheduled until one passes.
+      const exclude: string[] = [];
+      const explore = this.explore ? {seed: this.explore.next} : null;
       const choose = (allowBlend: boolean): SetTransitionChoice => chooseSetTransition({
         from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames},
         to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
           channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
         sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
-        options: {...options, fromLevelGain: outgoing.levelGain}});
-      let choice = choose(true);
-      if (choice.kind === 'unavailable') {
-        this.mix = {phase: 'unavailable', reason: choice.reason, summary: null};
-        requireAudio(false, choice.reason);
-      }
-      let prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal)
-        .catch(async error => {
-          if (!current()) throw error;
-          // A failed blend render falls back to native B; nothing has been scheduled yet.
-          choice = choose(false);
-          if (choice.kind === 'unavailable') throw error;
-          return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-        });
-      if (!current()) return;
-      const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
-        from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset) + ('entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0));
+        options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {})});
+      if (!analysisB && !b.ok) this.mix = {phase: 'preparing', summary: null, reason: b.reason};
+      type Prepared = Awaited<ReturnType<SmallPlayer['prepareSetIncoming']>>;
+      let choice: SetTransitionChoice = choose(true);
+      let prepared!: Prepared, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
+      let lastRejected: PrecheckReport | null = null;
+      const failedChecks: {recipe: string; reason: string}[] = [];
       const delayFor = (): number => 'entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0;
-      let at = atFor();
-      if (at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
-        // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
-        choice = choose(false);
-        requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
-        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+      const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
+        from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset) + delayFor());
+      for (let attempt = 1; ; attempt++) {
+        if (choice.kind === 'unavailable') {
+          const reason: string = lastRejected ? precheckLabel(lastRejected) + '. No other handover candidate passed; the playing song is unchanged.' : choice.reason;
+          this.mix = {phase: 'unavailable', reason, summary: null, ...(lastRejected ? {precheck: lastRejected} : {})};
+          requireAudio(false, reason);
+        }
+        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal)
+          .catch(async error => {
+            if (!current()) throw error;
+            // A failed blend render falls back to native B; nothing has been scheduled yet.
+            choice = choose(false);
+            if (choice.kind === 'unavailable') throw error;
+            return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+          });
         if (!current()) return;
         at = atFor();
-      }
-      let loopBuffer: AudioBuffer | undefined;
-      try {
-        if ('loopExtension' in prepared.plan) loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
-      } catch (error) {
-        if (!current()) throw error;
-        choice = choose(false);
-        requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
-        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-        at = atFor();
-      }
-      if (loopBuffer && at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
-        choice = choose(false);
-        requireAudio(choice.kind !== 'unavailable', 'Finite loop missed S and no native fallback boundary remains.');
-        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-        at = atFor(); loopBuffer = undefined;
+        if (at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+          // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
+          choice = choose(false);
+          requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
+          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+          if (!current()) return;
+          at = atFor();
+        }
+        loopBuffer = undefined;
+        try {
+          if ('loopExtension' in prepared.plan) loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
+        } catch (error) {
+          if (!current()) throw error;
+          choice = choose(false);
+          requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
+          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+          at = atFor();
+        }
+        if (loopBuffer && at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+          choice = choose(false);
+          requireAudio(choice.kind !== 'unavailable', 'Finite loop missed S and no native fallback boundary remains.');
+          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+          at = atFor(); loopBuffer = undefined;
+        }
+        if (!current()) return;
+        const candidate = prepared.plan;
+        const effectFrame = at.frame - delayFor() - candidate.preRollFrames;
+        requireAudio(effectFrame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
+        const candidateExit = toBuffer(candidate.fromExitFrame);
+        // The outgoing deck consumes A for its whole automation, measured from the effect (exit minus pre-roll).
+        const aNeeds = candidate.automation.outgoing.durationFrames - candidate.preRollFrames;
+        requireAudio(candidateExit + aNeeds <= outgoing.playbackFrames &&
+          prepared.entryFrame + candidate.overlapFrames <= prepared.incoming.buffer.length,
+        'The set transition does not have enough audio for its handover.');
+        const report = await this.checkSelectedMix({plan: candidate, from: outgoing.nativeRecording, to: toRecording,
+          incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
+          ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: analysisA, to: analysisB},
+          fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
+        controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS);
+        if (!current()) return;
+        if (report !== false) { precheck = report; break; }
+        lastRejected = this.mix?.precheck ?? null;
+        // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
+        const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+        exclude.push(failedSignature);
+        if (lastRejected) failedChecks.push({recipe: failedSignature, reason: precheckLabel(lastRejected)});
+        choice = choose(true);
       }
       const plan = prepared.plan;
-      if (!current()) return;
       const effect = this.clock.stamp(at.frame - delayFor() - plan.preRollFrames);
-      requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
       const exitBuffer = toBuffer(plan.fromExitFrame);
-      requireAudio(exitBuffer + plan.overlapFrames <= outgoing.playbackFrames &&
-        prepared.entryFrame + plan.overlapFrames <= prepared.incoming.buffer.length,
-      'The set transition does not have enough audio for its handover.');
-      const precheck = await this.checkSelectedMix({plan, from: outgoing.nativeRecording, to: toRecording,
-        incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
-        ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: analysisA, to: analysisB},
-        fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effect.frame - from.start.at.frame}},
-      controller.signal, current);
       if (!current()) return;
       requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames,
         'The checked set transition missed its audio-clock deadline. Request Next again.');
@@ -834,7 +903,14 @@ export class SmallPlayer {
       // both the finishing entry and the ahead-scheduled native join.
       const end = this.clock.stamp(Math.max(effect.frame + plan.automation.outgoing.durationFrames,
         at.frame + plan.automation.incoming.durationFrames));
-      const chosen = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      const picked = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      // A clean cut reached only after measured pre-check FAILs is a fallback, never a plain pass.
+      const cutAfterFail = failedChecks.length > 0 && (picked.plan.recipe === 'cut' || picked.plan.recipe === 'fallback-cut');
+      const chosen: typeof picked = failedChecks.length ? {...picked,
+        why: [...(picked.why ?? []), ...(cutAfterFail ? [`Clean cut (last resort) reached after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''}; the check on the cut itself is not a plain pass.`] : [])],
+        rejected: [...(picked.rejected ?? []), ...failedChecks]} : picked;
+      const record = setTransitionRecord(chosen, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
+        {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null);
       from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
         motion: {at: effect.frame, sourceFrame: plan.fromExitFrame - plan.preRollFrames,
           ...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}),
@@ -846,7 +922,10 @@ export class SmallPlayer {
       this.plan = {at, end};
       const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
       this.mix = {phase: 'scheduled', earliestEffect: effect, ...(precheck ? {precheck} : {}),
-        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? precheckLabel(precheck) + '. ' : ''}Listening is untested.`,
+        ...(cutAfterFail ? {fallbackAfterFailedPrecheck: {failedChecks: failedChecks.length, last: failedChecks.at(-1)!.reason}} : {}),
+        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? (cutAfterFail
+          ? `Fallback after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''} (last: ${failedChecks.at(-1)!.reason}); the cut itself: ${precheckLabel(precheck)}`
+          : precheckLabel(precheck)) + '. ' : ''}Listening is untested.`,
         summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
           pitchSemitones: 'pitchSemitones' in plan ? plan.pitchSemitones : 0,
           confidence: 'confidence' in plan ? plan.confidence : 0, processor: prepared.processor,
@@ -861,7 +940,12 @@ export class SmallPlayer {
           fromHash: fromSet.asset.file.sha256, toHash: toAsset.file.sha256,
           set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
             boundaryBars: boundary.bars, anchor: boundary.anchor, fromGrid: chosen.fromGrid.source,
-            toGrid: chosen.toGrid.source, tempoChange: plan.toBpm / plan.fromBpm, notes: [...chosen.notes]}}};
+            toGrid: chosen.toGrid.source, tempoChange: plan.toBpm / plan.fromBpm, notes: [...chosen.notes],
+            transition: record, why: [...(chosen.why ?? [])],
+            ...('choreography' in plan && plan.choreography ? {choreography: plan.choreography.description} : {}),
+            entry: {seconds: plan.toEntryFrame / rate, fraction: plan.toEntryFrame / toRecording.buffer.length,
+              rank: 'entry' in plan ? plan.entry?.rank ?? null : null}}}};
+      if (explore && this.explore) this.explore = {...this.explore, next: (this.explore.next + 1) % 2 ** 31};
       incoming = null; // ownership transferred to this.voices
       this.retainSetSongs([]);
     } catch (error) {

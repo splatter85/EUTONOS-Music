@@ -85,7 +85,9 @@ const RECIPE_LABEL: Readonly<Record<string, string>> = {
   blend: 'Beatmatched blend', cut: 'Cut on the beat',
   'filter-sweep': 'Filter sweep', 'loudness-match': 'Loudness match',
   'tempo-ramp': 'Tempo ramp (pitch moves)', 'loop-extend': 'Loop extension', 'brake': 'Brake (pitch drops)',
-  'fallback-crossfade': 'Plain crossfade (not beatmatched)', 'fallback-cut': 'Clean cut on the bar',
+  'fallback-crossfade': 'Plain crossfade (not beatmatched)', 'fallback-cut': 'Clean cut on the bar (last resort)',
+  'meet-in-middle': 'Meet in the middle (both tempos move)', 'echo-out': 'Echo out',
+  'fallback-echo-reset': 'Filtered echo reset (not beatmatched)',
 };
 export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? recipe; }
 
@@ -112,4 +114,31 @@ export function describeSetMix(summary: NonNullable<MixSnapshot['summary']>): st
     : `grids: ${set.fromGrid} → ${set.toGrid}`;
   return `${label} · ${summary.entryDelayFrames ? 'A effect starts' : 'leaves'} on bar ${set.exitBar} of the outgoing song (${step})`
     + ` · tempo change ${tempoPercent(set.tempoChange)} · ${grids}`;
+}
+
+/** Seconds as m:ss for the readout. */
+function clock(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+/**
+ * S21 Studio readout: recipe, EQ choreography, where B enters and why. Plan data from the policy,
+ * planner and analysis; it is never listening evidence.
+ */
+export function transitionReadout(summary: NonNullable<MixSnapshot['summary']>): {
+  readonly recipe: string; readonly choreography: string; readonly entry: string; readonly why: readonly string[];
+  readonly planId: string | null; readonly mode: string;
+} {
+  const set = summary.set, record = set?.transition ?? null;
+  const band = record ? ` · tempo gap ${(record.tempo.gap * 100).toFixed(1)}% (${record.tempo.band})` +
+    (record.tempo.meetBpm !== null ? ` · meet at ${record.tempo.meetBpm.toFixed(1)} BPM` : '') : '';
+  const entry = set?.entry
+    ? `B enters at ${clock(set.entry.seconds)} (${Math.round(set.entry.fraction * 100)}% in${set.entry.rank !== null ? `, candidate #${set.entry.rank + 1}` : ''})`
+    : 'B entry: not recorded';
+  return {recipe: recipeLabel(summary.recipe) + band,
+    choreography: set?.choreography ?? 'No EQ choreography (this recipe uses its own automation)',
+    entry, why: [...(set?.why ?? []), ...(record?.rejected ?? []).map(r => `${recipeLabel(r.recipe)} not used: ${r.reason}`)],
+    planId: record?.id ?? null,
+    mode: record ? (record.mode === 'explore' ? `explore (seed ${record.seed})` : record.mode) : 'not recorded'};
 }

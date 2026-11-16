@@ -296,7 +296,10 @@ try {
       }, undefined, {timeout: 40000});
       const detail = await page.locator('#set-mix').innerText();
       const trace = await page.evaluate(() => (globalThis as TraceWindow).__mixGateTrace);
-      assert.equal(trace.attempts, 1, 'A Studio Next must check exactly its selected plan without retrying another recipe.');
+      // S21: a FAIL excludes that recipe and checks the next candidate, at most five per Next;
+      // an unavailable check stops at once. Each check is still one bounded worker.
+      const maxAttempts = mode === 'unavailable' ? 1 : 5;
+      assert.ok(trace.attempts >= 1 && trace.attempts <= maxAttempts, 'A Studio Next checked ' + trace.attempts + ' candidates (bound ' + maxAttempts + ').');
       assert.equal(trace.contexts, 1, 'The gate must not create a second live audio owner.');
       assert.equal(trace.prematureStarts, 0, 'Incoming audio was scheduled before the check completed.');
       assert.match(await page.locator('#deck-a-low').getAttribute('aria-valuetext') ?? '', /You/);
@@ -304,12 +307,14 @@ try {
         assert.match(detail, /No handover:.*DJ plan check UNAVAILABLE.*worker unavailable/);
         assert.equal(trace.workers, 0); assert.equal(trace.results.length, 0);
       } else {
-        assert.equal(trace.workers, 1); assert.equal(trace.terminated, 1); assert.equal(trace.results.length, 1);
-        const result = trace.results[0]!;
-        assert.equal(result.thresholds, 'mix-evaluation-thresholds@1');
+        assert.equal(trace.workers, trace.attempts); assert.equal(trace.terminated, trace.attempts);
+        assert.equal(trace.results.length, trace.attempts);
+        assert.ok(trace.results.slice(0, -1).every(r => r.verdict === 'fail'), 'Only a FAIL may move on to another candidate.');
+        const first = trace.results[0]!, result = trace.results.at(-1)!;
+        assert.ok(trace.results.every(r => r.thresholds === 'mix-evaluation-thresholds@1'));
         if (expectFail) {
-          assert.equal(result.verdict, 'fail');
-          assert.ok(result.flags.some(flag => flag.metric === 'loudness' && flag.level === 'fail'),
+          assert.equal(first.verdict, 'fail');
+          assert.ok(first.flags.some(flag => flag.metric === 'loudness' && flag.level === 'fail'),
             'The level-mismatch fixture must expose a measured loudness failure.');
         }
         if (result.verdict === 'fail') assert.match(detail, /No handover:.*DJ plan check FAIL/);
@@ -318,7 +323,7 @@ try {
           assert.ok(trace.starts > before.starts, 'An admitted plan did not schedule its source.');
         }
       }
-      if (expectFail || mode === 'unavailable' || trace.results[0]?.verdict === 'fail') {
+      if (mode === 'unavailable' || trace.results.at(-1)?.verdict === 'fail') {
         assert.equal(await page.locator('#dj-now').innerText(), before.now);
         assert.equal(await page.locator('#dj-queue').innerText(), before.queue);
         assert.equal(await page.locator('#dj-next-title').innerText(), 'Nothing scheduled');
@@ -326,7 +331,7 @@ try {
       }
       report.metrics.push({studio: expectFail ? 'level-mismatch-fail' : mode, detail, trace});
       console.log('Studio ' + (expectFail ? 'level mismatch' : mode) + ': ' + detail +
-        ' (' + trace.attempts + ' check; ' + trace.contexts + ' live owner; ' + trace.prematureStarts + ' premature starts).');
+        ' (' + trace.attempts + ' check(s); ' + trace.contexts + ' live owner; ' + trace.prematureStarts + ' premature starts).');
       if (expectFail) {
         await page.screenshot({path: join(output, 'studio-precheck-desktop.png'), fullPage: true});
         await page.setViewportSize({width: 390, height: 844});

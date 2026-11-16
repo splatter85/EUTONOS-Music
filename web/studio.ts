@@ -16,7 +16,9 @@ import {MusicLibrary, type MusicLibrarySnapshot} from '../src/library.js';
 import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
-import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, type AutoBars, type NextBars} from './set-mode.js';
+import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, transitionReadout, type AutoBars, type NextBars} from './set-mode.js';
+import {emptyTransitionRatings, rateTransition, validateTransitionRatingLog, type TransitionPlanRecord, type TransitionRating,
+  type TransitionRatingLog} from './transition-policy.js';
 import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
@@ -451,10 +453,54 @@ function ratingOfAsset(id: string): string {
 }
 const setSongList = isSet ? new SetSongList($('set-songs'), setAnalyses!, () => djPlayer,
   id => { void send({type: 'queueTrack', trackId: id}); }, ratingOfAsset) : null;
+// ---------- S21 transition readout, seeded explore and plan ratings (no learner) ----------
+const RATINGS_KEY = 'eutonos-music.transition-ratings.v1';
+let shownPlan: TransitionPlanRecord | null = null;
+function loadRatings(): TransitionRatingLog {
+  try { const raw = localStorage.getItem(RATINGS_KEY); return raw ? validateTransitionRatingLog(JSON.parse(raw)) : emptyTransitionRatings(); }
+  catch { return emptyTransitionRatings(); }
+}
+function saveRatings(log: TransitionRatingLog): boolean {
+  try { localStorage.setItem(RATINGS_KEY, JSON.stringify(log)); return true; } catch { return false; }
+}
+const exploreBox = isSet ? $<HTMLInputElement>('set-explore') : null, exploreSeed = isSet ? $<HTMLInputElement>('set-explore-seed') : null;
+function applyExplore(): void {
+  if (!exploreBox || !exploreSeed) return;
+  const seed = Math.max(0, Math.min(2 ** 31 - 1, Math.floor(Number(exploreSeed.value) || 0)));
+  exploreSeed.value = String(seed);
+  try { getDj(); djPlayer?.setTransitionExplore(exploreBox.checked ? seed : null); }
+  catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
+}
+exploreBox?.addEventListener('change', applyExplore); exploreSeed?.addEventListener('change', applyExplore);
+if (isSet) for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#set-why [data-rate]'))) {
+  button.addEventListener('click', () => {
+    if (!shownPlan) { setText('set-why-rating', 'No planned handover to rate yet.'); return; }
+    try {
+      const log = rateTransition(loadRatings(), shownPlan, button.dataset.rate as TransitionRating, new Date().toISOString());
+      setText('set-why-rating', saveRatings(log) ? `Saved "${button.dataset.rate}" for plan ${shownPlan.id} (${log.entries.length} rated).`
+        : 'This browser would not store the rating.');
+    } catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
+  });
+}
+if (isSet) $('set-ratings-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(loadRatings(), null, 2)], {type: 'application/json'});
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'transition-ratings.json';
+  link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
+function renderWhy(summary: NonNullable<ReturnType<typeof transitionReadout>> | null): void {
+  if (!isSet || !summary) return;
+  setText('set-why-recipe', summary.recipe); setText('set-why-choreo', summary.choreography);
+  setText('set-why-entry', summary.entry); setText('set-why-mode', summary.mode + (summary.planId ? ` · plan ${summary.planId}` : ''));
+  const list = $('set-why-reasons'); list.replaceChildren(...summary.why.map(reason => {
+    const item = document.createElement('li'); item.textContent = reason; return item;
+  }));
+}
 function renderSet(): void {
   const snap = dj?.snapshot(), player = snap?.player;
   const summary = player?.mix?.summary;
-  if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + precheckLabel(player.mix.precheck) : '');
+  if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + (player.mix.fallbackAfterFailedPrecheck
+    ? `fallback after ${player.mix.fallbackAfterFailedPrecheck.failedChecks} failed pre-check(s); the cut itself: ` : '') + precheckLabel(player.mix.precheck) : '');
+  if (summary?.set && summary.set.transition?.id !== shownPlan?.id) { shownPlan = summary.set.transition ?? null; renderWhy(transitionReadout(summary)); }
   setText('set-mix', player?.mix?.phase === 'preparing' ? player.mix.reason
     : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
     : lastSetMix ? `${summary?.set ? 'Planned' : 'Last handover'}: ${lastSetMix}` : 'No handover planned yet.');

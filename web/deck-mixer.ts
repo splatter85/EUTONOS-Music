@@ -2,7 +2,7 @@
  * S20 set mixer. The existing SmallPlayer owns this graph and its audio clock.
  * Controls replace recipe lanes; no timer, new transport or audio source is introduced.
  */
-import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, mixCurveValue, validateMixAutomation,
+import {BAND_BYPASS_SECONDS, createThreeBandSplit, MIX_FILTER_Q_DB, MIX_SHELF_HZ, mixCurveValue, validateMixAutomation,
   type MixAutomation, type MixAutomationGraph, type MixAutomationOwner, type MixAutomationPoint} from '../src/mix-automation.js';
 
 export type DeckId = 'a' | 'b';
@@ -70,6 +70,14 @@ class Lane {
   }
 }
 
+/** Direct-to-split handover at the start of band automation and back after its end. */
+function bandRoute(duration: number, rate: number): {direct: MixAutomationPoint[]; split: MixAutomationPoint[]} {
+  const fade = Math.max(1, Math.round(rate * BAND_BYPASS_SECONDS)), on = Math.min(fade, duration);
+  const frames = [0, on, duration, duration + fade];
+  return {direct: frames.map((frame, i) => ({frame, value: i === 0 || i === 3 ? 1 : 0})),
+    split: frames.map((frame, i) => ({frame, value: i === 0 || i === 3 ? 0 : 1}))};
+}
+
 export function filterCutoffs(value: number, rate: number): {highPassHz: number; lowPassHz: number} {
   check(Number.isFinite(value) && value >= -1 && value <= 1, 'Filter must be between -1 and 1.');
   const nyquist = rate / 2, high = Math.min(8000, nyquist * 0.8);
@@ -89,10 +97,15 @@ export class DeckChannel implements MixAutomationOwner {
   private readonly lifetime: GainNode;
   private voiceToken = 0;
   private readonly lanes: {gain: Lane; low: Lane; mid: Lane; high: Lane; hp: Lane; lp: Lane};
+  /** S21: DJ-owned LR4 band gains (neutral 1) and the deck's own echo send/return (neutral 0). */
+  private readonly bandLanes: {low: Lane; mid: Lane; high: Lane};
+  /** S21: the split is all-pass in phase, so it is only in the path while band lanes are scheduled. */
+  private readonly routeLanes: {direct: Lane; split: Lane};
+  private echo: {send: Lane; wet: Lane; delay: DelayNode; feedback: GainNode; loop: BiquadFilterNode} | null = null;
   private scope: AnalyserNode | null = null;
   private token = 0;
   private released = false;
-  constructor(private readonly context: BaseAudioContext, destination: AudioNode) {
+  constructor(private readonly context: BaseAudioContext, private readonly destination: AudioNode) {
     check(destination.context === context, 'Deck output must use the owner context.');
     const own = <T extends AudioNode>(node: T): T => { this.nodes.push(node); return node; };
     this.input = own(context.createGain());
@@ -108,8 +121,31 @@ export class DeckChannel implements MixAutomationOwner {
     this.lanes = {gain: new Lane(context, this.fader.gain, 1), low: new Lane(context, low.gain, 0),
       mid: new Lane(context, mid.gain, 0), high: new Lane(context, high.gain, 0),
       hp: new Lane(context, hp.frequency, 0), lp: new Lane(context, lp.frequency, context.sampleRate / 2)};
+    // The LR4 split sums flat at unity (eq-choreography@1), after the manual EQ. Its phase is
+    // all-pass, so a direct path carries the deck except while a choreography is scheduled.
+    const splitOut = own(context.createGain()), direct = own(context.createGain());
+    const split = createThreeBandSplit(context, splitOut);
+    this.nodes.push(...split.nodes);
+    this.routeLanes = {direct: new Lane(context, direct.gain, 1), split: new Lane(context, splitOut.gain, 0)};
+    splitOut.connect(this.fader); direct.connect(this.fader);
+    this.bandLanes = {low: new Lane(context, split.gains.low.gain, 1), mid: new Lane(context, split.gains.mid.gain, 1),
+      high: new Lane(context, split.gains.high.gain, 1)};
     this.input.connect(low); low.connect(mid); mid.connect(high); high.connect(hp);
-    hp.connect(lp); lp.connect(this.fader); this.fader.connect(this.lifetime); this.lifetime.connect(destination);
+    hp.connect(lp); lp.connect(split.input); lp.connect(direct); this.fader.connect(this.lifetime); this.lifetime.connect(destination);
+  }
+  /** Echo send is taken from the deck input (as in the original owner graph) and returns to the
+   * owner output directly, so its tail outlives this deck's lifetime gain and fader. Lazy. */
+  private echoNodes(): NonNullable<DeckChannel['echo']> {
+    if (this.echo) return this.echo;
+    const context = this.context, own = <T extends AudioNode>(node: T): T => { this.nodes.push(node); return node; };
+    const send = own(context.createGain()), delay = own(context.createDelay(2)), loop = own(context.createBiquadFilter());
+    const feedback = own(context.createGain()), wet = own(context.createGain());
+    loop.type = 'lowpass'; loop.Q.value = MIX_FILTER_Q_DB; loop.frequency.value = Math.min(5000, context.sampleRate * 0.45);
+    feedback.gain.value = 0;
+    this.input.connect(send); send.connect(delay); delay.connect(loop); loop.connect(feedback); feedback.connect(delay);
+    delay.connect(wet); wet.connect(this.destination);
+    this.echo = {send: new Lane(context, send.gain, 0), wet: new Lane(context, wet.gain, 0), delay, feedback, loop};
+    return this.echo;
   }
   /** A per-voice lease keeps late cleanup from closing a newer song on this deck. */
   createOwner(): MixAutomationOwner & {setLifetime(start: number, end: number): void; releaseSource(): void} {
@@ -134,16 +170,37 @@ export class DeckChannel implements MixAutomationOwner {
     };
   }
   schedule(plan: MixAutomation, atFrame: number): MixAutomationGraph {
-    check(!this.released && !plan.echo, 'The set deck supports dry recipe lanes; echo keeps its original owner graph.');
+    check(!this.released, 'Deck mixer is closed.');
     validateMixAutomation(plan, this.context.sampleRate);
     check(Number.isSafeInteger(atFrame) && atFrame >= frameNow(this.context), 'Deck automation needs a future owner-clock frame.');
-    const lanes = [this.lanes.gain, this.lanes.low, this.lanes.hp, this.lanes.lp];
-    const points = [plan.gain, plan.lowShelfDb, plan.highPassHz, plan.lowPassHz];
+    if (plan.echo) this.echoNodes();
+    const lanes = this.scheduledLanes();
+    const route = plan.bands ? bandRoute(plan.durationFrames, this.context.sampleRate) : null;
+    const points = [plan.gain, plan.lowShelfDb, plan.highPassHz, plan.lowPassHz,
+      plan.bands?.low ?? null, plan.bands?.mid ?? null, plan.bands?.high ?? null, route?.direct ?? null, route?.split ?? null,
+      plan.echo?.send ?? null, plan.echo?.wet ?? null];
+    const echoAt = atFrame / this.context.sampleRate;
+    const clearEcho = (): void => {
+      // Best effort: drop any echo parameter event at or after this exit so none outlives a failed or released schedule.
+      if (!this.echo) return;
+      for (const param of [this.echo.delay.delayTime, this.echo.feedback.gain, this.echo.loop.frequency]) {
+        try { param.cancelScheduledValues(echoAt); } catch { /* the original failure is reported */ }
+      }
+    };
     const previous = lanes.map(lane => lane.automaticState());
-    try { lanes.forEach((lane, i) => lane.setAutomatic(points[i]!, atFrame)); }
-    catch (error) {
+    try {
+      // The echo parameter events and the lanes commit together: a throw here rolls both back.
+      if (plan.echo && this.echo) {
+        const rate = this.context.sampleRate;
+        this.echo.delay.delayTime.setValueAtTime(plan.echo.delayFrames / rate, echoAt);
+        this.echo.feedback.gain.setValueAtTime(plan.echo.feedback, echoAt);
+        this.echo.loop.frequency.setValueAtTime(plan.echo.lowPassHz, echoAt);
+      }
+      lanes.forEach((lane, i) => lane.setAutomatic(points[i] ?? null, atFrame));
+    } catch (error) {
       // A failed native parameter call must not leave a partial future exit on A.
       // Keep the previous handle valid until the entire replacement has succeeded.
+      if (plan.echo) clearEcho();
       lanes.forEach((lane, i) => {
         try { lane.setAutomatic(previous[i]?.points ?? null, previous[i]?.at ?? 0); }
         catch { /* Preserve the first failure; the source owner still releases prepared B. */ }
@@ -156,9 +213,19 @@ export class DeckChannel implements MixAutomationOwner {
       if (disposed) return;
       disposed = true;
       if (this.released || token !== this.token) return;
-      for (const lane of [this.lanes.gain, this.lanes.low, this.lanes.hp, this.lanes.lp]) lane.setAutomatic(null);
+      for (const lane of this.scheduledLanes()) lane.setAutomatic(null);
+      if (plan.echo) clearEcho();
     };
     return {restore: reset, release: reset};
+  }
+  private scheduledLanes(): Lane[] {
+    return [this.lanes.gain, this.lanes.low, this.lanes.hp, this.lanes.lp, this.bandLanes.low, this.bandLanes.mid,
+      this.bandLanes.high, this.routeLanes.direct, this.routeLanes.split, ...(this.echo ? [this.echo.send, this.echo.wet] : [])];
+  }
+  /** S21 readback of the DJ-owned band gains (linear) for display and tests. */
+  bandSnapshot(): {low: number; mid: number; high: number} {
+    const frame = frameNow(this.context);
+    return {low: this.bandLanes.low.value(frame), mid: this.bandLanes.mid.value(frame), high: this.bandLanes.high.value(frame)};
   }
   take(control: DeckControl, value: number): void {
     check(!this.released, 'Deck mixer is closed.');

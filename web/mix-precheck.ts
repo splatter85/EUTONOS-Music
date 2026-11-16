@@ -74,7 +74,11 @@ export async function browserMixPrecheck(request: PrecheckRequest, signal?: Abor
     const reasons = evaluation.flags.map(flag => flag.metric + ' ' + flag.level).join(', ');
     const phase = evaluation.measurements?.beatPhase;
     const reason = (reasons || 'no configured defect flagged') + (phase && !phase.judged ? '; beat phase unjudged' : '');
-    return {version: PRECHECK_PROTOCOL, status: evaluation.verdict, reason, evaluation, coverage: window.job.coverage};
+    // S21: a transition-safety@1 failure rejects the plan even when thresholds@1 pass or warn.
+    const unsafe = evaluation.safety?.verdict === 'fail';
+    const safetyReason = unsafe ? '; safety ' + evaluation.safety!.flags.map(f => f.metric).join(', ') + ' fail' : '';
+    return {version: PRECHECK_PROTOCOL, status: unsafe ? 'fail' : evaluation.verdict, reason: reason + safetyReason, evaluation,
+      coverage: window.job.coverage};
   } catch (error) {
     if (signal?.aborted) throw abortError();
     return {version: PRECHECK_PROTOCOL, status: 'unavailable', reason: error instanceof Error ? error.message : String(error),

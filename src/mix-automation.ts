@@ -1,4 +1,5 @@
 /** Plan-data automation for the opt-in mix path. No audio callback or new clock. */
+import {bandPaths, EQ_BANDS, EQ_SPLIT, validateBandGaps, validateBandLanes, type BandGap, type BandLanes} from '../web/eq-choreography.js';
 export interface MixAutomationPoint {
   /** Relative output frame. The curve describes the segment ending at this point. */
   readonly frame: number;
@@ -24,6 +25,10 @@ export interface MixAutomation {
   readonly lowShelfDb: readonly MixAutomationPoint[];
   readonly highPassHz: readonly MixAutomationPoint[];
   readonly lowPassHz: readonly MixAutomationPoint[];
+  /** S21: optional linear per-band gains through the LR4 three-band split (eq-choreography@1). */
+  readonly bands?: BandLanes;
+  /** S21: intentional EQ silences, relative to this automation's frame zero. Evaluator data only. */
+  readonly declaredGaps?: readonly BandGap[];
 }
 
 const check = (condition: unknown, message: string): void => {
@@ -62,6 +67,8 @@ export function validateMixAutomation(plan: MixAutomation, sampleRate: number): 
       previous = point;
     }
   }
+  if (plan.bands !== undefined) validateBandLanes(plan.bands, plan.durationFrames);
+  if (plan.declaredGaps !== undefined) validateBandGaps(plan.declaredGaps, plan.durationFrames);
   if (plan.echo) {
     const echo = plan.echo;
     check(Number.isSafeInteger(echo.delayFrames) && echo.delayFrames >= 128 && echo.delayFrames <= sampleRate * 2,
@@ -190,6 +197,39 @@ export interface MixAutomationGraph {
   release(): void;
 }
 
+/**
+ * S21: Web Audio LR4 three-band split (eq-choreography@1). Low/high-pass Q is in dB in Web
+ * Audio, all-pass Q is linear. Returns the input node, one gain node per band and all nodes.
+ */
+/** S21: after band automation ends, the LR4 path hands back to a direct path over this time. */
+export const BAND_BYPASS_SECONDS = 0.064;
+export function createThreeBandSplit(context: BaseAudioContext, output: AudioNode): {
+  input: GainNode; gains: Record<'low' | 'mid' | 'high', GainNode>; nodes: AudioNode[]} {
+  const nodes: AudioNode[] = [];
+  const own = <T extends AudioNode>(node: T): T => { nodes.push(node); return node; };
+  const input = own(context.createGain());
+  bandPaths(context.sampleRate); // validates the crossover against this rate
+  const filter = (type: BiquadFilterType, hz: number): BiquadFilterNode => {
+    const f = own(context.createBiquadFilter());
+    f.type = type; f.frequency.value = hz; f.Q.value = type === 'allpass' ? EQ_SPLIT.q : MIX_FILTER_Q_DB;
+    return f;
+  };
+  const chains: Record<'low' | 'mid' | 'high', BiquadFilterNode[]> = {
+    low: [filter('lowpass', EQ_SPLIT.lowMidHz), filter('lowpass', EQ_SPLIT.lowMidHz), filter('allpass', EQ_SPLIT.midHighHz)],
+    mid: [filter('highpass', EQ_SPLIT.lowMidHz), filter('highpass', EQ_SPLIT.lowMidHz), filter('lowpass', EQ_SPLIT.midHighHz), filter('lowpass', EQ_SPLIT.midHighHz)],
+    high: [filter('highpass', EQ_SPLIT.lowMidHz), filter('highpass', EQ_SPLIT.lowMidHz), filter('highpass', EQ_SPLIT.midHighHz), filter('highpass', EQ_SPLIT.midHighHz)],
+  };
+  const gains = {} as Record<'low' | 'mid' | 'high', GainNode>;
+  for (const band of EQ_BANDS) {
+    const chain = chains[band], gain = own(context.createGain());
+    input.connect(chain[0]!);
+    for (let i = 1; i < chain.length; i++) chain[i - 1]!.connect(chain[i]!);
+    chain.at(-1)!.connect(gain); gain.connect(output);
+    gains[band] = gain;
+  }
+  return {input, gains, nodes};
+}
+
 function scheduleCurve(parameter: AudioParam, points: readonly MixAutomationPoint[],
   atFrame: number, rate: number): void {
   parameter.setValueAtTime(points[0]!.value, atFrame / rate);
@@ -212,12 +252,12 @@ export function createMixAutomationGraph(context: BaseAudioContext, input: Audio
   // Consume even a refused binding; callers must use a fresh plan for another commit.
   echoReturns.delete(plan);
   validateMixAutomation(plan, context.sampleRate);
-  check(!plan.echo || master && master.context === context && master !== output,
+  check(!plan.echo || owner || master && master.context === context && master !== output,
     'Echo needs a bound master return in the owner context, outside A channel gain.');
   check(input.context === context && output.context === context, 'Mix nodes need the owner context.');
   check(Number.isSafeInteger(atFrame) && atFrame >= Math.ceil(context.currentTime * context.sampleRate),
     'Mix automation must begin on a future audio-clock frame.');
-  check(!owner || !plan.echo, 'Echo retains its original send/return owner graph.');
+  // S21: a set deck owns its own echo send/return (bypassing its lifetime gain).
   if (owner) return owner.schedule(plan, atFrame);
   const nodes: AudioNode[] = [];
   const own = <T extends AudioNode>(node: T): T => { nodes.push(node); return node; };
@@ -263,7 +303,24 @@ export function createMixAutomationGraph(context: BaseAudioContext, input: Audio
     scheduleCurve(shelf.gain, plan.lowShelfDb, atFrame, context.sampleRate);
     scheduleCurve(hp.frequency, plan.highPassHz, atFrame, context.sampleRate);
     scheduleCurve(lp.frequency, plan.lowPassHz, atFrame, context.sampleRate);
-    dry.connect(output); shelf.connect(hp); hp.connect(lp); lp.connect(wet); wet.connect(output);
+    if (plan.bands) {
+      // Band gains act after the fader (gain is linear, so the order is equivalent).
+      const split = createThreeBandSplit(context, output);
+      nodes.push(...split.nodes);
+      for (const band of EQ_BANDS) scheduleCurve(split.gains[band].gain, plan.bands[band], atFrame, context.sampleRate);
+      // The LR4 sum is flat but all-pass in phase. After the choreography ends, crossfade (64 ms)
+      // back to the direct path so a later sample-exact native join meets unshifted audio.
+      const direct = own(context.createGain());
+      const end = (atFrame + plan.durationFrames) / context.sampleRate, settle = end + BAND_BYPASS_SECONDS;
+      direct.gain.value = 0;
+      direct.gain.setValueAtTime(0, end); direct.gain.linearRampToValueAtTime(1, settle);
+      for (const band of EQ_BANDS) {
+        split.gains[band].gain.setValueAtTime(plan.bands[band].at(-1)!.value, end);
+        split.gains[band].gain.linearRampToValueAtTime(0, settle);
+      }
+      wet.connect(split.input); wet.connect(direct); direct.connect(output);
+    } else wet.connect(output);
+    dry.connect(output); shelf.connect(hp); hp.connect(lp); lp.connect(wet);
     // All graph changes are one synchronous operation before the scheduled boundary.
     input.disconnect(); connected = true; input.connect(dry); input.connect(shelf);
     if (echoSend) input.connect(echoSend);
