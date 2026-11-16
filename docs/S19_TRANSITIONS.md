@@ -2,11 +2,13 @@
 
 Status: **BUILT on the worker branch, pending coordinator review and merge**, on `work/emf-s19-transitions` from origin/main `3cd8d42`. Full-song blends and all five new styles are implemented; both full Windows gates pass at source `9719024767e5571b47d5d45322b0745182a4faeb`. No push or merge was performed. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status and [Current Tasks](CURRENT_TASKS.md) owns pickup. [Detailed handoff](handoffs/EMF-S19-HANDOFF.md).
 
+**Coordinator review fixes in progress (2026-11-15):** brake beat judgment, clamped-render/native-join gain and transition-slot lifetime are being corrected. The prior 489-test evidence above applies to `9719024`; replacement full gates are pending.
+
 This is an engineering proof on generated material, not listening acceptance. Windows only; macOS/Linux, real owner songs, physical output and listening are **NOT TESTED**.
 
 ## Full-song set blends
 
-Set mode processes B's entry, overlap and tempo return rather than the whole song. The original song remains a native buffer; a short processed buffer ends at a measured B downbeat and a native source is scheduled ahead at that exact owner-clock frame. The processed buffer's final 20 ms are crossfaded onto native B's preceding samples. Both nodes belong to the same `RecordedSource` and output owner; `onended` never starts a source.
+Set mode processes B's entry, overlap and tempo return rather than the whole song. The original song remains a native buffer; a short processed buffer ends at a measured B downbeat and a native source is scheduled ahead at that exact owner-clock frame. The processed buffer's final 20 ms are crossfaded onto native B's preceding samples. Both nodes belong to the same `RecordedSource` and output owner; `onended` never starts a source. The 20 ms processed/native splice can have phase or comb-filter coloration; sample continuity alone cannot qualify that sound. Check the splice with actual listening during S10.
 
 Analysis covers a selected minute, with actual evidence rebound to original song coordinates. A late Next/Auto request selects a new outgoing window; the cache key includes its position and policy. Cue evidence is not extrapolated outside that window. Requested grids remain explicitly requested when measured confidence is inadequate. Full-song analysis metadata does not mean the entire song was analyzed.
 
@@ -38,7 +40,7 @@ FIFO, Hold, Stop, cancellation and the S17 master stream tap retain their owner.
 
 ## Evaluation and verification
 
-The offline evaluator remains Node-only. Native-rate rendering is explicitly a `native-rate-model`, not captured browser audio. It places both sources on their intended ramp/loop timeline before applying the faders and filters. Delayed-entry recipes keep the A reference through the prelude. Brake compares B's entry beat because A intentionally leaves its grid; smooth recipes retain through-overlap beat/flux checks. `mix-evaluation-thresholds@1` is unchanged. WARN remains admissible under the existing chooser.
+The offline evaluator remains Node-only. Native-rate rendering is explicitly a `native-rate-model`, not captured browser audio. It places both sources on their intended ramp/loop timeline before applying the faders and filters. Delayed-entry recipes keep the A reference through the prelude. Brake compares B's entry beat because A intentionally leaves its grid; smooth recipes retain through-overlap beat/flux checks. `mix-evaluation-thresholds@1` is unchanged. WARN remains admissible under the existing chooser. Loudness windows cover S→E, including the S→T delay, against the continuing A reference. Low-band build-up windows also cover S→E, but compare against the louder processed side: an A-only prelude cannot establish independent low-end loss/continuity from that metric. Loudness and silence checks still apply there.
 
 Generated-fixture results: loudness match PASS; filter sweep WARN; tempo ramp WARN; loop-extend WARN; brake PASS under its disclosed cut-like evaluation scope. Final Windows gates pass: 489/489 Node tests; 24 native offline, 16 browser, 4 S11 groups / 24 paired cases, 15 Studio, 21 mix, 8 phone and 16 set checks. The [handoff](handoffs/EMF-S19-HANDOFF.md) records exact commands, measurements and review fixes. These results are not a claim about arbitrary songs or seeds.
 
