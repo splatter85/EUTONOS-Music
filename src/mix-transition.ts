@@ -14,7 +14,8 @@ export interface MixPreparationRuntime {
   /** S18 optional: one song (mono). Without it, set mode analyzes the mono copy through `analyze`. */
   analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions, levelAudio?: MixPcm): Promise<MixAnalysis>;
   renderLoop?(audio: MixPcm, loopFrames: number, tailFrames: number, bars: 4 | 8, levelGain: number, signal?: AbortSignal): Promise<PreparedFiniteLoop>;
-  /** Full-song peak only; browser default scans bounded worker chunks, never main-thread DSP. */
+  /** Full-song peak only; omission selects bounded browser worker chunks, never synchronous DSP.
+   * Injected non-browser runtimes must provide this capability for native recipes/song analysis. */
   scanPeak?(audio: MixPcm, signal?: AbortSignal): Promise<NativeSamplePeak>;
 }
 export const browserMixPreparation: MixPreparationRuntime = {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio} from '../src/mix-analysis.js';
+import {analyzeMixAudio, nativeSamplePeak} from '../src/mix-analysis.js';
 import {DeterministicDj} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import {SmallPlayer} from '../src/player.js';
@@ -36,6 +36,7 @@ class MixContext extends ContextDouble {
 const inline: MixPreparationRuntime = {
   analyze: async (from, to) => ({from: analyzeMixAudio(from), to: analyzeMixAudio(to)}),
   render: async (audio, options) => renderTimePitch(audio, options),
+  scanPeak: async audio => nativeSamplePeak(audio),
 };
 
 import {RecordedSource} from '../src/web-audio.js';
