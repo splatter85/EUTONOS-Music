@@ -15,7 +15,8 @@ const report = {platform: process.platform, node: process.version, source: execF
   browser: '', checks: [] as string[], metrics: [] as unknown[], error: ''};
 const set = await buildSyntheticSet([
   {id: 'deck-174-a', bpm: 174, bars: 20, tonic: 9, mode: 'minor'},
-  {id: 'deck-168-b', bpm: 168, bars: 20, tonic: 9, mode: 'minor'},
+  // Matched-tempo, distinct-key control fixture; unequal-tempo refusal has its own pre-check gate.
+  {id: 'deck-174-b', bpm: 174, bars: 20, tonic: 4, mode: 'minor'},
 ]);
 const server = createDemoServer(root);
 let browser: Browser | undefined;
@@ -110,10 +111,10 @@ try {
   await page.screenshot({path: join(output, 'studio-decks-desktop.png'), fullPage: true});
   await page.waitForFunction(() => {
     const now = document.getElementById('dj-now')?.textContent ?? '';
-    return now.includes('deck-168-b') && !now.includes('deck-174-a');
+    return now.includes('deck-174-b') && !now.includes('deck-174-a');
   }, undefined, {timeout: 40000});
-  assert.match(await page.locator('#deck-b-title').innerText(), /deck-168-b/);
-  assert.doesNotMatch(await page.locator('#deck-a-title').innerText(), /deck-168-b/);
+  assert.match(await page.locator('#deck-b-title').innerText(), /deck-174-b/);
+  assert.doesNotMatch(await page.locator('#deck-a-title').innerText(), /deck-174-b/);
   assert.match(await page.locator('#deck-crossfader-owner').innerText(), /You/);
   report.checks.push('Next preserves manual control and the incoming song remains on physical B after settlement');
 

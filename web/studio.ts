@@ -21,6 +21,8 @@ import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js'
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
 import {SetSongList} from './set-song-list.js';
+import {browserMixPrecheck} from './mix-precheck.js';
+import {precheckLabel} from './mix-precheck-data.js';
 import type {PhoneCommand} from './phone-protocol.js';
 
 const PACKS = {
@@ -165,7 +167,8 @@ function getDj(): DeterministicDj {
   if (!loaded) throw new Error('The pack is still loading.');
   const route = loaded.pack.routes[0];
   if (!route && !isSet) throw new Error('This pack has no A → B route.');
-  djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id, undefined, setAnalyses ?? undefined);
+  djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id, undefined, setAnalyses ?? undefined,
+    isSet ? browserMixPrecheck : null);
   dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
@@ -331,7 +334,8 @@ function renderDj(): void {
   const status = state === 'loading' ? 'Getting ready…' : state === 'closed' ? 'Player closed — reload the page.'
     : state === 'ended' ? 'Set finished. Press ▶ to start again.' : state === 'paused' ? pauseReason || 'Paused'
     : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeText[player.handoff.phase]
-    : player?.mix?.phase === 'preparing' ? isSet ? 'Analysing the next song and choosing a handover…' : 'Analysing both songs and preparing a beatmatched mix…'
+    : player?.mix?.phase === 'preparing' ? player.mix.reason
+    : isSet && player?.mix?.phase === 'unavailable' ? player.mix.reason
     : isSet && player?.mix?.summary?.set && player.transition === 'scheduled' && player.transitionInSeconds !== null
       ? `${describeSetMix(player.mix.summary)} · starts in ${player.transitionInSeconds.toFixed(1)}s`
     : isSet && player?.mix?.summary?.set && player.transition === 'mixing' ? `Handing over now · ${describeSetMix(player.mix.summary)}`
@@ -450,8 +454,9 @@ const setSongList = isSet ? new SetSongList($('set-songs'), setAnalyses!, () => 
 function renderSet(): void {
   const snap = dj?.snapshot(), player = snap?.player;
   const summary = player?.mix?.summary;
-  if (summary?.set) lastSetMix = describeSetMix(summary);
-  setText('set-mix', player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
+  if (summary?.set) lastSetMix = describeSetMix(summary) + (player?.mix?.precheck ? ' · ' + precheckLabel(player.mix.precheck) : '');
+  setText('set-mix', player?.mix?.phase === 'preparing' ? player.mix.reason
+    : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
     : lastSetMix ? `${summary?.set ? 'Planned' : 'Last handover'}: ${lastSetMix}` : 'No handover planned yet.');
   setAuto.setAttribute('aria-pressed', String(autoOn)); setText('set-auto', autoOn ? 'Auto: on' : 'Auto: off');
   setText('set-auto-status', autoOn ? `Auto on: moves to the next queued song ${autoBars} bars after each song came in${loopSet ? ', looping the set' : ', then stops at the end of the set'}.${autoNote ? ` ${autoNote}` : ''}`

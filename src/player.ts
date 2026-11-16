@@ -18,6 +18,7 @@ import {eligibleForPlayback} from './pack.js';
 import {SONG_ANALYSIS_WINDOW, type MixAnalysis} from './mix-analysis.js';
 import {DeckMixer, type DeckId, type DeckControl, type ChannelControls, type ControlValue} from '../web/deck-mixer.js';
 import {deckPositionAt, type DeckPositionInput, type DeckPosition} from '../web/deck-readout.js';
+import {precheckLabel, PRECHECK_PROTOCOL, type PrecheckReport, type PrecheckRequest, type PrecheckRuntime} from '../web/mix-precheck-data.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -33,6 +34,8 @@ export interface HybridSnapshot {
 export interface MixSnapshot {
   readonly phase: 'preparing' | 'scheduled' | 'prelude' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
   readonly reason: string;
+  /** Experimental offline model of this selected DJ plan, not listening or manual-control qualification. */
+  readonly precheck?: PrecheckReport;
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
@@ -144,7 +147,8 @@ export class SmallPlayer {
 
   constructor(readonly context: AudioContext, private readonly loaded: LoadedBrowserPack,
     routeId: string | null, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation,
-    readonly analyses: MixAnalysisCache & {observe?(recording: DecodedRecording): void} = new MixAnalysisCache()) {
+    readonly analyses: MixAnalysisCache & {observe?(recording: DecodedRecording): void} = new MixAnalysisCache(),
+    private readonly mixPrecheck: PrecheckRuntime | null = null) {
     this.routeFree = routeId === null;
     this.authored = routeId === null ? null : checkedRoute(loaded.pack, routeId, loaded.allowFixtures, loaded.allowUnreviewed);
     if (this.routeFree) {
@@ -649,6 +653,26 @@ export class SmallPlayer {
     return this.loaded.pack.assets.filter(a => a.source_kind === 'recording');
   }
 
+  /** Live UI supplies the worker dependency; test/offline consumers can supply their own gate. */
+  private async checkSelectedMix(request: PrecheckRequest, signal: AbortSignal,
+    current: () => boolean): Promise<PrecheckReport | null> {
+    if (!this.mixPrecheck) return null;
+    this.mix = {phase: 'preparing', summary: null, reason: 'Checking the selected DJ plan before scheduling audio…'};
+    let report: PrecheckReport;
+    try { report = await this.mixPrecheck(request, signal); }
+    catch (error) {
+      if (!current()) return null;
+      report = {version: PRECHECK_PROTOCOL, status: 'unavailable', evaluation: null, coverage: null,
+        reason: error instanceof Error ? error.message : String(error)};
+    }
+    if (!current()) return null;
+    const allowed = report.status === 'pass' || report.status === 'warn';
+    const reason = precheckLabel(report) + (allowed ? '. Your manual controls still apply.' : '. The playing song is unchanged.');
+    this.mix = {phase: allowed ? 'preparing' : 'unavailable', summary: null, reason, precheck: report};
+    requireAudio(allowed, reason);
+    return report;
+  }
+
   /**
    * Optional warm-up for the likely next song: decode and analyze it now so Next is quick.
    * Only this one song is retained beyond the playing voices.
@@ -784,6 +808,14 @@ export class SmallPlayer {
       requireAudio(exitBuffer + plan.overlapFrames <= outgoing.playbackFrames &&
         prepared.entryFrame + plan.overlapFrames <= prepared.incoming.buffer.length,
       'The set transition does not have enough audio for its handover.');
+      const precheck = await this.checkSelectedMix({plan, from: outgoing.nativeRecording, to: toRecording,
+        incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
+        ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: analysisA, to: analysisB},
+        fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effect.frame - from.start.at.frame}},
+      controller.signal, current);
+      if (!current()) return;
+      requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames,
+        'The checked set transition missed its audio-clock deadline. Request Next again.');
       const deck: DeckId = fromSet.deck === 'a' ? 'b' : 'a';
       incoming = new RecordedSource(this.context, prepared.incoming, this.deckMixer![deck].input,
         {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed,
@@ -813,8 +845,8 @@ export class SmallPlayer {
           ...(prepared.nativeJoin ? {nativeJoin: prepared.nativeJoin} : {})}});
       this.plan = {at, end};
       const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
-      this.mix = {phase: 'scheduled', earliestEffect: effect,
-        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} Listening is untested.`,
+      this.mix = {phase: 'scheduled', earliestEffect: effect, ...(precheck ? {precheck} : {}),
+        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? precheckLabel(precheck) + '. ' : ''}Listening is untested.`,
         summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
           pitchSemitones: 'pitchSemitones' in plan ? plan.pitchSemitones : 0,
           confidence: 'confidence' in plan ? plan.confidence : 0, processor: prepared.processor,
