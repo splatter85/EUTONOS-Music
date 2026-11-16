@@ -15,12 +15,17 @@ import {MusicLibrary, type MusicLibrarySnapshot} from '../src/library.js';
 import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
+import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, type AutoBars, type NextBars} from './set-mode.js';
+import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
+import type {PhoneCommand} from './phone-protocol.js';
 
 const PACKS = {
   rated: {manifest: '/local/s16-rated/pack/manifest.json', label: 'Rated takes (local audition)'},
   s01: {manifest: '/fixtures/s01/manifest.json', label: 'S01 original'},
   'mock-fl': {manifest: '/generated/s06-mock-fl/pack/manifest.json', label: 'S06 imported mock'},
   fl: {manifest: '/local/s09-fl/pack/manifest.json', label: 'S09 real FL (owner-local)'},
+  // S18: the same served folder holds a set import (`import:rated -- --set loved-liked`).
+  set: {manifest: '/local/s16-rated/pack/manifest.json', label: 'Rated set (any-to-any, local)'},
 } as const;
 type PackChoice = keyof typeof PACKS;
 type Tab = 'produce' | 'dj' | 'library';
@@ -31,6 +36,8 @@ const ACTIVE = ['loading', 'scheduled', 'playing', 'paused'];
 const params = new URLSearchParams(location.search);
 const requestedPack = params.get('pack') ?? 's01';
 const packChoice: PackChoice | null = Object.hasOwn(PACKS, requestedPack) ? requestedPack as PackChoice : null;
+/** S18 any-to-any set: no authored routes, automatic mix only, Next/Auto move the music. */
+const isSet = packChoice === 'set';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -58,6 +65,7 @@ interface RatedCatalog {
   schema_version: 'eutonos.rated-catalog.v1';
   takes: {id: string; title: string; rating: 'love' | 'like' | 'dislike'; tempo: {bpm: number | null; source: string}}[];
   pair: null | {take_ids: [string, string]; asset_ids: [string, string]; grid: string};
+  set?: null | {take_ids: string[]; asset_ids: string[]};
 }
 let ratedCatalog: RatedCatalog | null = null;
 let loaded: LoadedBrowserPack | null = null;
@@ -65,6 +73,7 @@ let deckAssets: {a: AudioAsset; b: AudioAsset} | null = null;
 const peaks = new Map<string, Float32Array | null>();
 let djNeedsMute = false;
 let dj: DeterministicDj | null = null;
+let djPlayer: SmallPlayer | null = null;
 let sampler: SmallPlayer | null = null;
 let handoffMode: DjHandoff = 'direct';
 let muted = false;
@@ -148,8 +157,10 @@ function getDj(): DeterministicDj {
   if (dj) return dj;
   if (!loaded) throw new Error('The pack is still loading.');
   const route = loaded.pack.routes[0];
-  if (!route) throw new Error('This pack has no A → B route.');
-  dj = new DeterministicDj(new SmallPlayer(new AudioContext(), loaded, route.id), loaded, 'explore', {handoff: handoffMode});
+  if (!route && !isSet) throw new Error('This pack has no A → B route.');
+  djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id);
+  dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode});
+  if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
   return dj;
 }
@@ -178,7 +189,11 @@ $('dj-pause').addEventListener('click', () => {
   void send({type: 'transport', action: dj?.snapshot().player.state === 'paused' ? 'play' : 'pause'});
 });
 $('dj-stop').addEventListener('click', () => { pauseReason = ''; void send({type: 'transport', action: 'stop'}); });
-$('dj-next').addEventListener('click', () => { void send({type: 'nextSong'}); });
+$('dj-next').addEventListener('click', () => {
+  // S18: a manual Next lands on the next 4- or 8-bar boundary of the playing song.
+  if (isSet && dj) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
+  void send({type: 'nextSong'});
+});
 $('dj-cancel').addEventListener('click', () => { void send({type: 'cancelNext'}); });
 $('dj-hold').addEventListener('click', () => { void send({type: 'hold', enabled: !dj?.snapshot().control.requested.hold}); });
 $('queue-a').addEventListener('click', () => { if (deckAssets) void send({type: 'queueTrack', trackId: deckAssets.a.id}); });
@@ -187,7 +202,7 @@ for (const pad of Array.from(document.querySelectorAll<HTMLButtonElement>('#stat
   pad.addEventListener('click', () => { void send({type: 'setState', state: pad.dataset.state as MusicState}); });
 }
 function setMode(mode: DjHandoff): void {
-  handoffMode = packChoice === 'rated' ? 'direct' : mode;
+  handoffMode = packChoice === 'rated' ? 'direct' : isSet ? 'mix' : mode;
   dj?.setHandoff(handoffMode); renderDj();
 }
 $('mode-direct').addEventListener('click', () => setMode('direct'));
@@ -245,7 +260,9 @@ const bridgeText = {'lead-in': 'Bridge coming in — A fades out over one bar', 
 let lastQueueKey = '';
 function renderDj(): void {
   const snap = dj?.snapshot(), player = snap?.player, control = snap?.control, state = player?.state ?? 'idle';
-  const running = ACTIVE.includes(state), ready = !!loaded && !!deckAssets;
+  const running = ACTIVE.includes(state);
+  if (isSet) syncSetDecks();
+  const ready = !!loaded && (isSet || !!deckAssets);
   for (const id of ['dj-play', 'dj-stop', 'dj-next', 'dj-hold', 'queue-a', 'queue-b', 'mode-direct', 'mode-hybrid', 'mode-mix']) $<HTMLButtonElement>(id).disabled = !ready;
   const play = $<HTMLButtonElement>('dj-play'), pause = $<HTMLButtonElement>('dj-pause');
   play.disabled = !ready || (running && state !== 'paused');
@@ -254,8 +271,10 @@ function renderDj(): void {
   pause.setAttribute('aria-label', state === 'paused' ? 'Resume' : 'Pause');
   $<HTMLButtonElement>('dj-cancel').disabled = !ready || (player?.mix?.phase !== 'preparing' && (!snap?.pending || snap.pending.phase !== 'scheduled'
     || (player?.handoff != null && player.handoff.phase !== 'scheduled')));
-  $<HTMLButtonElement>('mode-hybrid').disabled = !ready || packChoice === 'rated' || !loaded?.pack.recipes.length;
+  $<HTMLButtonElement>('mode-hybrid').disabled = !ready || packChoice === 'rated' || isSet || !loaded?.pack.recipes.length;
   $<HTMLButtonElement>('mode-mix').disabled = !ready || packChoice === 'rated';
+  $<HTMLButtonElement>('mode-direct').disabled = !ready || isSet;
+  if (isSet) for (const id of ['queue-a', 'queue-b']) $<HTMLButtonElement>(id).hidden = true;
   setText('mode-direct', packChoice === 'rated' ? 'Direct cut' : 'Crossfade');
   $('rated-transition-help').hidden = packChoice !== 'rated';
   const hold = control?.requested.hold ?? false;
@@ -296,13 +315,17 @@ function renderDj(): void {
   const status = state === 'loading' ? 'Getting ready…' : state === 'closed' ? 'Player closed — reload the page.'
     : state === 'ended' ? 'Set finished. Press ▶ to start again.' : state === 'paused' ? pauseReason || 'Paused'
     : player?.handoff && player.handoff.phase !== 'scheduled' ? bridgeText[player.handoff.phase]
-    : player?.mix?.phase === 'preparing' ? 'Analysing both songs and preparing a beatmatched mix…'
+    : player?.mix?.phase === 'preparing' ? isSet ? 'Analysing the next song and choosing a handover…' : 'Analysing both songs and preparing a beatmatched mix…'
+    : isSet && player?.mix?.summary?.set && player.transition === 'scheduled' && player.transitionInSeconds !== null
+      ? `${describeSetMix(player.mix.summary)} · starts in ${player.transitionInSeconds.toFixed(1)}s`
+    : isSet && player?.mix?.summary?.set && player.transition === 'mixing' ? `Handing over now · ${describeSetMix(player.mix.summary)}`
     : player?.mix?.phase === 'fallback' && player.transition !== 'complete' ? 'Not sure about this pair — using the plain crossfade instead'
     : player?.mix?.phase === 'mixing' ? `Beatmatching A → B${player.mix.summary ? ` · B ${player.mix.summary.toBpm.toFixed(1)} → ${player.mix.summary.fromBpm.toFixed(1)} BPM${player.mix.summary.pitchSemitones ? ` · key ${player.mix.summary.pitchSemitones > 0 ? '+' : ''}${player.mix.summary.pitchSemitones}` : ''}` : ''}`
     : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Mix complete'
     : player?.transition === 'scheduled' && player.transitionInSeconds !== null ? `Mix starts in ${player.transitionInSeconds.toFixed(1)}s (on the next phrase)`
-    : state === 'playing' ? 'Playing — press “Mix to next” when you want B' : state === 'scheduled' ? 'Starting on the beat…'
-    : ready ? 'Ready — press ▶ to start Deck A' : 'Loading…';
+    : state === 'playing' ? isSet ? 'Playing — press Next (or turn Auto on) to move to the next queued song' : 'Playing — press “Mix to next” when you want B'
+    : state === 'scheduled' ? 'Starting on the beat…'
+    : ready ? isSet ? 'Ready — press ▶ to start the first queued song' : 'Ready — press ▶ to start Deck A' : 'Loading…';
   setText('mix-status', status);
   setText('dj-now', player?.now.length && running ? player.now.map(titleOf).join(' + ') : 'Nothing');
   setText('dj-next-title', player?.next ? titleOf(player.next) : 'Nothing scheduled');
@@ -312,13 +335,191 @@ function renderDj(): void {
   const key = queue.map(e => `${e.commandId}:${e.trackId}`).join('|');
   if (key !== lastQueueKey || !list.childElementCount) {
     lastQueueKey = key; list.replaceChildren();
-    if (!queue.length) list.append(make('li', {className: 'empty', textContent: 'Nothing queued. Queue a deck, or press Mix to next.'}));
+    if (!queue.length) list.append(make('li', {className: 'empty', textContent: isSet
+      ? 'Nothing queued. Add songs from the set below, or press “Queue the whole set”.' : 'Nothing queued. Queue a deck, or press Mix to next.'}));
     for (const [i, entry] of queue.entries()) {
-      list.append(make('li', {}, make('span', {textContent: `${i + 1}. ${titleOf(entry.trackId)}`}),
-        button('Remove', () => { void send({type: 'cancelQueue', queueCommandId: entry.commandId}); }, 'chip', `Remove ${titleOf(entry.trackId)} from the queue`)));
+      const row = make('li', {}, make('span', {textContent: `${i + 1}. ${titleOf(entry.trackId)}`}));
+      if (isSet) {
+        for (const [label, delta] of [['▲', -1], ['▼', 1]] as const) {
+          const to = moveTarget(i, delta, queue.length);
+          const move = button(label, () => { if (to !== null) void send({type: 'reorderQueue', queueCommandId: entry.commandId, toIndex: to}); },
+            'chip', `Move ${titleOf(entry.trackId)} ${delta < 0 ? 'up' : 'down'}`);
+          move.disabled = to === null;
+          row.append(move);
+        }
+      }
+      row.append(button('Remove', () => { void send({type: 'cancelQueue', queueCommandId: entry.commandId}); }, 'chip', `Remove ${titleOf(entry.trackId)} from the queue`));
+      list.append(row);
+    }
+  }
+  if (isSet) renderSet();
+}
+
+// ---------- S18 set mode ----------
+let nextBars: NextBars = 4;
+let autoOn = false, autoBars: AutoBars = 32, loopSet = false;
+let autoHandled: string | null = null, autoBusy = false, autoNote = '';
+/** The last handover plan, kept after the player settles so the booth can still show it. */
+let lastSetMix = '';
+const setNextBars = $<HTMLSelectElement>('set-next-bars'), setAutoBars = $<HTMLSelectElement>('set-auto-bars');
+const setLoop = $<HTMLInputElement>('set-loop'), setAuto = $<HTMLButtonElement>('set-auto');
+setNextBars.addEventListener('change', () => {
+  const value = Number(setNextBars.value);
+  nextBars = (NEXT_BARS as readonly number[]).includes(value) ? value as NextBars : 4;
+});
+setAutoBars.addEventListener('change', () => {
+  const value = Number(setAutoBars.value);
+  autoBars = (AUTO_BARS as readonly number[]).includes(value) ? value as AutoBars : 32;
+});
+setLoop.addEventListener('change', () => { loopSet = setLoop.checked; });
+function setAutoEnabled(enabled: boolean): void {
+  autoOn = enabled; autoNote = '';
+  // Turning Auto on acts on the playing song once, counted from where it came in.
+  if (enabled) autoHandled = null;
+  renderSet();
+}
+setAuto.addEventListener('click', () => { setAutoEnabled(!autoOn); });
+/** Queue every set song in catalogue order, starting after `current` and skipping it. */
+async function queueWholeSet(current: string | null): Promise<void> {
+  const songs = loaded?.pack.assets.filter(a => a.source_kind === 'recording').map(a => a.id) ?? [];
+  const at = current === null ? -1 : songs.indexOf(current);
+  const ordered = [...songs.slice(at + 1), ...songs.slice(0, Math.max(0, at))].filter(id => id !== current);
+  for (const id of ordered) await send({type: 'queueTrack', trackId: id});
+}
+$('set-requeue').addEventListener('click', () => {
+  const player = dj?.snapshot().player;
+  void queueWholeSet(player && ACTIVE.includes(player.state) ? player.now.at(-1) ?? null : null);
+});
+function voiceKey(): string | null {
+  const player = dj?.snapshot().player;
+  if (!player || player.voices.length !== 1) return null;
+  const voice = player.voices[0]!;
+  return `${voice.source.id}@${voice.start.frame}`;
+}
+/** Auto step, called from the snapshot tick (no timers schedule music). */
+function runAuto(): void {
+  if (!isSet || !dj || autoBusy) return;
+  const snap = dj.snapshot();
+  const decision = autoDecision({enabled: autoOn, loop: loopSet, playerState: snap.player.state, transition: snap.player.transition,
+    armed: dj.nextArmed, pending: snap.pending !== null, voiceKey: voiceKey(), handledKey: autoHandled, queueLength: snap.control.queue.length});
+  if (decision.kind === 'requeue') {
+    autoBusy = true; autoNote = decision.reason;
+    void queueWholeSet(snap.player.now.at(-1) ?? null).finally(() => { autoBusy = false; });
+  } else if (decision.kind === 'next') {
+    autoBusy = true; autoHandled = decision.voiceKey; autoNote = '';
+    const controller = dj;
+    // Auto is the owner's armed repeat of Next: the request is still a manual-source nextSong.
+    controller.setSetBoundary({bars: autoBars, anchor: 'entry'});
+    void send({type: 'nextSong'}).finally(() => {
+      autoBusy = false;
+      const result = controller.snapshot().last;
+      autoNote = result && result.execution.status !== 'scheduled' && result.execution.status !== 'completed'
+        ? `Auto could not schedule this step: ${result.execution.reason} Press Next to try again.` : '';
+    });
+  } else if (decision.kind === 'finish') autoNote = decision.reason;
+}
+function syncSetDecks(): void {
+  if (!loaded) return;
+  const player = dj?.snapshot().player, songs = loaded.pack.assets.filter(a => a.source_kind === 'recording');
+  const find = (id: string | null | undefined) => songs.find(a => a.id === id);
+  const queueHead = find(dj?.snapshot().control.queue[0]?.trackId);
+  const voices = player?.voices.map(v => find(v.source.id)).filter((a): a is AudioAsset => !!a) ?? [];
+  const a = voices[0] ?? queueHead ?? songs[0], b = voices[1] ?? (voices[0] ? queueHead : find(dj?.snapshot().control.queue[1]?.trackId)) ?? a;
+  if (!a || !b) return;
+  if (deckAssets?.a.id === a.id && deckAssets.b.id === b.id) return;
+  deckAssets = {a, b};
+  for (const [side, asset] of [['a', a], ['b', b]] as const) {
+    setText(`deck-${side}-title`, asset.title);
+    setText(`deck-${side}-meta`, `${asset.timing?.bpm ?? '?'} requested BPM · grid measured when it is analysed · unreviewed`);
+  }
+}
+function ratingOfAsset(id: string): string {
+  const index = ratedCatalog?.set?.asset_ids.indexOf(id) ?? -1;
+  const takeId = index >= 0 ? ratedCatalog?.set?.take_ids[index] : undefined;
+  return ratedCatalog?.takes.find(t => t.id === takeId)?.rating ?? '';
+}
+let lastSongsKey = '';
+function renderSet(): void {
+  const snap = dj?.snapshot(), player = snap?.player;
+  const summary = player?.mix?.summary;
+  if (summary?.set) lastSetMix = describeSetMix(summary);
+  setText('set-mix', player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
+    : lastSetMix ? `${summary?.set ? 'Planned' : 'Last handover'}: ${lastSetMix}` : 'No handover planned yet.');
+  setAuto.setAttribute('aria-pressed', String(autoOn)); setText('set-auto', autoOn ? 'Auto: on' : 'Auto: off');
+  setText('set-auto-status', autoOn ? `Auto on: moves to the next queued song ${autoBars} bars after each song came in${loopSet ? ', looping the set' : ', then stops at the end of the set'}.${autoNote ? ` ${autoNote}` : ''}`
+    : autoNote || 'Auto is off. When on, it moves to the next queued song every N bars from where each song came in, then stops at the end of the set (or loops).');
+  const songs = loaded?.pack.assets.filter(a => a.source_kind === 'recording') ?? [];
+  const key = songs.map(a => a.id).join('|') + (ratedCatalog ? ':c' : '');
+  const list = $('set-songs');
+  if (key === lastSongsKey && list.childElementCount) return;
+  lastSongsKey = key; list.replaceChildren();
+  for (const asset of songs) {
+    const rating = ratingOfAsset(asset.id);
+    list.append(make('li', {}, make('span', {textContent: asset.title}),
+      make('span', {className: 'song-meta', textContent: `${asset.timing?.bpm ?? '?'} BPM requested · ${clock(asset.file.frames / asset.file.sample_rate)}${rating ? ` · ${rating}` : ''}`}),
+      button('Add to queue', () => { void send({type: 'queueTrack', trackId: asset.id}); }, 'chip', `Add ${asset.title} to the queue`)));
+  }
+}
+
+// ---------- phone (S17 relay, Studio set page) ----------
+const phoneButton = $<HTMLButtonElement>('phone-stream'), phoneBackground = $<HTMLInputElement>('phone-background');
+const phoneRelay = relayFromLocation(location.search);
+function runPhoneCommand(command: PhoneCommand): string {
+  renderDj();
+  const press = (id: string, label: string): string => {
+    const target = $<HTMLButtonElement>(id);
+    if (target.disabled) return `ignored: ${label} is not available now`;
+    target.click(); return `pressed ${label}`;
+  };
+  switch (command.command) {
+    case 'play': return press('dj-play', 'Play');
+    case 'stop': return press('dj-stop', 'Stop');
+    case 'next': return press('dj-next', 'Next');
+    case 'hold': {
+      const held = dj?.snapshot().control.requested.hold ?? false;
+      if (command.enabled !== undefined && command.enabled === held) return `hold already ${held ? 'on' : 'off'}`;
+      return press('dj-hold', 'Hold');
+    }
+    case 'handoff':
+      return command.mode === 'mix' ? 'handoff already automatic mix' : 'ignored: a set uses automatic mix only';
+    case 'auto': {
+      const want = command.enabled ?? !autoOn;
+      if (want === autoOn) return `auto already ${autoOn ? 'on' : 'off'}`;
+      setAutoEnabled(want); return `auto ${want ? 'on' : 'off'}`;
     }
   }
 }
+const phoneStream = isSet ? new PhoneStream({
+  tapSource: () => { getDj(); if (!djPlayer) throw new Error('The player is not ready.'); return djPlayer; },
+  run: runPhoneCommand,
+  status: () => {
+    renderDj();
+    const text = (id: string): string => $(id).textContent ?? '';
+    return {state: dj?.snapshot().player.state ?? 'idle', now: text('dj-now'), next: text('dj-next-title'), detail: text('set-mix'),
+      status: text('mix-status'), requested: text('dj-requested'), execution: text('dj-error'),
+      hold: dj?.snapshot().control.requested.hold ?? false, handoff: 'mix',
+      canPlay: !$<HTMLButtonElement>('dj-play').disabled, canStop: !$<HTMLButtonElement>('dj-stop').disabled,
+      canNext: !$<HTMLButtonElement>('dj-next').disabled, canHold: !$<HTMLButtonElement>('dj-hold').disabled,
+      canHandoff: false, auto: autoOn, canAuto: !!loaded};
+  },
+}, phoneRelay, takeRelayToken(phoneRelay), () => { renderPhoneStream(); }) : null;
+function renderPhoneStream(): void {
+  if (!phoneStream) return;
+  const view = phoneStream.snapshot();
+  phoneButton.disabled = loaded === null;
+  phoneButton.setAttribute('aria-pressed', String(view.enabled));
+  phoneButton.textContent = view.enabled ? 'Stream to phone: on' : 'Stream to phone: off';
+  setText('phone-stream-state', view.enabled
+    ? `relay ${view.relay} · control ${view.control} · recorder ${view.recorder} · ${view.chunksSent} chunks sent (${Math.round(view.bytesSent / 1024)} KiB) · session ${view.sessions}${view.commands ? ` · ${view.commands} phone commands` : ''}`
+    : 'Off');
+  if (view.lastCommand) setText('phone-stream-detail', `Last phone command ${view.lastCommand}`);
+  setText('phone-stream-error', view.error);
+}
+phoneButton.addEventListener('click', () => {
+  if (!phoneStream) return;
+  if (phoneStream.enabled) phoneStream.stop(); else phoneStream.start();
+  renderPhoneStream();
+});
 
 // ---------- pattern sampler ----------
 const seedInput = $<HTMLInputElement>('seed');
@@ -660,19 +861,23 @@ function renderTakes(): void {
 // ---------- lifecycle ----------
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
-  if (dj && ['loading', 'scheduled', 'playing'].includes(dj.snapshot().player.state)) {
+  // S17 exception (opt-in): while streaming to the phone the listener is on the phone.
+  const keepDj = !!phoneStream?.enabled && phoneBackground.checked;
+  if (dj && !keepDj && ['loading', 'scheduled', 'playing'].includes(dj.snapshot().player.state)) {
     pauseReason = 'Paused because the tab was hidden. Press ▶ to continue.'; void send({type: 'transport', action: 'pause'});
   }
   if (sampler && ['loading', 'scheduled', 'playing'].includes(sampler.snapshot().state)) void sampler.pause().catch(() => undefined);
   if (previewing) stopPreview();
 });
 window.addEventListener('pagehide', () => {
-  const a = dj, b = sampler; dj = null; sampler = null;
+  phoneStream?.stop();
+  const a = dj, b = sampler; dj = null; djPlayer = null; sampler = null;
   void a?.dispose().catch(() => undefined); void b?.dispose().catch(() => undefined);
   stopPreview(); releaseOwnership();
 });
 function tick(): void {
   renderTop();
+  if (isSet) runAuto();
   if (currentTab === 'dj') renderDj();
   if (currentTab === 'produce') renderSampler();
   const idle = (s: string | undefined) => !s || ['idle', 'ended', 'closed'].includes(s);
@@ -690,6 +895,23 @@ async function initialize(): Promise<void> {
     packInput.value = packChoice;
     if (packChoice === 'rated') { handoffMode = 'direct'; await loadRatedCatalog(); }
     const manifest = new URL(PACKS[packChoice].manifest, location.href);
+    if (isSet) {
+      handoffMode = 'mix';
+      $('set-panel').hidden = false;
+      await loadRatedCatalog();
+      // Lazy: only the manifest is fetched now; each song is fetched and decoded when it is needed.
+      loaded = await loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, set: true});
+      const songs = loaded.pack.assets.filter(a => a.source_kind === 'recording');
+      setText('sampler-sub', 'No samples or recipes in this pack');
+      setText('global-status', `${PACKS.set.label} loaded · ${songs.length} songs · requested BPMs ${songs.map(a => a.timing?.bpm ?? '?').join(', ')} · unreviewed audition · listening untested`);
+      setText('dj-next', 'Next ▸');
+      getDj();
+      await queueWholeSet(null);
+      renderTracks(); preparePlan(); renderPhoneStream();
+      renderDj(); renderSampler(); renderGenerator(); void refreshLibrary();
+      void pollHealth(); setInterval(() => { if (!document.hidden) void pollHealth(); }, 4000);
+      return;
+    }
     const candidate = packChoice === 'rated'
       ? await loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, maxBytes: 128 * 1024 * 1024})
       : await loadBrowserPack(manifest, true);

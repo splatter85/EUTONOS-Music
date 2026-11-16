@@ -12,7 +12,9 @@ export type PhoneCommand =
   | {readonly command: 'stop'}
   | {readonly command: 'next'}
   | {readonly command: 'hold'; readonly enabled?: boolean}
-  | {readonly command: 'handoff'; readonly mode: PhoneHandoffMode};
+  | {readonly command: 'handoff'; readonly mode: PhoneHandoffMode}
+  /** S18: toggle (or set) Auto on the Studio set page; other pages ignore it. */
+  | {readonly command: 'auto'; readonly enabled?: boolean};
 
 /** A relayed command carries the relay's monotonically increasing id. */
 export type RelayedCommand = PhoneCommand & {readonly id: number};
@@ -30,10 +32,10 @@ export function parseControlCommand(value: unknown): PhoneCommand | null {
   switch (value.command) {
     case 'play': case 'stop': case 'next':
       return onlyKeys(value, ['command']) ? {command: value.command} : null;
-    case 'hold':
+    case 'hold': case 'auto':
       if (!onlyKeys(value, ['command', 'enabled'])) return null;
-      if (value.enabled === undefined) return {command: 'hold'};
-      return typeof value.enabled === 'boolean' ? {command: 'hold', enabled: value.enabled} : null;
+      if (value.enabled === undefined) return {command: value.command};
+      return typeof value.enabled === 'boolean' ? {command: value.command, enabled: value.enabled} : null;
     case 'handoff':
       if (!onlyKeys(value, ['command', 'mode'])) return null;
       return typeof value.mode === 'string' && (HANDOFF_MODES as readonly string[]).includes(value.mode)
@@ -59,11 +61,14 @@ export interface DjStatus {
   readonly canNext: boolean;
   readonly canHold: boolean;
   readonly canHandoff: boolean;
+  /** S18 Studio set page: Auto is on / can be toggled. False on pages without set mode. */
+  readonly auto: boolean;
+  readonly canAuto: boolean;
 }
 
 export const STATUS_TEXT_LIMIT = 240;
 const textFields = ['state', 'now', 'next', 'detail', 'status', 'requested', 'execution', 'lastCommand'] as const;
-const flagFields = ['hold', 'canPlay', 'canStop', 'canNext', 'canHold', 'canHandoff'] as const;
+const flagFields = ['hold', 'canPlay', 'canStop', 'canNext', 'canHold', 'canHandoff', 'auto', 'canAuto'] as const;
 
 function text(value: unknown): string {
   if (typeof value !== 'string') return '';

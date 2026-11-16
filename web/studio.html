@@ -15,7 +15,7 @@
       <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false" type="button">Library</button>
     </nav>
     <div class="topbar-right">
-      <label class="pack-picker">Pack<select id="pack" autocomplete="off"><option value="s01">S01 original</option><option value="mock-fl">S06 imported mock</option><option value="fl">S09 real FL</option><option value="rated">Rated takes (local audition)</option></select></label>
+      <label class="pack-picker">Pack<select id="pack" autocomplete="off"><option value="s01">S01 original</option><option value="mock-fl">S06 imported mock</option><option value="fl">S09 real FL</option><option value="rated">Rated takes (local audition)</option><option value="set">Rated set (any-to-any, local)</option></select></label>
       <div class="master"><label for="master-volume">Master</label><input id="master-volume" type="range" min="0" max="1" step="0.01" value="0.65"><button id="master-mute" class="chip" type="button" aria-pressed="false">Mute</button></div>
     </div>
   </header>
@@ -62,6 +62,25 @@
       </div>
       <div class="booth-lower">
         <div class="card"><h3>Up next</h3><ul id="dj-queue" class="list"><li class="empty">Nothing queued. Queue a deck, or press Mix to next.</li></ul></div>
+        <div class="card wide-card set-card" id="set-panel" hidden>
+          <header class="card-head"><h3>Set</h3><span class="dim">Any song can follow any song. Queue edits never move the music; Next or Auto does.</span></header>
+          <div class="set-controls">
+            <label>Next lands on<select id="set-next-bars" autocomplete="off"><option value="4" selected>the next 4-bar boundary</option><option value="8">the next 8-bar boundary</option></select></label>
+            <button id="set-auto" class="chip" type="button" aria-pressed="false">Auto: off</button>
+            <label>every<select id="set-auto-bars" autocomplete="off"><option value="16">16 bars</option><option value="32" selected>32 bars</option><option value="64">64 bars</option></select></label>
+            <label class="check"><input id="set-loop" type="checkbox" autocomplete="off"> Loop the set</label>
+            <button id="set-requeue" class="chip" type="button">Queue the whole set</button>
+          </div>
+          <p id="set-mix" class="set-mix" role="status">No handover planned yet.</p>
+          <p id="set-auto-status" class="dim" role="status">Auto is off. When on, it moves to the next queued song every N bars from where each song came in, then stops at the end of the set (or loops).</p>
+          <h4 class="set-sub">Songs in the set</h4>
+          <ul id="set-songs" class="list"></ul>
+          <div class="phone-box">
+            <button id="phone-stream" class="chip" type="button" aria-pressed="false">Stream to phone: off</button>
+            <label class="check"><input id="phone-background" type="checkbox" autocomplete="off"> Keep playing when this tab is hidden (only while streaming)</label>
+            <p id="phone-stream-state" class="dim" role="status">Off</p><p id="phone-stream-detail" class="dim"></p><p id="phone-stream-error" class="error" role="alert"></p>
+          </div>
+        </div>
         <div class="card"><h3>What’s happening</h3><dl class="facts"><dt>Playing</dt><dd id="dj-now">Nothing</dd><dt>Next</dt><dd id="dj-next-title">Nothing scheduled</dd><dt>You asked for</dt><dd id="dj-requested">explore</dd></dl><p id="dj-error" class="error" role="alert"></p></div>
       </div>
     </section>

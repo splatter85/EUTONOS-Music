@@ -18,6 +18,7 @@ const hold = element<HTMLButtonElement>('hold');
 const djPlay = element<HTMLButtonElement>('dj-play');
 const djStop = element<HTMLButtonElement>('dj-stop');
 const handoff = element<HTMLSelectElement>('handoff');
+const auto = element<HTMLButtonElement>('auto');
 const connection = element('connection');
 
 let wantListening = false;
@@ -109,6 +110,7 @@ nextSong.addEventListener('click', () => { void send({command: 'next'}); });
 djPlay.addEventListener('click', () => { void send({command: 'play'}); });
 djStop.addEventListener('click', () => { void send({command: 'stop'}); });
 hold.addEventListener('click', () => { void send({command: 'hold', enabled: !(latest?.dj.status?.hold ?? false)}); });
+auto.addEventListener('click', () => { void send({command: 'auto', enabled: !(latest?.dj.status?.auto ?? false)}); });
 handoff.addEventListener('focus', () => { handoffEditing = true; });
 handoff.addEventListener('blur', () => { handoffEditing = false; });
 handoff.addEventListener('change', () => {
@@ -158,6 +160,11 @@ function render(): void {
   hold.setAttribute('aria-pressed', String(dj?.hold ?? false));
   hold.textContent = dj?.hold ? 'Hold: on' : 'Hold';
   handoff.disabled = !connected || !dj?.canHandoff;
+  // S18: Auto exists only on the Studio set page; older DJ pages never report canAuto.
+  auto.hidden = !dj?.canAuto && !dj?.auto;
+  auto.disabled = !connected || !dj?.canAuto;
+  auto.setAttribute('aria-pressed', String(dj?.auto ?? false));
+  auto.textContent = dj?.auto ? 'Auto: on' : 'Auto';
   if (!handoffEditing && dj?.handoff && handoff.value !== dj.handoff) handoff.value = dj.handoff;
 }
 

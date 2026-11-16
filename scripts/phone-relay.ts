@@ -483,6 +483,11 @@ export function djPageUrl(djOrigin: string, relayPort: number, token: string): s
   return `${djOrigin}/?relay=${encodeURIComponent(`http://127.0.0.1:${relayPort}`)}#relayToken=${token}`;
 }
 
+/** S18: the Studio set page (any-to-any set DJ with Auto) with the same relay and token. */
+export function studioSetPageUrl(djOrigin: string, relayPort: number, token: string): string {
+  return `${djOrigin}/studio.html?pack=set&tab=dj&relay=${encodeURIComponent(`http://127.0.0.1:${relayPort}`)}#relayToken=${token}`;
+}
+
 function usage(): string {
   return 'Usage: node dist/scripts/phone-relay.js [--port 0..65535] [--ffmpeg PATH] [--allow-host NAME]... [--dj-origin ORIGIN]...';
 }
@@ -537,6 +542,8 @@ function startRelay(args: string[]): void {
     console.log('  1. In another terminal keep `npm run demo` running, then open THIS address in Edge or Chrome on this PC');
     console.log('     (it carries this run\'s secret relay token in the # fragment, which is never sent over the network):');
     console.log(`       ${djPageUrl(parsed.djOrigins?.[0] ?? DEFAULT_DJ_ORIGINS[0], port, relay.token)}`);
+    console.log('     Or, for the S18 any-to-any set (Next, reorder, Auto), open the Studio set page instead:');
+    console.log(`       ${studioSetPageUrl(parsed.djOrigins?.[0] ?? DEFAULT_DJ_ORIGINS[0], port, relay.token)}`);
     console.log('     The token changes every time the relay starts; reopen the new address after a restart.');
     console.log('  2. On the DJ page switch on "Stream to phone". Press Play there once (or from the phone).');
     console.log(`  3. To reach this relay from your phone, run this yourself on the PC (this relay does not run it):`);
