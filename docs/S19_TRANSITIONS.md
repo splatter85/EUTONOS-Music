@@ -1,27 +1,53 @@
 # S19 DJ transitions III
 
-Status: **IN PROGRESS**, Windows worker branch `work/emf-s19-transitions` from origin/main `3cd8d42`. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status; [Current Tasks](CURRENT_TASKS.md) owns pickup. The coordinator owns merge and push.
+Status: **BUILT on the worker branch, pending coordinator review and merge**, on `work/emf-s19-transitions` from origin/main `3cd8d42`. Full-song blends and all five new styles are implemented; both full Windows gates pass at source `9719024767e5571b47d5d45322b0745182a4faeb`. No push or merge was performed. The [campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) owns status and [Current Tasks](CURRENT_TASKS.md) owns pickup. [Detailed handoff](handoffs/EMF-S19-HANDOFF.md).
 
-The assigned order is full-song smooth blends first, then new transition styles. Part A bounds analysis and prepared PCM by a window rather than song length, schedules native B continuation on the same audio clock, and verifies the join with generated samples. Part B adds eligible filter sweep, tempo ramp, loop-extend, brake and loudness-match styles through the existing recipe planner/evaluator and Studio set readout. If a reduced delivery is necessary, Part A, loudness match and filter sweep take priority; any omitted style must be listed explicitly.
+This is an engineering proof on generated material, not listening acceptance. Windows only; macOS/Linux, real owner songs, physical output and listening are **NOT TESTED**.
 
-Preserve pair/direct/hybrid route gates, FIFO, Hold, Stop, cancellation at earliestEffect, the S17 stream tap and S18 Next/Auto. `scripts/serve.ts` is protected; browser additions belong under `web/`. No owner audio or material under `local/`, no board/RAM/NAV/acceptance writes, no merge or push by the worker. Existing render budgets and evaluator thresholds are not raised to accommodate whole songs.
+## Full-song set blends
 
-Verification pending: focused generated 180-second-and-longer stereo 122 to 128 BPM blends, bounded allocation, native-join sample checks, style eligibility/automation/evaluator cases, a real blend in the set browser gate, then `npm.cmd run check` and `npm.cmd run check:browser` at a committed source SHA. Windows only; macOS/Linux are not run. Physical output and listening are **NOT TESTED**.
+Set mode processes B's entry, overlap and tempo return rather than the whole song. The original song remains a native buffer; a short processed buffer ends at a measured B downbeat and a native source is scheduled ahead at that exact owner-clock frame. The processed buffer's final 20 ms are crossfaded onto native B's preceding samples. Both nodes belong to the same `RecordedSource` and output owner; `onended` never starts a source.
 
-Current checkpoint: Part A is committed at `acfd1ebe2106e261b9cbc67c76267e81665101cb`. A generated exact-180-second A and 181-second B, stereo at 48 kHz and 122 → 128 BPM, select and render a real blend. Analysis covers at most 60 seconds per selected window; late Auto uses a new measured outgoing window and preserves song bar numbering. Only B's entry, overlap and tempo return are processed; the existing render limits remain unchanged. A native source is scheduled ahead on the same clock at a measured downbeat, with a 20 ms PCM crossfade onto its exact preceding samples. Both nodes belong to the same voice and output gain.
+Analysis covers a selected minute, with actual evidence rebound to original song coordinates. A late Next/Auto request selects a new outgoing window; the cache key includes its position and policy. Cue evidence is not extrapolated outside that window. Requested grids remain explicitly requested when measured confidence is inadequate. Full-song analysis metadata does not mean the entire song was analyzed.
 
-Focused Windows evidence before the final gates: set/worker tests 24/24, set browser gate 6/6. Chromium prepared 729,604 channel samples from B's 17,376,000 native samples; the last prepared sample and the first 2,048 continuation samples matched native B exactly (maximum error 0). These checks ran against the Part A working diff before its checkpoint commit; the required final gates will run at a committed source revision. They establish generated PCM and scheduling behavior, not listening or real-song qualification.
+The existing limits remain: WSOLA input is at most 12,000,000 channel samples / 180 seconds; decoded native songs remain limited by S18. Render allocation depends on the overlap window, not song duration. Tempo and original-channel LUFS worker copies share the 16,777,216-sample analysis transfer budget; the level interval shortens at high sample rates and reports its actual bounds. A cached whole-native-song finite/sample-peak scan does not allocate another song or claim whole-song LUFS.
 
-Part B's first two styles are committed at `f8499c30eb46d0d459dab66a76449e1f54720187`: selectable outgoing low-pass filter sweep and bounded stereo LUFS loudness match. The latter captures A's actual fixed gain, measures a bounded original-channel interval, scans native sample peaks without a rendered song copy, allows B gain up to 4 with conservative combined sample headroom, and preserves that gain through native continuation and later matches. Original processor receipts stay separate from normalization-compensated playback PCM. Measurement intervals and residual level difference remain explicit. The existing Auto candidate order remains blend/echo/cut; the new recipes are opt-in.
+Pair rendering retains its existing short-buffer budgets. Direct/hybrid route and eligibility gates are unchanged. See [S18 set mode](S18_SET_MODE.md) and [DJ transitions](DJ_TRANSITIONS.md).
 
-Focused Windows checks for this checkpoint: planner/player/set/source tests 54/54; evaluator/worker tests 26/26; set browser 9 checks. On generated evaluation fixtures, loudness match is PASS (-26.000 dBTP, maximum momentary deviation 0.084 LU); filter sweep is WARN (1.616 LU momentary dip), with unchanged thresholds and no failing metric. Actual-worker 180/181-second browser recipes each prepared 729,600 channel samples; the matched native continuation error was 6.10e-9, with B gain 2.5234123 and residual 0 LU. Full gates are still pending.
+## Recipe choices
 
-Next: tempo ramp, loop-extend and brake. Sol high owns bounded implementation; the orchestrator owns design/review, worker-branch commits, canonical docs, final gates and closeout. [Recovery handoff](handoffs/EMF-S19-HANDOFF.md).
+Studio's **Beatmatch recipe** selector affects future Next/Auto requests. The readout describes the actual selected style or fallback; changing the selector does not rewrite a scheduled handover. Existing Auto choice order is retained. These new styles are explicit opt-ins, not a claim that every pair is eligible.
 
-## Remaining styles: approved implementation plan
+| Recipe | Eligibility and behavior |
+| --- | --- |
+| `filter-sweep` | Existing blend tempo/key/cue gates, including static ratio 0.92–1.08. A real outgoing low-pass sweep with complementary entrance/exit curves. |
+| `loudness-match` | Blend gates plus non-silent bounded K-weighted levels and whole-native-song sample peaks. Capture the playing A voice's fixed gain; match B with at most 4× gain, constrained by conservative combined equal-power sample headroom. A is not abruptly changed. Report original and residual level differences. |
+| `tempo-ramp` | Ratio 0.8–1.25, outside static 0.92–1.08 comfort. Account for the constant relative rate-induced pitch shift in the key relation, within an engineering 0.2-semitone detune bound. Both native sources follow one changing beat grid. Pitch moves; this is not pitch-preserving WSOLA or a guarantee of local chord/vocal compatibility. |
+| `loop-extend` | One measured 4/8-bar interval with confident, consistently spaced downbeats; bounded PCM periodicity/energy and seam checks; exclude supplied vocal spans. Repeat it once, then resume A's native material during the overlap. This does not establish vocal-free content. Failed or late preparation selects the normal labeled fallback before effects. |
+| `brake` | Large gaps outside ratio 0.8–1.25 with strong measured cue/downbeat evidence. A short native slowdown and gain fade with pitch drop; B enters at its native measured cue with a 20 ms overlap. A deliberately leaves the static beat grid. |
 
-This section is a plan until its source and checks are recorded. Tempo ramp uses owned native playback-rate lanes, with an initial A/B tempo ratio in 0.8–1.25 outside the static-stretch range. Both tracks follow one common changing beat grid. Duration for N beats is `round(2 * N * 60 * sampleRate / (bpmA + bpmB))`; A moves from rate 1 to `bpmB/bpmA`, and B from `bpmA/bpmB` to 1. Pitch moves with rate; this is not pitch-preserving WSOLA. One integral/inverse map must serve scheduling, EOF, Next/Auto and offline evaluation.
+Loudness matching uses a constant gain outside entry/exit automation, including native continuation and a subsequent outgoing transition. It compensates the processor's normalization explicitly before joining native B. The ceiling is a **sample-peak** bound, not a limiter or true-peak qualification. LUFS and residual figures describe their measured windows, not the rest of either song.
 
-Loop-extend selects a measured 4/8-bar interval `[X-L, X)` and repeats it once at owner-clock S when A reaches native frame X. B enters at T = S + L; A then resumes native material at X during the overlap. `fromExitFrame` stays native X, while `entryDelayFrames` and `outgoingEffectSourceFrame` state the delay and first effect separately. A bounded prepared loop buffer crossfades its entrance from native X and ends on native X-1 before the appended native tail. Consistency, known vocal-span exclusion, sample/peak/seam validation and bounded allocation are engineering eligibility, not proof of vocal-free or pleasant material.
+## Timing and ownership
 
-Brake owns a short A slowdown/gain prelude and enters native B at its measured cue. All source starts, stops and parameter changes must be scheduled ahead on the existing clock; timers and `onended` only reconcile/clean up. Cancelling is legal only before first effect S, even where B enters later at T. Existing auto recipe order and pair/direct/hybrid gates stay unchanged.
+Tempo-ramp duration for N beats is `round(2 * N * 60 * sampleRate / (bpmA + bpmB))`. A moves from rate 1 to `bpmB/bpmA`, while B moves from `bpmA/bpmB` to 1. A single integral/inverse map drives source placement, EOF, subsequent Next/Auto and the offline model. Browser playback-rate motion is block-rate; its map is nominal. Native B is allowed to reach its actual EOF rather than being gated early by the analytic estimate, with a conservative lifecycle allowance. Native-rate voices refuse authored cue methods that assume identity timing.
+
+For a loop interval `[X-L, X)`, `fromExitFrame` remains native X. The first effect is S when A reaches X; `entryDelayFrames=L` places B at T=S+L. The prepared finite A buffer repeats the interval and appends the native overlap tail. A rate-mapped outgoing voice uses a scheduled complementary splice rather than assuming its native sample phase is exact. No virtual source frame silently replaces X.
+
+FIFO, Hold, Stop, cancellation and the S17 master stream tap retain their owner. Cancelling before first effect S releases all future nodes and restores A; after S it cannot claim to undo effects even when B's entry T is later. Stop still silences/releases the complete voice. All starts and parameter changes are scheduled ahead on the same audio clock. Timers and callbacks only reconcile and clean up.
+
+## Evaluation and verification
+
+The offline evaluator remains Node-only. Native-rate rendering is explicitly a `native-rate-model`, not captured browser audio. It places both sources on their intended ramp/loop timeline before applying the faders and filters. Delayed-entry recipes keep the A reference through the prelude. Brake compares B's entry beat because A intentionally leaves its grid; smooth recipes retain through-overlap beat/flux checks. `mix-evaluation-thresholds@1` is unchanged. WARN remains admissible under the existing chooser.
+
+Generated-fixture results: loudness match PASS; filter sweep WARN; tempo ramp WARN; loop-extend WARN; brake PASS under its disclosed cut-like evaluation scope. Final Windows gates pass: 489/489 Node tests; 24 native offline, 16 browser, 4 S11 groups / 24 paired cases, 15 Studio, 21 mix, 8 phone and 16 set checks. The [handoff](handoffs/EMF-S19-HANDOFF.md) records exact commands, measurements and review fixes. These results are not a claim about arbitrary songs or seeds.
+
+Repeatable commands (use `npm.cmd` on this Windows setup):
+
+```sh
+npm run check
+npm run check:browser
+npm run check:set
+```
+
+No new dependencies or downloaded/proprietary audio. `scripts/serve.ts`, board/RAM/NAV/acceptance paths and the main checkout remain outside this worker's write scope. The coordinator owns merge, push and native filing. The next acceptance step after integration is S10 PC/owner listening; overall campaign effort percentage is unknown.

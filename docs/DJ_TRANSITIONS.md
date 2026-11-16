@@ -4,6 +4,8 @@ The experimental `mix` handoff analyzes two recordings, proposes compatible beat
 
 **Physical output and listening NOT TESTED. Detection accuracy on real songs beyond the measured files is unknown.** These features have generated-signal and native browser engineering checks; they do not have listening acceptance. Exact executed commands, counts, versions and measurements are in [the handoff](handoffs/DJ-TRANSITIONS-HANDOFF.md).
 
+[S19 transitions](S19_TRANSITIONS.md) extend the set-mode path with bounded full-song processing, native continuation and explicit styles on a worker branch pending coordinator integration. Its [handoff](handoffs/EMF-S19-HANDOFF.md) owns the new evidence; the original pair route gates and processing budgets below remain in place.
+
 ## Run and use the page
 
 From the repository worktree:
