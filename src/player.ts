@@ -119,8 +119,6 @@ export class SmallPlayer {
   /** S18: true for a set pack with no authored route; only set methods are available. */
   readonly routeFree: boolean;
   private readonly authored: CheckedRoute | null;
-  /** S18 per-song analysis, keyed by audio hash and analysis version. */
-  readonly analyses = new MixAnalysisCache();
   /** S18 lazily decoded native songs: at most the selected next song is retained here. */
   private readonly setDecoded = new Map<string, Promise<DecodedRecording>>();
   private readonly output: GainNode;
@@ -145,7 +143,8 @@ export class SmallPlayer {
   private readonly stateChanged = () => this.onContextState();
 
   constructor(readonly context: AudioContext, private readonly loaded: LoadedBrowserPack,
-    routeId: string | null, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation) {
+    routeId: string | null, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation,
+    readonly analyses: MixAnalysisCache & {observe?(recording: DecodedRecording): void} = new MixAnalysisCache()) {
     this.routeFree = routeId === null;
     this.authored = routeId === null ? null : checkedRoute(loaded.pack, routeId, loaded.allowFixtures, loaded.allowUnreviewed);
     if (this.routeFree) {
@@ -887,7 +886,10 @@ export class SmallPlayer {
     if (existing) return existing;
     const asset = this.setSongs().find(a => a.id === assetId);
     if (!asset) return Promise.reject(new Error(`Unknown set song ${assetId}.`));
-    const task = decodeRecording(this.loaded, this.context, asset).catch(error => {
+    const task = decodeRecording(this.loaded, this.context, asset).then(recording => {
+      try { this.analyses.observe?.(recording); } catch { /* Display summaries never block audio. */ }
+      return recording;
+    }).catch(error => {
       if (this.setDecoded.get(assetId) === task) this.setDecoded.delete(assetId);
       throw error;
     });

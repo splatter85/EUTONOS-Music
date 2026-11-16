@@ -196,3 +196,18 @@ main { flex: 1; padding: 16px 18px; width: 100%; max-width: 1400px; margin: 0 au
 .fader-row input { flex: 1; min-width: 0; height: 32px; accent-color: var(--accent); }
 .deck-control-help { margin: 0; padding: 8px 12px; color: var(--dim); font-size: 12px; border-left: 2px solid var(--accent); }
 @media (min-width: 1001px) and (max-width: 1220px) { .deck-controls { gap: 4px; } .dial-face { width: 44px; height: 44px; } .control-return { font-size: 10px; } }
+
+/* Set song summaries keep titles and measured metadata readable on phones. */
+#set-songs .set-song-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; }
+#set-songs .song-detail { min-width: 0; }
+#set-songs .song-title { display: block; overflow-wrap: anywhere; font-weight: 600; }
+#set-songs .song-meta { margin-top: 5px; white-space: normal; }
+#set-songs .song-analysis { color: #b8c8dd; font-size: 12px; margin-top: 5px; }
+#set-songs .song-window { color: var(--dim); font-size: 11px; margin-top: 4px; }
+#set-songs .song-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+#set-songs .song-wave { grid-column: 1 / -1; width: 100%; height: 64px; background: #0d1014; border-radius: 4px; }
+.set-analysis-help { font-size: 12px; line-height: 1.5; }
+@media (max-width: 640px) {
+  #set-songs .set-song-row { grid-template-columns: minmax(0, 1fr); }
+  #set-songs .song-actions { justify-content: flex-start; }
+}

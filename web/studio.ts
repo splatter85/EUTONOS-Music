@@ -19,6 +19,8 @@ import {decodeWav} from '../src/audio-analysis.js';
 import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, type AutoBars, type NextBars} from './set-mode.js';
 import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
+import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
+import {SetSongList} from './set-song-list.js';
 import type {PhoneCommand} from './phone-protocol.js';
 
 const PACKS = {
@@ -71,6 +73,7 @@ interface RatedCatalog {
 }
 let ratedCatalog: RatedCatalog | null = null;
 let loaded: LoadedBrowserPack | null = null;
+const setAnalyses = isSet ? new PersistentSetAnalysisCache() : null;
 let deckAssets: {a: AudioAsset; b: AudioAsset} | null = null;
 const peaks = new Map<string, Float32Array | null>();
 let djNeedsMute = false;
@@ -162,7 +165,7 @@ function getDj(): DeterministicDj {
   if (!loaded) throw new Error('The pack is still loading.');
   const route = loaded.pack.routes[0];
   if (!route && !isSet) throw new Error('This pack has no A → B route.');
-  djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id);
+  djPlayer = new SmallPlayer(new AudioContext(), loaded, isSet ? null : route!.id, undefined, setAnalyses ?? undefined);
   dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
@@ -442,7 +445,8 @@ function ratingOfAsset(id: string): string {
   const takeId = index >= 0 ? ratedCatalog?.set?.take_ids[index] : undefined;
   return ratedCatalog?.takes.find(t => t.id === takeId)?.rating ?? '';
 }
-let lastSongsKey = '';
+const setSongList = isSet ? new SetSongList($('set-songs'), setAnalyses!, () => djPlayer,
+  id => { void send({type: 'queueTrack', trackId: id}); }, ratingOfAsset) : null;
 function renderSet(): void {
   const snap = dj?.snapshot(), player = snap?.player;
   const summary = player?.mix?.summary;
@@ -453,16 +457,7 @@ function renderSet(): void {
   setText('set-auto-status', autoOn ? `Auto on: moves to the next queued song ${autoBars} bars after each song came in${loopSet ? ', looping the set' : ', then stops at the end of the set'}.${autoNote ? ` ${autoNote}` : ''}`
     : autoNote || 'Auto is off. When on, it moves to the next queued song every N bars from where each song came in, then stops at the end of the set (or loops).');
   const songs = loaded?.pack.assets.filter(a => a.source_kind === 'recording') ?? [];
-  const key = songs.map(a => a.id).join('|') + (ratedCatalog ? ':c' : '');
-  const list = $('set-songs');
-  if (key === lastSongsKey && list.childElementCount) return;
-  lastSongsKey = key; list.replaceChildren();
-  for (const asset of songs) {
-    const rating = ratingOfAsset(asset.id);
-    list.append(make('li', {}, make('span', {textContent: asset.title}),
-      make('span', {className: 'song-meta', textContent: `${asset.timing?.bpm ?? '?'} BPM requested · ${clock(asset.file.frames / asset.file.sample_rate)}${rating ? ` · ${rating}` : ''}`}),
-      button('Add to queue', () => { void send({type: 'queueTrack', trackId: asset.id}); }, 'chip', `Add ${asset.title} to the queue`)));
-  }
+  setSongList?.render(songs);
 }
 
 // ---------- phone (S17 relay, Studio set page) ----------
