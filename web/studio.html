@@ -28,6 +28,7 @@
         <article class="deck deck-a" id="deck-a">
           <header class="deck-head"><span class="deck-letter">A</span><div class="deck-titles"><h2 id="deck-a-title">Deck A</h2><p id="deck-a-meta" class="deck-meta">—</p></div><span id="deck-a-air" class="on-air">On air</span></header>
           <canvas id="deck-a-wave" class="wave" width="800" height="120" aria-label="Deck A waveform"></canvas>
+          <p id="deck-a-motion" class="deck-motion" hidden></p><div id="deck-a-controls" class="deck-controls" hidden></div>
           <div class="deck-foot"><span id="deck-a-time" class="readout">0:00.0</span><span id="deck-a-remain" class="readout dim">-0:00.0</span><button id="queue-a" class="chip" type="button">Queue A</button></div>
         </article>
 
@@ -38,7 +39,8 @@
             <button id="mode-hybrid" role="radio" aria-checked="false" type="button">Bridge</button>
             <button id="mode-mix" role="radio" aria-checked="false" type="button" title="Analyse both songs, match tempo on the beat and mix with EQ. Falls back to Crossfade when unsure.">Beatmatch</button>
           </div>
-          <div class="xfader" aria-label="Crossfader position (automatic)"><span class="xf-end">A</span><div class="xf-track"><span id="bridge-lamp" class="bridge-lamp">Bridge</span><span id="xf-knob" class="xf-knob"></span></div><span class="xf-end">B</span></div>
+          <div id="automatic-xfader" class="xfader" aria-label="Crossfader position (automatic)"><span class="xf-end">A</span><div class="xf-track"><span id="bridge-lamp" class="bridge-lamp">Bridge</span><span id="xf-knob" class="xf-knob"></span></div><span class="xf-end">B</span></div>
+          <div id="set-crossfader" class="set-crossfader" hidden><label for="deck-crossfader">Crossfader</label><div class="fader-row"><span>A</span><input id="deck-crossfader" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Deck crossfader"><span>B</span></div><span id="deck-crossfader-owner" class="control-owner">DJ controls the crossfader</span><button id="deck-crossfader-return" class="control-return" type="button">Return crossfader to DJ</button></div>
           <label id="mix-recipe-control" hidden>Mix recipe<select id="mix-recipe" autocomplete="off"><option value="auto" selected>Auto</option><option value="blend">Beatmatched blend</option><option value="filter-sweep">Filter sweep</option><option value="loudness-match">Loudness match</option><option value="tempo-ramp">Tempo ramp (pitch moves)</option><option value="loop-extend">Loop extension</option><option value="brake">Brake (pitch drops)</option><option value="cut">Cut on the beat</option></select></label>
           <p id="rated-transition-help" class="dim" hidden>Rated auditions use a direct cut with no overlap. The requested grid is unmeasured; Bridge and Beatmatch are unavailable.</p>
           <p id="mix-status" class="mix-status">Ready</p>
@@ -58,9 +60,11 @@
         <article class="deck deck-b" id="deck-b">
           <header class="deck-head"><span class="deck-letter">B</span><div class="deck-titles"><h2 id="deck-b-title">Deck B</h2><p id="deck-b-meta" class="deck-meta">—</p></div><span id="deck-b-air" class="on-air">On air</span></header>
           <canvas id="deck-b-wave" class="wave" width="800" height="120" aria-label="Deck B waveform"></canvas>
+          <p id="deck-b-motion" class="deck-motion" hidden></p><div id="deck-b-controls" class="deck-controls" hidden></div>
           <div class="deck-foot"><span id="deck-b-time" class="readout">0:00.0</span><span id="deck-b-remain" class="readout dim">-0:00.0</span><button id="queue-b" class="chip" type="button">Queue B</button></div>
         </article>
       </div>
+      <p id="deck-control-help" class="deck-control-help" hidden>Drag a knob or use the arrow keys. Each control stays yours until you return it to the DJ. Next and Auto still start and end songs at their planned boundaries.</p>
       <div class="booth-lower">
         <div class="card"><h3>Up next</h3><ul id="dj-queue" class="list"><li class="empty">Nothing queued. Queue a deck, or press Mix to next.</li></ul></div>
         <div class="card wide-card set-card" id="set-panel" hidden>

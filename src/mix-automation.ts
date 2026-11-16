@@ -178,6 +178,11 @@ export function bindEchoReturn(plan: MixAutomation, master: AudioNode): void {
 }
 export function unbindEchoReturn(plan: MixAutomation): void { echoReturns.delete(plan); }
 
+export interface MixAutomationOwner {
+  /** Delegate dry set lanes into the physical deck, retaining the source lifecycle. */
+  schedule(plan: MixAutomation, atFrame: number): MixAutomationGraph;
+}
+
 export interface MixAutomationGraph {
   /** Before the mix starts, reconnect the original unfiltered path exactly. */
   restore(): void;
@@ -202,7 +207,7 @@ function scheduleCurve(parameter: AudioParam, points: readonly MixAutomationPoin
  * Browser filtering follows W3C Web Audio §1.13; no third-party DSP code is imported.
  */
 export function createMixAutomationGraph(context: BaseAudioContext, input: AudioNode,
-  output: AudioNode, atFrame: number, plan: MixAutomation): MixAutomationGraph {
+  output: AudioNode, atFrame: number, plan: MixAutomation, owner?: MixAutomationOwner): MixAutomationGraph {
   const master = echoReturns.get(plan);
   // Consume even a refused binding; callers must use a fresh plan for another commit.
   echoReturns.delete(plan);
@@ -212,6 +217,8 @@ export function createMixAutomationGraph(context: BaseAudioContext, input: Audio
   check(input.context === context && output.context === context, 'Mix nodes need the owner context.');
   check(Number.isSafeInteger(atFrame) && atFrame >= Math.ceil(context.currentTime * context.sampleRate),
     'Mix automation must begin on a future audio-clock frame.');
+  check(!owner || !plan.echo, 'Echo retains its original send/return owner graph.');
+  if (owner) return owner.schedule(plan, atFrame);
   const nodes: AudioNode[] = [];
   const own = <T extends AudioNode>(node: T): T => { nodes.push(node); return node; };
   let disposed = false, connected = false;

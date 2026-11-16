@@ -1,0 +1,219 @@
+/**
+ * S20 set mixer. The existing SmallPlayer owns this graph and its audio clock.
+ * Controls replace recipe lanes; no timer, new transport or audio source is introduced.
+ */
+import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, mixCurveValue, validateMixAutomation,
+  type MixAutomation, type MixAutomationGraph, type MixAutomationOwner, type MixAutomationPoint} from '../src/mix-automation.js';
+
+export type DeckId = 'a' | 'b';
+export type DeckControl = 'low' | 'mid' | 'high' | 'filter';
+export interface ControlValue {readonly owner: 'dj' | 'you'; readonly value: number;}
+export interface ChannelControls {
+  readonly low: ControlValue; readonly mid: ControlValue; readonly high: ControlValue;
+  readonly filter: ControlValue; readonly highPassHz: number; readonly lowPassHz: number;
+  readonly gain: number;
+}
+const check = (ok: unknown, why: string): void => { if (!ok) throw new Error(why); };
+const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
+const frameNow = (context: BaseAudioContext): number => Math.ceil(context.currentTime * context.sampleRate);
+
+/** Keeps a mathematical readback as well as native AudioParam scheduling, including slews. */
+class Lane {
+  private automatic: {at: number; points: readonly MixAutomationPoint[]} | null = null;
+  private manual: number | null = null;
+  private slew: {at: number; end: number; from: number; to: number} | null = null;
+  constructor(private readonly context: BaseAudioContext, readonly parameter: AudioParam, readonly neutral: number) {
+    parameter.value = neutral;
+  }
+  get owner(): 'dj' | 'you' { return this.manual === null ? 'dj' : 'you'; }
+  private autoValue(frame: number): number {
+    return !this.automatic || frame < this.automatic.at ? this.neutral
+      : mixCurveValue(this.automatic.points, frame - this.automatic.at);
+  }
+  value(frame = frameNow(this.context)): number {
+    const s = this.slew;
+    if (s && frame < s.end) return s.from + (s.to - s.from) * clamp((frame - s.at) / (s.end - s.at), 0, 1);
+    return this.manual ?? this.autoValue(frame);
+  }
+  setAutomatic(points: readonly MixAutomationPoint[] | null, at = 0): void {
+    const before = this.value();
+    this.automatic = points ? {points: points.map(p => ({...p})), at} : null;
+    if (this.manual === null) this.schedule(before, false);
+  }
+  take(value: number): void {
+    const before = this.value(); this.manual = value; this.schedule(before, true);
+  }
+  giveBack(): void {
+    if (this.manual === null) return;
+    const before = this.value(); this.manual = null; this.schedule(before, true);
+  }
+  private schedule(before: number, smooth: boolean): void {
+    const now = frameNow(this.context), rate = this.context.sampleRate, p = this.parameter;
+    p.cancelScheduledValues(now / rate);
+    const end = smooth ? now + Math.max(1, Math.round(rate * 0.02)) : now;
+    const target = this.manual ?? this.autoValue(end);
+    p.setValueAtTime(smooth ? before : target, now / rate);
+    this.slew = smooth ? {at: now, end, from: before, to: target} : null;
+    if (smooth) p.linearRampToValueAtTime(target, end / rate);
+    if (this.manual !== null || !this.automatic) return;
+    const {points, at} = this.automatic;
+    for (const [i, point] of points.entries()) {
+      const frame = at + point.frame;
+      if (frame <= end) continue;
+      // First point is a boundary, not a ramp from "now" to a future mix start.
+      if (i === 0) p.setValueAtTime(point.value, frame / rate);
+      else if (point.curve === 'exponential') p.exponentialRampToValueAtTime(point.value, frame / rate);
+      else p.linearRampToValueAtTime(point.value, frame / rate);
+    }
+  }
+}
+
+export function filterCutoffs(value: number, rate: number): {highPassHz: number; lowPassHz: number} {
+  check(Number.isFinite(value) && value >= -1 && value <= 1, 'Filter must be between -1 and 1.');
+  const nyquist = rate / 2, high = Math.min(8000, nyquist * 0.8);
+  return {highPassHz: value <= 0 ? 0 : 20 * ((high / 20 + 1) ** value - 1),
+    lowPassHz: value >= 0 ? nyquist : nyquist * (80 / nyquist) ** -value};
+}
+function filterPosition(hp: number, lp: number, rate: number): number {
+  if (hp > 0) return clamp(Math.log(hp / 20 + 1) / Math.log(Math.min(8000, rate * 0.4) / 20 + 1), 0, 1);
+  return lp >= rate / 2 ? 0 : -clamp(Math.log(Math.max(1, lp) / (rate / 2)) / Math.log(80 / (rate / 2)), 0, 1);
+}
+
+/** One persistent physical deck. A retired source's handle cannot clear a newer schedule. */
+export class DeckChannel implements MixAutomationOwner {
+  readonly input: GainNode;
+  private readonly nodes: AudioNode[] = [];
+  private readonly fader: GainNode;
+  private readonly lifetime: GainNode;
+  private voiceToken = 0;
+  private readonly lanes: {gain: Lane; low: Lane; mid: Lane; high: Lane; hp: Lane; lp: Lane};
+  private scope: AnalyserNode | null = null;
+  private token = 0;
+  private released = false;
+  constructor(private readonly context: BaseAudioContext, destination: AudioNode) {
+    check(destination.context === context, 'Deck output must use the owner context.');
+    const own = <T extends AudioNode>(node: T): T => { this.nodes.push(node); return node; };
+    this.input = own(context.createGain());
+    const low = own(context.createBiquadFilter()), mid = own(context.createBiquadFilter()), high = own(context.createBiquadFilter());
+    const hp = own(context.createBiquadFilter()), lp = own(context.createBiquadFilter());
+    this.fader = own(context.createGain());
+    this.lifetime = own(context.createGain()); this.lifetime.gain.value = 0;
+    low.type = 'lowshelf'; low.frequency.value = MIX_SHELF_HZ;
+    mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 0.7;
+    high.type = 'highshelf'; high.frequency.value = Math.min(4000, context.sampleRate * 0.4);
+    hp.type = 'highpass'; hp.Q.value = MIX_FILTER_Q_DB;
+    lp.type = 'lowpass'; lp.Q.value = MIX_FILTER_Q_DB;
+    this.lanes = {gain: new Lane(context, this.fader.gain, 1), low: new Lane(context, low.gain, 0),
+      mid: new Lane(context, mid.gain, 0), high: new Lane(context, high.gain, 0),
+      hp: new Lane(context, hp.frequency, 0), lp: new Lane(context, lp.frequency, context.sampleRate / 2)};
+    this.input.connect(low); low.connect(mid); mid.connect(high); high.connect(hp);
+    hp.connect(lp); lp.connect(this.fader); this.fader.connect(this.lifetime); this.lifetime.connect(destination);
+  }
+  /** A per-voice lease keeps late cleanup from closing a newer song on this deck. */
+  createOwner(): MixAutomationOwner & {setLifetime(start: number, end: number): void; releaseSource(): void} {
+    const token = ++this.voiceToken;
+    const current = (): boolean => !this.released && token === this.voiceToken;
+    const silence = (): void => {
+      const now = this.context.currentTime;
+      this.lifetime.gain.cancelScheduledValues(now); this.lifetime.gain.setValueAtTime(0, now);
+    };
+    silence();
+    return {
+      schedule: (plan, at) => { check(current(), 'Stale deck voice.'); return this.schedule(plan, at); },
+      setLifetime: (start, end) => {
+        check(current() && Number.isSafeInteger(start) && Number.isSafeInteger(end) && end >= start, 'Invalid deck lifetime.');
+        const now = frameNow(this.context), rate = this.context.sampleRate, gain = this.lifetime.gain;
+        gain.cancelScheduledValues(now / rate);
+        gain.setValueAtTime(now >= start && now < end ? 1 : 0, now / rate);
+        if (start > now) gain.setValueAtTime(1, start / rate);
+        if (end > now) gain.setValueAtTime(0, end / rate);
+      },
+      releaseSource: () => { if (current()) { silence(); this.voiceToken++; } },
+    };
+  }
+  schedule(plan: MixAutomation, atFrame: number): MixAutomationGraph {
+    check(!this.released && !plan.echo, 'The set deck supports dry recipe lanes; echo keeps its original owner graph.');
+    validateMixAutomation(plan, this.context.sampleRate);
+    check(Number.isSafeInteger(atFrame) && atFrame >= frameNow(this.context), 'Deck automation needs a future owner-clock frame.');
+    const token = ++this.token;
+    this.lanes.gain.setAutomatic(plan.gain, atFrame); this.lanes.low.setAutomatic(plan.lowShelfDb, atFrame);
+    this.lanes.hp.setAutomatic(plan.highPassHz, atFrame); this.lanes.lp.setAutomatic(plan.lowPassHz, atFrame);
+    let disposed = false;
+    const reset = (): void => {
+      if (disposed) return;
+      disposed = true;
+      if (this.released || token !== this.token) return;
+      for (const lane of [this.lanes.gain, this.lanes.low, this.lanes.hp, this.lanes.lp]) lane.setAutomatic(null);
+    };
+    return {restore: reset, release: reset};
+  }
+  take(control: DeckControl, value: number): void {
+    check(!this.released, 'Deck mixer is closed.');
+    check(['low', 'mid', 'high', 'filter'].includes(control), 'Unknown deck control.');
+    if (control === 'filter') {
+      const {highPassHz, lowPassHz} = filterCutoffs(value, this.context.sampleRate);
+      this.lanes.hp.take(highPassHz); this.lanes.lp.take(lowPassHz);
+    } else {
+      check(Number.isFinite(value) && value >= -24 && value <= 6, 'EQ must be between -24 and +6 dB.');
+      this.lanes[control].take(value);
+    }
+  }
+  giveBack(control: DeckControl): void {
+    check(!this.released, 'Deck mixer is closed.');
+    check(['low', 'mid', 'high', 'filter'].includes(control), 'Unknown deck control.');
+    if (control === 'filter') { this.lanes.hp.giveBack(); this.lanes.lp.giveBack(); }
+    else this.lanes[control].giveBack();
+  }
+  setFader(value: number | null): void {
+    check(!this.released, 'Deck mixer is closed.');
+    check(value === null || Number.isFinite(value) && value >= 0 && value <= 1, 'Deck fader must be between 0 and 1.');
+    if (value === null) this.lanes.gain.giveBack(); else this.lanes.gain.take(value);
+  }
+  snapshot(): ChannelControls {
+    const frame = frameNow(this.context), value = (lane: Lane): ControlValue => ({owner: lane.owner, value: lane.value(frame)});
+    const hp = this.lanes.hp.value(frame), lp = this.lanes.lp.value(frame);
+    return {low: value(this.lanes.low), mid: value(this.lanes.mid), high: value(this.lanes.high),
+      filter: {owner: this.lanes.hp.owner, value: filterPosition(hp, lp, this.context.sampleRate)},
+      highPassHz: hp, lowPassHz: lp, gain: this.lanes.gain.value(frame)};
+  }
+  /** An observational tap only; display sampling never schedules music. */
+  waveform(target: Float32Array<ArrayBuffer>): void {
+    check(!this.released, 'Deck mixer is closed.');
+    if (!this.scope) {
+      this.scope = this.context.createAnalyser(); this.scope.fftSize = 1024;
+      this.scope.smoothingTimeConstant = 0;
+      this.lifetime.connect(this.scope);
+    }
+    this.scope.getFloatTimeDomainData(target);
+  }
+  release(): void {
+    if (this.released) return;
+    this.released = true; this.token++;
+    this.scope?.disconnect(); this.scope = null;
+    for (const node of this.nodes) node.disconnect();
+  }
+}
+export class DeckMixer {
+  readonly a: DeckChannel;
+  readonly b: DeckChannel;
+  private manualCrossfader: number | null = null;
+  constructor(context: BaseAudioContext, output: AudioNode) {
+    this.a = new DeckChannel(context, output); this.b = new DeckChannel(context, output);
+  }
+  setCrossfader(value: number): void {
+    check(Number.isFinite(value) && value >= 0 && value <= 1, 'Crossfader must be between 0 and 1.');
+    this.manualCrossfader = value;
+    this.a.setFader(value === 1 ? 0 : Math.cos(value * Math.PI / 2));
+    this.b.setFader(value === 0 ? 0 : Math.sin(value * Math.PI / 2));
+  }
+  returnCrossfader(): void {
+    this.manualCrossfader = null; this.a.setFader(null); this.b.setFader(null);
+  }
+  snapshot(active: readonly DeckId[]): {a: ChannelControls; b: ChannelControls; crossfader: ControlValue} {
+    const a = this.a.snapshot(), b = this.b.snapshot();
+    const ga = active.includes('a') ? a.gain : 0, gb = active.includes('b') ? b.gain : 0;
+    return {a, b, crossfader: {owner: this.manualCrossfader === null ? 'dj' : 'you',
+      value: this.manualCrossfader ?? (ga || gb ? Math.atan2(gb, ga) * 2 / Math.PI : 0.5)}};
+  }
+  release(): void { this.a.release(); this.b.release(); }
+}

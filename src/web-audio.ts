@@ -1,7 +1,7 @@
 import {eligibleForPlayback, quartersToFrames, validatePackManifest} from './pack.js';
 import type {AudioAsset, AudioPack, CueRoute} from './pack-types.js';
 import type {AudioClock, ClockStamp, PlayableSource, SourceExit, SourceStart} from './playable-source.js';
-import {createMixAutomationGraph, validateMixAutomation, type MixAutomation, type MixAutomationGraph} from './mix-automation.js';
+import {createMixAutomationGraph, validateMixAutomation, type MixAutomation, type MixAutomationGraph, type MixAutomationOwner} from './mix-automation.js';
 import {nativeRateInputAt, nativeRateOutputAt, validateNativeRate, type NativeRateRamp} from './time-pitch.js';
 
 let nextGeneration = 1;
@@ -93,6 +93,8 @@ export interface RecordingOptions {
   readonly fadeOutFrames?: number;
   /** Fixed per-entry gain outside all transition lanes; retained through native continuation. */
   readonly levelGain?: number;
+  /** S20 physical deck automation; source lifetime gates stay independent of manual controls. */
+  readonly mixer?: MixAutomationOwner & {setLifetime(start: number, end: number): void; releaseSource(): void};
 }
 
 /** One-shot recording implementation of the S01 shared source seam. */
@@ -191,6 +193,7 @@ export class RecordedSource implements PlayableSource {
       this.gain?.disconnect();
       this.levelNode?.disconnect();
       this.mixGraph?.release(); this.mixGraph = null;
+      this.options.mixer?.releaseSource();
     };
     if (continuation) {
       this.continuationNode = this.context.createBufferSource();
@@ -204,6 +207,7 @@ export class RecordedSource implements PlayableSource {
         this.gain?.disconnect();
         this.levelNode?.disconnect();
         this.mixGraph?.release(); this.mixGraph = null;
+        this.options.mixer?.releaseSource();
       };
     }
     this.phase = 'prepared';
@@ -225,6 +229,7 @@ export class RecordedSource implements PlayableSource {
     this.finishFrame = start.at.frame + this.recording.buffer.length - entry;
     this.naturalEndFrame = this.finishFrame;
     this.phase = 'scheduled';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
   }
 
   /** Analyzed/processed entry in decoded output frames; no authored cue is rewritten. */
@@ -236,7 +241,7 @@ export class RecordedSource implements PlayableSource {
       entryOffsetFrames + (this.entryRate ? nativeRateInputAt(this.entryRate, automation.durationFrames) : automation.durationFrames) <= this.recording.buffer.length,
     'Analyzed entry/automation exceeds prepared audio.');
     requireAudio(automation.gain[0]!.value === 0, 'An incoming mix must start at zero gain.');
-    const graph = createMixAutomationGraph(this.context, this.node!, this.entryGain ?? this.gain!, at.frame, automation);
+    const graph = createMixAutomationGraph(this.context, this.node!, this.entryGain ?? this.gain!, at.frame, automation, this.options.mixer);
     const lifetime = this.entryRate ? Math.round(nativeRateOutputAt(this.entryRate, this.recording.buffer.length - entryOffsetFrames)) : this.playbackFrames - entryOffsetFrames;
     let entryStarted = false, nativeStarted = false;
     try {
@@ -278,6 +283,7 @@ export class RecordedSource implements PlayableSource {
     this.finishFrame = at.frame + lifetime + (this.entryRate ? 256 : 0);
     this.naturalEndFrame = this.finishFrame;
     this.phase = 'scheduled';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
   }
 
   getValidExits(): readonly SourceExit[] {
@@ -305,6 +311,7 @@ export class RecordedSource implements PlayableSource {
     this.finishFrame = at.frame + fadeOutFrames;
     this.transitionFrame = at.frame;
     this.phase = 'stopping';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
   }
 
   /** Exit at the analyzed decoded-frame offset, with every move on the owner clock. */
@@ -342,7 +349,7 @@ export class RecordedSource implements PlayableSource {
         this.loopSplice = {original, entry};
         entry.connect(this.gain!); loop.connect(entry);
       }
-      graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation);
+      graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation, this.options.mixer);
       if (extra.rate) {
         // A settled mix entry may have a unity-rate EOF gate beyond this exit's start.
         this.gain!.gain.cancelScheduledValues(this.naturalEndFrame / rate);
@@ -372,12 +379,13 @@ export class RecordedSource implements PlayableSource {
     }
     if (loop) {
       this.loopNode = loop;
-      loop.onended = () => { loop.disconnect(); if (this.phase !== 'released') this.phase = 'ended'; this.gain?.disconnect(); this.levelNode?.disconnect(); this.mixGraph?.release(); this.mixGraph = null; };
+      loop.onended = () => { loop.disconnect(); if (this.phase !== 'released') this.phase = 'ended'; this.gain?.disconnect(); this.levelNode?.disconnect(); this.mixGraph?.release(); this.mixGraph = null; this.options.mixer?.releaseSource(); };
     }
     this.mixGraph = graph;
     this.finishFrame = at.frame + automation.durationFrames;
     this.transitionFrame = at.frame;
     this.phase = 'stopping';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
   }
 
   /**
@@ -430,6 +438,7 @@ export class RecordedSource implements PlayableSource {
     this.finishFrame = this.naturalEndFrame;
     this.transitionFrame = null;
     this.phase = 'scheduled';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
     return true;
   }
 
@@ -446,6 +455,7 @@ export class RecordedSource implements PlayableSource {
     this.loopNode?.stop(when);
     this.finishFrame = at.frame;
     this.phase = 'stopping';
+    this.options.mixer?.setLifetime(this.start!.at.frame, this.finishFrame);
   }
 
   /** Cleanup stays legal after invalidation, and cancels a not-yet-started voice. */
@@ -471,6 +481,7 @@ export class RecordedSource implements PlayableSource {
     this.mixGraph?.release(); this.mixGraph = null;
     this.entryGain?.disconnect(); this.entryGain = null;
     this.levelNode?.disconnect(); this.levelNode = null;
+    this.options.mixer?.releaseSource();
     this.phase = 'released';
     this.node = null;
     this.gain = null;

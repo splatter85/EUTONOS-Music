@@ -16,6 +16,8 @@ import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMix
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
 import {SONG_ANALYSIS_WINDOW, type MixAnalysis} from './mix-analysis.js';
+import {DeckMixer, type DeckId, type DeckControl, type ChannelControls, type ControlValue} from '../web/deck-mixer.js';
+import {deckPositionAt, type DeckPositionInput, type DeckPosition} from '../web/deck-readout.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -92,10 +94,19 @@ export interface PlayerSnapshot {
   readonly volume: number;
 }
 
+export interface DeckView {
+  readonly side: DeckId; readonly assetId: string | null; readonly title: string;
+  readonly positionSeconds: number; readonly durationSeconds: number; readonly bpm: number | null;
+  readonly grid: 'measured' | 'requested'; readonly speed: number; readonly pitchSemitones: number;
+  readonly pitchMode: DeckPosition['pitchMode']; readonly live: boolean; readonly controls: ChannelControls;
+}
+export interface DeckSnapshot {readonly a: DeckView; readonly b: DeckView; readonly crossfader: ControlValue;}
+
 interface Voice {
   source: RecordedSource | ProceduralSource; start: SourceStart;
   /** S18 set voices: the original asset, the buffer frame at `start` and, if processed, its time map. */
-  set?: {readonly asset: AudioAsset; readonly offset: number; readonly mapping: TimePitchMapping | null;
+  set?: {readonly asset: AudioAsset; readonly deck: DeckId; readonly offset: number; readonly mapping: TimePitchMapping | null;
+    readonly bpm?: number; readonly grid?: 'measured' | 'requested'; readonly motion?: DeckPositionInput['motion'];
     readonly sourceStartFrame?: number; readonly nativeJoin?: {readonly sourceFrame: number; readonly outputFrame: number}};
 }
 type Selection = 'a' | 'b' | ProceduralPlan | {readonly assetId: string};
@@ -113,6 +124,7 @@ export class SmallPlayer {
   /** S18 lazily decoded native songs: at most the selected next song is retained here. */
   private readonly setDecoded = new Map<string, Promise<DecodedRecording>>();
   private readonly output: GainNode;
+  private readonly deckMixer: DeckMixer | null;
   private streamTap: MediaStreamAudioDestinationNode | null = null;
   private decoded: Promise<DecodedRecording[]> | null = null;
   private decodedPalette: Promise<DecodedRecording[]> | null = null;
@@ -144,6 +156,7 @@ export class SmallPlayer {
     this.output = context.createGain();
     this.output.gain.value = 0;
     this.output.connect(context.destination);
+    this.deckMixer = this.routeFree ? new DeckMixer(context, this.output) : null;
     context.addEventListener('statechange', this.stateChanged);
   }
 
@@ -210,13 +223,13 @@ export class SmallPlayer {
       let entryCueId: string;
       let set: Voice['set'];
       if (typeof selection === 'object' && 'assetId' in selection) {
-        const recording = recordings[0]!;
-        source = new RecordedSource(this.context, recording, this.output,
-          {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
+        const recording = recordings[0]!, deck: DeckId = 'a';
+        source = new RecordedSource(this.context, recording, this.deckMixer![deck].input,
+          {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed, mixer: this.deckMixer![deck].createOwner()});
         const entry = recording.asset.cues.find(c => c.kind === 'entry');
         requireAudio(entry, 'Recording has no entry cue.');
         entryCueId = entry.id;
-        set = {asset: recording.asset, offset: cueFrame(recording.asset, entry.id, 'entry', this.clock.sampleRate), mapping: null};
+        set = {asset: recording.asset, deck, offset: cueFrame(recording.asset, entry.id, 'entry', this.clock.sampleRate), mapping: null};
         this.retainSetSongs([]);
       } else if (isProcedural(selection)) {
         source = new ProceduralSource(this.context, selection, recordings, this.output,
@@ -444,6 +457,8 @@ export class SmallPlayer {
     if (this.plan) {
       for (const voice of this.voices.slice(1)) voice.source.release();
       this.voices = this.voices.slice(0, 1);
+      const retained = this.voices[0];
+      if (retained?.set) { const {motion: _cancelledMotion, ...set} = retained.set; retained.set = set; }
       this.plan = null;
       this.hybrid = null;
       this.mix = null;
@@ -587,6 +602,7 @@ export class SmallPlayer {
     this.state = 'closed';
     this.context.removeEventListener('statechange', this.stateChanged);
     this.releaseStreamTap();
+    this.deckMixer?.release();
     this.output.disconnect();
     this.decodedPalette = null;
     this.decoded = null;
@@ -597,6 +613,37 @@ export class SmallPlayer {
   // ---------------------------------------------------------------------------------------
   // S18 set mode
   // ---------------------------------------------------------------------------------------
+
+  /** S20 controls use this same owner; transport and source lifetime remain independent. */
+  setDeckControl(side: DeckId, control: DeckControl, value: number): void { this.requireDeck(side).take(control, value); }
+  returnDeckControl(side: DeckId, control: DeckControl): void { this.requireDeck(side).giveBack(control); }
+  setCrossfader(value: number): void { this.requireDeck('a'); this.deckMixer!.setCrossfader(value); }
+  returnCrossfader(): void { this.requireDeck('a'); this.deckMixer!.returnCrossfader(); }
+  copyDeckWaveform(side: DeckId, target: Float32Array<ArrayBuffer>): void { this.requireDeck(side).waveform(target); }
+  private requireDeck(side: DeckId) {
+    requireAudio(this.deckMixer && (side === 'a' || side === 'b') && this.state !== 'closed' && this.context.state !== 'closed', 'A deck control needs an open set player.');
+    return this.deckMixer[side];
+  }
+  deckSnapshot(): DeckSnapshot | null {
+    if (!this.deckMixer) return null;
+    const snap = this.snapshot(), active = this.voices.filter(v => v.set && snap.currentFrame >= v.start.at.frame && snap.currentFrame < v.source.endFrame).map(v => v.set!.deck);
+    const controls = this.deckMixer.snapshot(active);
+    const view = (side: DeckId): DeckView => {
+      const voice = this.voices.find(v => v.set?.deck === side), set = voice?.set;
+      if (!voice || !set || !(voice.source instanceof RecordedSource)) return {side, assetId: null, title: 'Deck ' + side.toUpperCase(),
+        positionSeconds: 0, durationSeconds: 0, bpm: null, grid: 'requested', speed: 1, pitchSemitones: 0,
+        pitchMode: 'original', live: false, controls: controls[side]};
+      const pos = deckPositionAt({frame: snap.currentFrame, start: voice.start.at.frame, offset: set.offset,
+        nativeFrames: voice.source.nativeRecording.buffer.length, mapping: set.mapping, entryRate: voice.source.nativeRate,
+        ...(set.sourceStartFrame !== undefined ? {sourceStartFrame: set.sourceStartFrame} : {}),
+        ...(set.nativeJoin ? {nativeJoin: set.nativeJoin} : {}), ...(set.motion ? {motion: set.motion} : {})});
+      return {side, assetId: set.asset.id, title: set.asset.title, positionSeconds: pos.sourceFrame / snap.sampleRate,
+        durationSeconds: set.asset.file.frames / set.asset.file.sample_rate, bpm: (set.bpm ?? set.asset.timing!.bpm) * pos.speed,
+        grid: set.grid ?? 'requested', speed: pos.speed, pitchSemitones: pos.pitchSemitones, pitchMode: pos.pitchMode,
+        live: snap.state === 'playing' && active.includes(side), controls: controls[side]};
+    };
+    return {a: view('a'), b: view('b'), crossfader: controls.crossfader};
+  }
 
   /** Asset IDs of every set recording in pack (catalogue) order. */
   setSongs(): readonly AudioAsset[] {
@@ -738,9 +785,10 @@ export class SmallPlayer {
       requireAudio(exitBuffer + plan.overlapFrames <= outgoing.playbackFrames &&
         prepared.entryFrame + plan.overlapFrames <= prepared.incoming.buffer.length,
       'The set transition does not have enough audio for its handover.');
-      incoming = new RecordedSource(this.context, prepared.incoming, this.output,
+      const deck: DeckId = fromSet.deck === 'a' ? 'b' : 'a';
+      incoming = new RecordedSource(this.context, prepared.incoming, this.deckMixer![deck].input,
         {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed,
-          levelGain: 'levelMatch' in plan ? plan.levelMatch?.toGain ?? 1 : 1});
+          levelGain: 'levelMatch' in plan ? plan.levelMatch?.toGain ?? 1 : 1, mixer: this.deckMixer![deck].createOwner()});
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
@@ -755,12 +803,16 @@ export class SmallPlayer {
       // both the finishing entry and the ahead-scheduled native join.
       const end = this.clock.stamp(Math.max(effect.frame + plan.automation.outgoing.durationFrames,
         at.frame + plan.automation.incoming.durationFrames));
+      const chosen = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
+        motion: {at: effect.frame, sourceFrame: plan.fromExitFrame - plan.preRollFrames,
+          ...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}),
+          ...(loopBuffer ? {loopFrames: delayFor()} : {})}};
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'},
-        set: {asset: toAsset, offset: prepared.entryFrame, mapping: prepared.mapping,
+        set: {asset: toAsset, deck, bpm: plan.toBpm, grid: chosen.toGrid.source, offset: prepared.entryFrame, mapping: prepared.mapping,
           ...(prepared.sourceStartFrame !== undefined ? {sourceStartFrame: prepared.sourceStartFrame} : {}),
           ...(prepared.nativeJoin ? {nativeJoin: prepared.nativeJoin} : {})}});
       this.plan = {at, end};
-      const chosen = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
       const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
       this.mix = {phase: 'scheduled', earliestEffect: effect,
         reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} Listening is untested.`,

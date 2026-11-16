@@ -18,6 +18,7 @@ import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
 import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, type AutoBars, type NextBars} from './set-mode.js';
 import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
+import {SetDeckControls} from './deck-controls.js';
 import type {PhoneCommand} from './phone-protocol.js';
 
 const PACKS = {
@@ -155,6 +156,7 @@ function renderTop(): void {
 // ---------- DJ booth ----------
 type Action = ControlRequest extends infer R ? R extends ControlRequest ? Omit<R, 'schemaVersion' | 'commandId' | 'expectedRevision' | 'source'> : never : never;
 const djError = $('dj-error');
+const setDeckControls = isSet ? new SetDeckControls(() => djPlayer) : null;
 function getDj(): DeterministicDj {
   if (dj) return dj;
   if (!loaded) throw new Error('The pack is still loading.');
@@ -271,7 +273,6 @@ let lastQueueKey = '';
 function renderDj(): void {
   const snap = dj?.snapshot(), player = snap?.player, control = snap?.control, state = player?.state ?? 'idle';
   const running = ACTIVE.includes(state);
-  if (isSet) syncSetDecks();
   const ready = !!loaded && (isSet || !!deckAssets);
   for (const id of ['dj-play', 'dj-stop', 'dj-next', 'dj-hold', 'queue-a', 'queue-b', 'mode-direct', 'mode-hybrid', 'mode-mix']) $<HTMLButtonElement>(id).disabled = !ready;
   const play = $<HTMLButtonElement>('dj-play'), pause = $<HTMLButtonElement>('dj-pause');
@@ -366,7 +367,11 @@ function renderDj(): void {
       list.append(row);
     }
   }
-  if (isSet) renderSet();
+  if (isSet) {
+    renderSet();
+    const upcoming = (control?.queue ?? []).flatMap(q => loaded?.pack.assets.filter(a => a.id === q.trackId) ?? []);
+    setDeckControls?.render(upcoming);
+  }
 }
 
 // ---------- S18 set mode ----------
@@ -431,21 +436,6 @@ function runAuto(): void {
         ? `Auto could not schedule this step: ${result.execution.reason} Press Next to try again.` : '';
     });
   } else if (decision.kind === 'finish') autoNote = decision.reason;
-}
-function syncSetDecks(): void {
-  if (!loaded) return;
-  const player = dj?.snapshot().player, songs = loaded.pack.assets.filter(a => a.source_kind === 'recording');
-  const find = (id: string | null | undefined) => songs.find(a => a.id === id);
-  const queueHead = find(dj?.snapshot().control.queue[0]?.trackId);
-  const voices = player?.voices.map(v => find(v.source.id)).filter((a): a is AudioAsset => !!a) ?? [];
-  const a = voices[0] ?? queueHead ?? songs[0], b = voices[1] ?? (voices[0] ? queueHead : find(dj?.snapshot().control.queue[1]?.trackId)) ?? a;
-  if (!a || !b) return;
-  if (deckAssets?.a.id === a.id && deckAssets.b.id === b.id) return;
-  deckAssets = {a, b};
-  for (const [side, asset] of [['a', a], ['b', b]] as const) {
-    setText(`deck-${side}-title`, asset.title);
-    setText(`deck-${side}-meta`, `${asset.timing?.bpm ?? '?'} requested BPM · grid measured when it is analysed · unreviewed`);
-  }
 }
 function ratingOfAsset(id: string): string {
   const index = ratedCatalog?.set?.asset_ids.indexOf(id) ?? -1;
