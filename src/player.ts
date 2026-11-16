@@ -1,7 +1,7 @@
-import {decodeRecordings, type LoadedBrowserPack} from './browser-pack.js';
+import {decodeRecording, decodeRecordings, type LoadedBrowserPack} from './browser-pack.js';
 import {quartersToFrames} from './pack.js';
 import type {ClockStamp, SourceStart} from './playable-source.js';
-import type {VersionRef} from './pack-types.js';
+import type {AudioAsset, VersionRef} from './pack-types.js';
 import {commitHybridHandoff, planHybridHandoff, type HybridBridge, type HybridBridgeExit,
   type HybridHandoffPlan} from './hybrid-handoff.js';
 import type {ProceduralPlan} from './phrase-plan.js';
@@ -10,7 +10,12 @@ import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioCloc
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
 import type {MixPlannerOptions, MixRecipe} from './mix-planner.js';
 import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
-import {browserMixPreparation, prepareMixTransition, replanPreparedMix, type MixPreparationRuntime} from './mix-transition.js';
+import {barAtOrAfter, browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition, renderPlannedMix,
+  replanPreparedMix, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
+import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
+import {eligibleForPlayback} from './pack.js';
+import type {MixAnalysis} from './mix-analysis.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -29,14 +34,36 @@ export interface MixSnapshot {
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
   readonly summary: null | {
-    readonly recipe: MixRecipe;
+    /** S18 adds the route-free fallbacks, which never time-stretch B. */
+    readonly recipe: MixRecipe | RouteFreeRecipe;
     readonly fromBpm: number; readonly toBpm: number; readonly tempoRatio: number;
     readonly pitchSemitones: number; readonly confidence: number; readonly processor: string;
     readonly fromExitFrame: number; readonly toEntryFrame: number; readonly processedEntryFrame: number;
     readonly outputFrames: number; readonly returnToOriginalTempo: boolean;
     readonly fromHash: string; readonly toHash: string;
+    /** S18 set mode only. Bars count from 1 in the outgoing song's grid. */
+    readonly set?: SetMixDetail;
   };
 }
+/** S18: what the set DJ chose and why, for display and receipts. Plan data, not listening evidence. */
+export interface SetMixDetail {
+  readonly fromId: string; readonly toId: string;
+  readonly exitBar: number; readonly boundaryBar: number;
+  readonly boundaryBars: number; readonly anchor: SetBoundary['anchor'];
+  readonly fromGrid: SetBarGrid['source']; readonly toGrid: SetBarGrid['source'];
+  /** B's own BPM divided by A's: the tempo change at the handover (B ends at its own tempo). */
+  readonly tempoChange: number;
+  readonly notes: readonly string[];
+}
+/**
+ * S18 set boundary. `song` counts bars from the outgoing song's first downbeat (phrase-aligned
+ * Next); `entry` counts from where that song entered the set (Auto every N bars).
+ */
+export interface SetBoundary {
+  readonly bars: 1 | 2 | 4 | 8 | 16 | 32 | 64;
+  readonly anchor: 'song' | 'entry';
+}
+export const SET_BOUNDARY_BARS = [1, 2, 4, 8, 16, 32, 64] as const;
 export interface PlayerSnapshot {
   readonly state: PlayerState;
   readonly requested: string | null;
@@ -59,13 +86,25 @@ export interface PlayerSnapshot {
   readonly volume: number;
 }
 
-interface Voice { source: RecordedSource | ProceduralSource; start: SourceStart; }
-type Selection = 'a' | 'b' | ProceduralPlan;
+interface Voice {
+  source: RecordedSource | ProceduralSource; start: SourceStart;
+  /** S18 set voices: the original asset, the buffer frame at `start` and, if processed, its time map. */
+  set?: {readonly asset: AudioAsset; readonly offset: number; readonly mapping: TimePitchMapping | null};
+}
+type Selection = 'a' | 'b' | ProceduralPlan | {readonly assetId: string};
+const isProcedural = (selection: Selection): selection is ProceduralPlan =>
+  typeof selection === 'object' && !('assetId' in selection);
 
 /** Thin A/B transport owner. S03 supplies the DJ/control-contract integration. */
 export class SmallPlayer {
   readonly clock: WebAudioClock;
-  readonly pair: CheckedRoute;
+  /** S18: true for a set pack with no authored route; only set methods are available. */
+  readonly routeFree: boolean;
+  private readonly authored: CheckedRoute | null;
+  /** S18 per-song analysis, keyed by audio hash and analysis version. */
+  readonly analyses = new MixAnalysisCache();
+  /** S18 lazily decoded native songs: at most the selected next song is retained here. */
+  private readonly setDecoded = new Map<string, Promise<DecodedRecording>>();
   private readonly output: GainNode;
   private streamTap: MediaStreamAudioDestinationNode | null = null;
   private decoded: Promise<DecodedRecording[]> | null = null;
@@ -87,8 +126,13 @@ export class SmallPlayer {
   private readonly stateChanged = () => this.onContextState();
 
   constructor(readonly context: AudioContext, private readonly loaded: LoadedBrowserPack,
-    routeId: string, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation) {
-    this.pair = checkedRoute(loaded.pack, routeId, loaded.allowFixtures, loaded.allowUnreviewed);
+    routeId: string | null, private readonly mixRuntime: MixPreparationRuntime = browserMixPreparation) {
+    this.routeFree = routeId === null;
+    this.authored = routeId === null ? null : checkedRoute(loaded.pack, routeId, loaded.allowFixtures, loaded.allowUnreviewed);
+    if (this.routeFree) {
+      requireAudio(loaded.pack.assets.filter(a => a.source_kind === 'recording').length >= 2,
+        'A set needs at least two recordings.');
+    }
     this.clock = new WebAudioClock(context);
     this.output = context.createGain();
     this.output.gain.value = 0;
@@ -96,9 +140,22 @@ export class SmallPlayer {
     context.addEventListener('statechange', this.stateChanged);
   }
 
+  /** The authored A/B pair. A set player has none and refuses pair-only operations. */
+  get pair(): CheckedRoute {
+    requireAudio(this.authored, 'This set has no authored pair; use the set methods.');
+    return this.authored;
+  }
+
   /** Call directly from a user gesture: resume is issued before the first await. */
   play(selection: 'a' | 'b', ownership: Promise<void> = Promise.resolve()): Promise<void> {
+    requireAudio(!this.routeFree, 'This set has no authored pair; use playAsset.');
     return this.playSelection(selection, ownership);
+  }
+
+  /** S18: start one set song from its entry cue. Call directly from a user gesture. */
+  playAsset(assetId: string, ownership: Promise<void> = Promise.resolve()): Promise<void> {
+    requireAudio(this.routeFree, 'playAsset needs a set pack.');
+    return this.playSelection({assetId}, ownership);
   }
 
   /** S04 source audition through this same transport. S05 bridges use scheduleHybrid. */
@@ -119,7 +176,9 @@ export class SmallPlayer {
       // A synchronous plan refusal must still observe late resume/ownership failures.
       void readiness.catch(() => undefined);
       let decoding: Promise<DecodedRecording[]>;
-      if (typeof selection === 'object') {
+      if (typeof selection === 'object' && 'assetId' in selection) {
+        decoding = this.decodeSetSong(selection.assetId).then(recording => [recording]);
+      } else if (isProcedural(selection)) {
         checkProceduralPlan(this.loaded, selection);
         const binding = JSON.stringify(selection.samples);
         requireAudio(this.paletteBinding === null || this.paletteBinding === binding,
@@ -142,7 +201,17 @@ export class SmallPlayer {
       requireAudio(this.context.state === 'running' && this.wantsRunning, 'Audio could not start. Press Play again.');
       let source: RecordedSource | ProceduralSource;
       let entryCueId: string;
-      if (typeof selection === 'object') {
+      let set: Voice['set'];
+      if (typeof selection === 'object' && 'assetId' in selection) {
+        const recording = recordings[0]!;
+        source = new RecordedSource(this.context, recording, this.output,
+          {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
+        const entry = recording.asset.cues.find(c => c.kind === 'entry');
+        requireAudio(entry, 'Recording has no entry cue.');
+        entryCueId = entry.id;
+        set = {asset: recording.asset, offset: cueFrame(recording.asset, entry.id, 'entry', this.clock.sampleRate), mapping: null};
+        this.retainSetSongs([]);
+      } else if (isProcedural(selection)) {
         source = new ProceduralSource(this.context, selection, recordings, this.output,
           {allowFixtures: this.loaded.allowFixtures});
         entryCueId = 'entry';
@@ -162,7 +231,7 @@ export class SmallPlayer {
       const start: SourceStart = {at: this.clock.stamp(this.clock.currentFrame + this.leadFrames), entryCueId};
       try { source.scheduleStart(start); }
       catch (error) { source.release(); throw error; }
-      this.voices = [{source, start}];
+      this.voices = [{source, start, ...(set ? {set} : {})}];
       this.state = 'scheduled';
       this.setOutput(true);
     } catch (error) {
@@ -380,7 +449,12 @@ export class SmallPlayer {
 
   async resume(ownership: Promise<void> = Promise.resolve()): Promise<void> {
     requireAudio(this.state !== 'closed', 'Player is closed. Reload the page.');
-    if (!this.voices.length) { await this.playSelection(this.selected ?? 'a', ownership); return; }
+    if (!this.voices.length) {
+      const selection = this.selected ?? (this.routeFree ? null : 'a');
+      requireAudio(selection, 'Choose a set song first.');
+      await this.playSelection(selection, ownership);
+      return;
+    }
     const operation = ++this.operation;
     this.abortMixPreparation();
     this.wantsRunning = true;
@@ -428,6 +502,7 @@ export class SmallPlayer {
   }
 
   snapshot(): PlayerSnapshot {
+    if (this.routeFree) this.settleCompletedTransition();
     const frame = this.clock.currentFrame;
     const first = this.voices[0];
     const last = this.voices.at(-1);
@@ -453,7 +528,7 @@ export class SmallPlayer {
         : frame < hybrid.toStart.frame ? 'bridge' : frame < hybrid.end.frame ? 'tail' : 'complete',
       fromExit: {...hybrid.fromExit}, bridgeFull: {...hybrid.bridgeFull}, toStart: {...hybrid.toStart},
       end: {...hybrid.end}} : null;
-    return {state: this.state, requested: this.selected === 'a' ? this.pair.from.id : this.selected === 'b' ? this.pair.to.id : this.selected?.recipe.id ?? null,
+    return {state: this.state, requested: this.requestedId(),
       now, next: pending?.source.reference.id ?? null, transition,
       transitionInSeconds: this.plan ? Math.max(0, (this.plan.at.frame - frame) / this.clock.sampleRate) : null,
       voices: this.voices.map(voice => ({source: {...voice.source.reference}, start: {...voice.start.at}, endFrame: voice.source.endFrame})),
@@ -501,7 +576,216 @@ export class SmallPlayer {
     this.output.disconnect();
     this.decodedPalette = null;
     this.decoded = null;
+    this.setDecoded.clear();
     if (this.context.state !== 'closed') await this.context.close();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // S18 set mode
+  // ---------------------------------------------------------------------------------------
+
+  /** Asset IDs of every set recording in pack (catalogue) order. */
+  setSongs(): readonly AudioAsset[] {
+    return this.loaded.pack.assets.filter(a => a.source_kind === 'recording');
+  }
+
+  /**
+   * Optional warm-up for the likely next song: decode and analyze it now so Next is quick.
+   * Only this one song is retained beyond the playing voices.
+   */
+  async warmSetSong(assetId: string): Promise<SongAnalysisResult> {
+    requireAudio(this.routeFree, 'Warm-up needs a set pack.');
+    this.retainSetSongs([assetId]);
+    const recording = await this.decodeSetSong(assetId);
+    return this.analyses.analyze(recording, this.mixRuntime);
+  }
+
+  /**
+   * S18: schedule the playing set song → `targetId` at the requested bar boundary. Order:
+   * analyzed blend, analyzed cut, then a route-free crossfade or clean cut. Never consults an
+   * authored route. Preparation happens before commit; nothing is started by a timer.
+   */
+  async scheduleMixTo(targetId: string, boundary: SetBoundary = {bars: 4, anchor: 'song'}): Promise<void> {
+    requireAudio(this.routeFree, 'Set transitions need a set pack.');
+    requireAudio(SET_BOUNDARY_BARS.includes(boundary.bars) && (boundary.anchor === 'song' || boundary.anchor === 'entry'),
+      'Unsupported set boundary.');
+    boundary = {...boundary};
+    this.settleCompletedTransition();
+    requireAudio(this.voices.length === 1 && !this.plan, 'Play a set song first. Only one transition can be scheduled.');
+    const from = this.voices[0]!;
+    requireAudio(from.source instanceof RecordedSource && from.set, 'A set transition starts from a set song.');
+    const outgoing = from.source, fromSet = from.set;
+    const toAsset = this.setSongs().find(a => a.id === targetId);
+    requireAudio(toAsset, `Unknown set song ${targetId}.`);
+    requireAudio(toAsset.id !== fromSet.asset.id, 'Choose a different song than the one playing.');
+    requireAudio(eligibleForPlayback(toAsset, this.loaded.allowFixtures, this.loaded.allowUnreviewed), 'Song is not eligible.');
+    const operation = this.operation, transitionOperation = this.transitionOperation;
+    const controller = new AbortController();
+    this.mixAbort?.abort(); this.mixAbort = controller;
+    this.mix = {phase: 'preparing', reason: 'Decoding and analyzing the next song; no transition is scheduled.', summary: null};
+    const current = (): boolean => operation === this.operation && transitionOperation === this.transitionOperation &&
+      !controller.signal.aborted && this.voices.length === 1 && this.voices[0] === from;
+    const rate = this.clock.sampleRate;
+    let incoming: RecordedSource | null = null;
+    try {
+      this.retainSetSongs([targetId]);
+      const nativeFrames = fromSet.mapping ? fromSet.mapping.inputFrames : outgoing.recording.buffer.length;
+      const fromAnalysis = this.analyses.has(fromSet.asset, rate) || !fromSet.mapping
+        ? this.analyses.analyze(fromSet.mapping ? {asset: fromSet.asset, buffer: outgoing.recording.buffer} : outgoing.recording,
+          this.mixRuntime, controller.signal)
+        : this.decodeSetSong(fromSet.asset.id).then(native => this.analyses.analyze(native, this.mixRuntime, controller.signal));
+      // An early return below must not leave this started analysis as an unhandled rejection.
+      fromAnalysis.catch(() => undefined);
+      const toRecording = await this.decodeSetSong(targetId);
+      if (!current()) return;
+      const [a, b] = await Promise.all([fromAnalysis, this.analyses.analyze(toRecording, this.mixRuntime, controller.signal)]);
+      if (!current()) return;
+      const analysisA = a.ok ? a.analysis : null, analysisB = b.ok ? b.analysis : null;
+      // Native A frame now, and the earliest native A frame with a two-second preparation allowance.
+      const toNative = (bufferFrame: number): number => fromSet.mapping ? sourceFrameAtOutput(fromSet.mapping, bufferFrame) : bufferFrame;
+      const toBuffer = (nativeFrame: number): number => fromSet.mapping ? outputFrameAtSource(fromSet.mapping, nativeFrame) : nativeFrame;
+      const bufferAt = (clockFrame: number): number => fromSet.offset + clockFrame - from.start.at.frame;
+      const settledNative = fromSet.mapping?.returnToOriginal
+        ? sourceFrameAtOutput(fromSet.mapping, fromSet.mapping.returnToOriginal.afterFrames + fromSet.mapping.returnToOriginal.rampFrames)
+        : fromSet.mapping ? nativeFrames : 0;
+      const earliestNative = (): number => Math.max(settledNative, toNative(fromSet.offset),
+        toNative(bufferAt(this.clock.currentFrame + this.leadFrames + 2 * rate)));
+      const grid = setBarGrid(fromSet.asset, analysisA, rate);
+      const anchorBar = boundary.anchor === 'song' ? 0 : barAtOrAfter(grid, toNative(fromSet.offset));
+      const choose = (allowBlend: boolean): SetTransitionChoice => chooseSetTransition({
+        from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames},
+        to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
+          channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
+        sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar}});
+      let choice = choose(true);
+      if (choice.kind === 'unavailable') {
+        this.mix = {phase: 'unavailable', reason: choice.reason, summary: null};
+        requireAudio(false, choice.reason);
+      }
+      let prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, nativeFrames, controller.signal)
+        .catch(async error => {
+          if (!current()) throw error;
+          // A failed blend render falls back to native B; nothing has been scheduled yet.
+          choice = choose(false);
+          if (choice.kind === 'unavailable') throw error;
+          return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, nativeFrames, controller.signal);
+        });
+      if (!current()) return;
+      let at = this.clock.stamp(from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset);
+      if (at.frame - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+        // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
+        choice = choose(false);
+        requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
+        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, nativeFrames, controller.signal);
+        if (!current()) return;
+        at = this.clock.stamp(from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset);
+      }
+      const plan = prepared.plan;
+      const effect = this.clock.stamp(at.frame - plan.preRollFrames);
+      requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
+      const exitBuffer = toBuffer(plan.fromExitFrame);
+      requireAudio(exitBuffer + plan.overlapFrames <= outgoing.recording.buffer.length &&
+        prepared.entryFrame + plan.overlapFrames <= prepared.incoming.buffer.length,
+      'The set transition does not have enough audio for its handover.');
+      incoming = new RecordedSource(this.context, prepared.incoming, this.output,
+        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
+      await incoming.prepare(this.clock);
+      if (!current()) { incoming.release(); incoming = null; return; }
+      requireAudio(!this.plan, 'A transition already owns the next boundary.');
+      requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
+      const outgoingAutomation = structuredClone(plan.automation.outgoing);
+      incoming.scheduleMixStart(at, prepared.entryFrame, plan.automation.incoming);
+      // Outgoing A changes last; a refusal releases the prepared B and leaves A unchanged.
+      outgoing.transitionMixOut(effect, exitBuffer - plan.preRollFrames, outgoingAutomation);
+      const end = this.clock.stamp(at.frame + plan.overlapFrames);
+      this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'},
+        set: {asset: toAsset, offset: prepared.entryFrame, mapping: prepared.mapping}});
+      this.plan = {at, end};
+      const chosen = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+      const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
+      this.mix = {phase: 'scheduled', earliestEffect: effect,
+        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} Listening is untested.`,
+        summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
+          pitchSemitones: 'pitchSemitones' in plan ? plan.pitchSemitones : 0,
+          confidence: 'confidence' in plan ? plan.confidence : 0, processor: prepared.processor,
+          fromExitFrame: plan.fromExitFrame, toEntryFrame: plan.toEntryFrame, processedEntryFrame: prepared.entryFrame,
+          outputFrames: prepared.incoming.buffer.length,
+          returnToOriginalTempo: 'returnToOriginalTempo' in plan ? plan.returnToOriginalTempo : false,
+          fromHash: fromSet.asset.file.sha256, toHash: toAsset.file.sha256,
+          set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
+            boundaryBars: boundary.bars, anchor: boundary.anchor, fromGrid: chosen.fromGrid.source,
+            toGrid: chosen.toGrid.source, tempoChange: plan.toBpm / plan.fromBpm, notes: [...chosen.notes]}}};
+      incoming = null; // ownership transferred to this.voices
+      this.retainSetSongs([]);
+    } catch (error) {
+      incoming?.release(); incoming = null;
+      if (current()) {
+        if (this.mix?.phase !== 'unavailable') this.mix = {phase: 'unavailable', summary: null,
+          reason: `${error instanceof Error ? error.message : String(error)} The playing song is unchanged.`};
+        throw error;
+      }
+    } finally {
+      // Release the prepared decode on success, abort, unavailable and failure alike; a newer
+      // scheduleMixTo (which replaced mixAbort) owns the retained set from then on.
+      const superseded = this.mixAbort !== controller && this.mixAbort !== null;
+      if (this.mixAbort === controller) this.mixAbort = null;
+      if (!superseded) this.retainSetSongs([]);
+    }
+  }
+
+  private async prepareSetIncoming(choice: SetTransitionChoice, to: DecodedRecording, analysisA: MixAnalysis | null,
+    analysisB: MixAnalysis | null, nativeFrames: number, signal: AbortSignal): Promise<{
+      plan: Exclude<SetTransitionChoice, {kind: 'unavailable'}>['plan']; incoming: DecodedRecording;
+      entryFrame: number; mapping: TimePitchMapping | null; processor: string}> {
+    requireAudio(choice.kind !== 'unavailable', choice.kind === 'unavailable' ? choice.reason : '');
+    if (choice.kind === 'analyzed' && choice.plan.recipe === 'blend') {
+      const ready = await renderPlannedMix(this.context, {buffer: {length: nativeFrames}}, to, choice.plan,
+        {from: analysisA!, to: analysisB!}, signal, this.mixRuntime);
+      return {plan: choice.plan, incoming: ready.incoming, entryFrame: ready.entryFrame,
+        mapping: ready.processed.processor === 'native-pcm@1' ? null : ready.processed.mapping,
+        processor: ready.processed.processor};
+    }
+    // Cut and route-free recipes play the verified native B buffer directly.
+    return {plan: choice.plan, incoming: to, entryFrame: choice.plan.toEntryFrame, mapping: null, processor: 'native-pcm@1'};
+  }
+
+  /** Release voices of a completed set transition and return the new song to a direct connection. */
+  private settleCompletedTransition(): void {
+    if (!this.plan || this.voices.length < 2 || this.clock.currentFrame < this.plan.end.frame) return;
+    if (this.hybrid || !this.voices.every(v => v.set)) return;
+    const last = this.voices.at(-1)!;
+    for (const voice of this.voices.slice(0, -1)) voice.source.release();
+    this.voices = [last];
+    if (last.source instanceof RecordedSource) last.source.settleMixEntry();
+    this.plan = null;
+    this.mix = null;
+  }
+
+  private decodeSetSong(assetId: string): Promise<DecodedRecording> {
+    const existing = this.setDecoded.get(assetId);
+    if (existing) return existing;
+    const asset = this.setSongs().find(a => a.id === assetId);
+    if (!asset) return Promise.reject(new Error(`Unknown set song ${assetId}.`));
+    const task = decodeRecording(this.loaded, this.context, asset).catch(error => {
+      if (this.setDecoded.get(assetId) === task) this.setDecoded.delete(assetId);
+      throw error;
+    });
+    this.setDecoded.set(assetId, task);
+    return task;
+  }
+
+  /** Keep only these decoded songs in the cache; playing voices own their own buffers. */
+  private retainSetSongs(ids: readonly string[]): void {
+    for (const id of [...this.setDecoded.keys()]) if (!ids.includes(id)) this.setDecoded.delete(id);
+  }
+
+  private requestedId(): string | null {
+    const selected = this.selected;
+    if (selected === null) return null;
+    if (selected === 'a') return this.pair.from.id;
+    if (selected === 'b') return this.pair.to.id;
+    if ('assetId' in selected) return this.voices.at(-1)?.set?.asset.id ?? selected.assetId;
+    return selected.recipe.id;
   }
 
   private get leadFrames(): number { return Math.ceil(0.1 * this.clock.sampleRate); }

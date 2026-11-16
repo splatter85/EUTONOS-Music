@@ -22,6 +22,8 @@ class TestWorker {
     const message = this.message!;
     if (message.kind === 'render') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render',
       result: renderTimePitch(message.audio, message.options)};
+    if (message.kind === 'analyze-one') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one',
+      result: analyzeMixAudio(message.audio, message.options)};
     return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result: {
       from: analyzeMixAudio(message.from), to: analyzeMixAudio(message.to)}};
   }

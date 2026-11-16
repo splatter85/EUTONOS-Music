@@ -17,6 +17,8 @@ export type ControlRequest = RequestBase & (
   | { readonly type: 'requestGenre'; readonly genreId: string | null }
   | { readonly type: 'queueTrack'; readonly trackId: string }
   | { readonly type: 'cancelQueue'; readonly queueCommandId: string }
+  /** S18: move one unstarted manual queue entry to a new zero-based position. */
+  | { readonly type: 'reorderQueue'; readonly queueCommandId: string; readonly toIndex: number }
   | { readonly type: 'cancelNext' }
   | { readonly type: 'nextSong' }
   | { readonly type: 'hold'; readonly enabled: boolean }
@@ -91,6 +93,8 @@ function validRequest(request: ControlRequest): boolean {
     case 'requestGenre': return request.genreId === null || typeof request.genreId === 'string' && request.genreId.length > 0;
     case 'queueTrack': return typeof request.trackId === 'string' && request.trackId.length > 0;
     case 'cancelQueue': return typeof request.queueCommandId === 'string' && request.queueCommandId.length > 0;
+    case 'reorderQueue': return typeof request.queueCommandId === 'string' && request.queueCommandId.length > 0
+      && Number.isSafeInteger(request.toIndex) && request.toIndex >= 0 && request.toIndex < CONTROL_LIMITS.queue;
     case 'hold': return typeof request.enabled === 'boolean';
     case 'transport': return actions.includes(request.action);
     case 'nextSong': case 'cancelNext': return true;
@@ -175,6 +179,13 @@ export class ControlContract {
         case 'requestGenre': this.requested = { ...this.requested, genreId: request.genreId }; break;
         case 'queueTrack': this.queue.push({ commandId: request.commandId, trackId: request.trackId }); break;
         case 'cancelQueue': this.queue = this.queue.filter(entry => entry.commandId !== request.queueCommandId); break;
+        case 'reorderQueue': {
+          const entry = this.queue.find(e => e.commandId === request.queueCommandId)!;
+          const rest = this.queue.filter(e => e !== entry);
+          rest.splice(request.toIndex, 0, entry);
+          this.queue = rest;
+          break;
+        }
         case 'cancelNext': break; // execution owner decides whether a future plan can still be cancelled
         case 'nextSong': this.requested = { ...this.requested, nextRequests: this.requested.nextRequests + 1 }; break;
         case 'hold': this.requested = { ...this.requested, hold: request.enabled }; break;
@@ -211,6 +222,18 @@ export class ControlContract {
     this.planned = null;
   }
 
+  /**
+   * S18: a reserved entry may have been reordered away from the head before its scheduled
+   * entry was reached. The caller removes exactly that entry once its audio has started.
+   */
+  acknowledgeQueueEntry(commandId: string, expectedRevision: number): void {
+    if (expectedRevision !== this.revision) throw new Error('stale-revision');
+    if (!this.queue.some(entry => entry.commandId === commandId)) throw new Error('missing-queue-entry');
+    this.queue = this.queue.filter(entry => entry.commandId !== commandId);
+    this.revision += 1;
+    this.planned = null;
+  }
+
   /** Explicit owner-supplied plan; this does not choose or schedule any audio. */
   reportPrepared(plan: PreparedPlan): void {
     if (plan.forRevision !== this.revision) throw new Error('stale-revision');
@@ -235,7 +258,7 @@ export class ControlContract {
   private check(request: ControlRequest): RejectionCode | null {
     if (!validRequest(request)) return 'invalid-request';
     if (request.expectedRevision !== this.revision) return 'stale-revision';
-    if (request.source !== 'manual' && ['hold', 'transport', 'queueTrack', 'nextSong', 'cancelQueue', 'cancelNext'].includes(request.type)) return 'manual-only';
+    if (request.source !== 'manual' && ['hold', 'transport', 'queueTrack', 'nextSong', 'cancelQueue', 'cancelNext', 'reorderQueue'].includes(request.type)) return 'manual-only';
     if (this.requested.hold && (request.type === 'setState' || request.type === 'requestGenre')) return 'held';
     if (request.type === 'queueTrack') {
       if (!this.tracks.has(request.trackId)) return 'missing-track';
@@ -243,6 +266,10 @@ export class ControlContract {
       if (this.queue.length >= CONTROL_LIMITS.queue) return 'queue-full';
     }
     if (request.type === 'cancelQueue' && !this.queue.some(entry => entry.commandId === request.queueCommandId)) return 'missing-queue-entry';
+    if (request.type === 'reorderQueue') {
+      if (!this.queue.some(entry => entry.commandId === request.queueCommandId)) return 'missing-queue-entry';
+      if (request.toIndex >= this.queue.length) return 'invalid-request';
+    }
     if (request.type === 'requestGenre' && request.genreId !== null) {
       if (!this.genres.has(request.genreId)) return 'missing-genre';
       if (!this.genres.get(request.genreId)) return 'unavailable-genre';

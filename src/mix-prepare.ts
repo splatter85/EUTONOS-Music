@@ -1,17 +1,22 @@
 import {TIME_PITCH_LIMITS, TIME_PITCH_PROCESSOR,
   type PreparedTimePitch, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
-import type {MixAnalysis} from './mix-analysis.js';
+import {MIX_ANALYSIS_LIMITS, type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
 
 export const PREPARE_WORKER_PROTOCOL = 'eutonos.mix-preparation.v1' as const;
 export interface MixPairAnalysis {readonly from: MixAnalysis; readonly to: MixAnalysis;}
 export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly kind: 'render'; readonly audio: TimePitchPcm; readonly options: TimePitchOptions} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze';
-  readonly from: TimePitchPcm; readonly to: TimePitchPcm};
+  readonly from: TimePitchPcm; readonly to: TimePitchPcm} |
+  /** S18: one song, already downmixed to mono so a full 180 s stereo take fits the analysis budget. */
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze-one';
+  readonly audio: TimePitchPcm; readonly options: MixAnalysisOptions};
 export type MixWorkerResponse = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly ok: true; readonly kind: 'render'; readonly result: PreparedTimePitch} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'analyze';
   readonly result: MixPairAnalysis} |
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'analyze-one';
+  readonly result: MixAnalysis} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: false; readonly error: string};
 
 /** Bounded private copies: active/cached input buffers are never detached or modified. */
@@ -101,6 +106,39 @@ export async function analyzeMixPairInWorker(from: TimePitchPcm, to: TimePitchPc
     if (!data.ok || data.kind !== 'analyze' || !data.result?.from || !data.result.to ||
       !Number.isFinite(data.result.from.tempo?.confidence) || !Number.isFinite(data.result.to.tempo?.confidence)) {
       throw new Error('Mix worker returned invalid analysis.');
+    }
+    return data.result;
+  }, signal, timeoutMs);
+}
+
+/**
+ * S18: mono copy for single-song analysis. Uses the analysis budget (not the WSOLA render budget),
+ * so a 180 s stereo take at 48 kHz can be analyzed. Inputs are never detached or modified.
+ */
+export function monoAnalysisCopy(audio: TimePitchPcm): {sampleRate: number; channels: [Float32Array<ArrayBuffer>]} {
+  const frames = audio.channels[0]?.length ?? 0;
+  if (!Number.isInteger(audio.sampleRate) || audio.sampleRate < MIX_ANALYSIS_LIMITS.minSampleRate ||
+    audio.sampleRate > MIX_ANALYSIS_LIMITS.maxSampleRate || ![1, 2].includes(audio.channels.length) || !frames ||
+    frames / audio.sampleRate > MIX_ANALYSIS_LIMITS.maxSeconds || frames > MIX_ANALYSIS_LIMITS.maxChannelSamples ||
+    audio.channels.some(channel => channel.length !== frames)) {
+    throw new Error('Song analysis input exceeds its PCM budget or is invalid.');
+  }
+  const mono = new Float32Array(frames), scale = 1 / audio.channels.length;
+  for (const channel of audio.channels) for (let i = 0; i < frames; i++) mono[i]! += channel[i]! * scale;
+  return {sampleRate: audio.sampleRate, channels: [mono]};
+}
+
+/** S18: one song's analysis in a disposable worker, with the same abort/late-result rules. */
+export async function analyzeMixSongInWorker(audio: TimePitchPcm, signal?: AbortSignal,
+  options: MixAnalysisOptions = {}, timeoutMs = 30_000): Promise<MixAnalysis> {
+  if (signal?.aborted) throw new Error('Mix preparation was cancelled.');
+  const copy = monoAnalysisCopy(audio), frames = copy.channels[0].length;
+  const message: MixWorkerRequest = {protocol: PREPARE_WORKER_PROTOCOL, kind: 'analyze-one', audio: copy,
+    options: structuredClone(options)};
+  return runWorker(message, [copy.channels[0].buffer], data => {
+    if (!data.ok || data.kind !== 'analyze-one' || data.result?.frames !== frames ||
+      data.result.sampleRate !== audio.sampleRate || !Number.isFinite(data.result.tempo?.confidence)) {
+      throw new Error('Mix worker returned invalid song analysis.');
     }
     return data.result;
   }, signal, timeoutMs);

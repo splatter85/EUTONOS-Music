@@ -9,7 +9,7 @@ import {join} from 'node:path';
 import {PassThrough} from 'node:stream';
 import {test, type TestContext} from 'node:test';
 import {promisify} from 'node:util';
-import {createPhoneRelay, djPageUrl, ffmpegEncoder, firstFrameOffset, isLoopbackHost, isPhoneHost, LIMITS,
+import {createPhoneRelay, djPageUrl, studioSetPageUrl, ffmpegEncoder, firstFrameOffset, isLoopbackHost, isPhoneHost, LIMITS,
   parseRelayArgs, safeRequestPath, type EncoderProcess, type PhoneRelay} from '../scripts/phone-relay.js';
 import {parseControlCommand, sanitizeDjStatus, STATUS_TEXT_LIMIT} from '../web/phone-protocol.js';
 import {StallWatchdog} from '../web/phone-watchdog.js';
@@ -123,6 +123,12 @@ test('the command allowlist refuses unknown commands, fields and modes', () => {
   assert.deepEqual(parseControlCommand({command: 'hold'}), {command: 'hold'});
   assert.deepEqual(parseControlCommand({command: 'hold', enabled: false}), {command: 'hold', enabled: false});
   assert.deepEqual(parseControlCommand({command: 'handoff', mode: 'mix'}), {command: 'handoff', mode: 'mix'});
+  // S18: Auto on the Studio set page; same strict shape as hold.
+  assert.deepEqual(parseControlCommand({command: 'auto'}), {command: 'auto'});
+  assert.deepEqual(parseControlCommand({command: 'auto', enabled: true}), {command: 'auto', enabled: true});
+  for (const bad of [{command: 'auto', enabled: 'yes'}, {command: 'auto', bars: 32}, {command: 'auto', enabled: true, loop: true}]) {
+    assert.equal(parseControlCommand(bad), null, JSON.stringify(bad));
+  }
   for (const bad of [null, [], 'next', {command: 'rm'}, {command: 'next', extra: 1}, {command: 'hold', enabled: 'yes'},
     {command: 'handoff', mode: 'scratch'}, {command: 'handoff'}, {command: 'pause'}, {command: '__proto__'}]) {
     assert.equal(parseControlCommand(bad), null, JSON.stringify(bad));
@@ -312,14 +318,20 @@ test('phone commands reach the connected DJ page over Server-Sent Events, and DJ
   assert.equal(newer.incoming.statusCode, 200);
   assert.equal((await control(port, {command: 'stop'})).status, 202);
   await until(() => newer.bytes().toString().includes('"command":"stop"'), 'newer connection got the command');
+  // S18: the Studio set page's Auto toggle crosses the relay; malformed Auto is refused.
+  assert.equal((await control(port, {command: 'auto', enabled: true})).status, 202);
+  await until(() => newer.bytes().toString().includes('"command":"auto","enabled":true'), 'auto delivered');
+  assert.equal((await control(port, {command: 'auto', bars: 16})).status, 400);
   const posted = await http(port, '/api/dj/status', {method: 'POST', headers: djHeaders({'content-type': 'application/json'}),
-    body: JSON.stringify({state: 'playing', now: 'S01 A', next: 'S01 B', hold: true, handoff: 'mix', canNext: true})});
+    body: JSON.stringify({state: 'playing', now: 'S01 A', next: 'S01 B', hold: true, handoff: 'mix', canNext: true, auto: true, canAuto: 'yes'})});
   assert.equal(posted.status, 200);
   const phone = JSON.parse((await http(port, '/api/status', {headers: {host: 'pc.tail1.ts.net'}})).body.toString());
   assert.equal(phone.dj.connected, true);
   assert.equal(phone.dj.status.now, 'S01 A');
   assert.equal(phone.dj.status.hold, true);
   assert.equal(phone.dj.status.handoff, 'mix');
+  assert.equal(phone.dj.status.auto, true);
+  assert.equal(phone.dj.status.canAuto, false, 'flags are strict booleans');
   assert.match(phone.delayNote, /2-5 seconds/);
   assert.equal((await http(port, '/api/dj/status', {method: 'POST', headers: djHeaders({'content-type': 'application/json'}), body: '[1]'})).status, 400);
   newer.close();
@@ -431,6 +443,12 @@ test('each relay run gets its own random hex token and a DJ address that carries
   assert.equal(url.searchParams.get('relay'), 'http://127.0.0.1:4180');
   assert.equal(url.hash, `#relayToken=${TOKEN}`);
   assert.equal(url.search.includes(TOKEN), false, 'the token is not in the request target');
+  const studio = new URL(studioSetPageUrl('http://127.0.0.1:4173', 4180, TOKEN));
+  assert.equal(studio.pathname, '/studio.html');
+  assert.equal(studio.searchParams.get('pack'), 'set');
+  assert.equal(studio.searchParams.get('relay'), 'http://127.0.0.1:4180');
+  assert.equal(studio.hash, `#relayToken=${TOKEN}`);
+  assert.equal(studio.search.includes(TOKEN), false, 'the token is not in the request target');
 });
 
 test('live MP3 is Icecast-style for Range probes, and cross-site status or audio fetches are refused', async t => {

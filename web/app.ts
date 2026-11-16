@@ -213,6 +213,7 @@ function runPhoneCommand(command: PhoneCommand): string {
     case 'play': return press(buttons.play, 'Play');
     case 'stop': return press(buttons.stop, 'Stop');
     case 'next': return press(buttons['next-song'], 'Next Song');
+    case 'auto': return 'ignored: Auto needs the Studio set page (studio.html?pack=set)';
     case 'hold': {
       const held = dj?.snapshot().control.requested.hold ?? false;
       if (command.enabled !== undefined && command.enabled === held) return `Hold already ${held ? 'on' : 'off'}`;
@@ -240,7 +241,7 @@ const phoneStream = new PhoneStream({
       requested: text('requested-target'), execution: text('execution'), hold: dj?.snapshot().control.requested.hold ?? false,
       handoff: handoffInput.value === 'direct' || handoffInput.value === 'hybrid' || handoffInput.value === 'mix' ? handoffInput.value : null,
       canPlay: !buttons.play.disabled, canStop: !buttons.stop.disabled, canNext: !buttons['next-song'].disabled,
-      canHold: !buttons.hold.disabled, canHandoff: !handoffInput.disabled};
+      canHold: !buttons.hold.disabled, canHandoff: !handoffInput.disabled, auto: false, canAuto: false};
   },
 }, phoneRelay, takeRelayToken(phoneRelay), () => { renderPhoneStream(); });
 function renderPhoneStream(): void {

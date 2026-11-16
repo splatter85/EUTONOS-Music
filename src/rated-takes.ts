@@ -255,7 +255,7 @@ export async function importRatedTakes(sourceDirectory: string, outputDirectory:
     'Inventory file facts and duration are recorded from the export; PCM format and duration are independently checked for the selected pair or set only.',
   ]};
   if (options.set) {
-    catalog.limits.push('Optional set is explicit local unreviewed material: love/like takes only, requested grid per take (BPMs may differ), no authored routes; the DJ decides transitions later. The current browser loader cannot yet play a set.');
+    catalog.limits.push('Optional set is explicit local unreviewed material: love/like takes only, requested grid per take (BPMs may differ), no authored routes; the S18 set DJ (Studio, pack=set) decides each transition; listening is untested.');
   }
   const groups = new Set<TakeRating>(), ids = new Set<string>();
   try {

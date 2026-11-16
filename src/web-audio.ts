@@ -104,6 +104,8 @@ export class RecordedSource implements PlayableSource {
   private finishFrame = 0;
   private naturalEndFrame = 0;
   private transitionFrame: number | null = null;
+  /** S18: owner-clock frame where a mix entry's automation reaches its neutral final values. */
+  private mixEntryEndFrame: number | null = null;
   private readonly fadeIn: number;
   private readonly fadeOut: number;
 
@@ -190,6 +192,11 @@ export class RecordedSource implements PlayableSource {
       graph.restore(); this.gain!.gain.cancelScheduledValues(at.frame / this.clock!.sampleRate); throw error;
     }
     this.mixGraph = graph;
+    const nyquist = this.clock!.sampleRate / 2;
+    // Only an entry that ends exactly neutral may later be replaced by the direct connection.
+    this.mixEntryEndFrame = !automation.echo && automation.gain.at(-1)!.value === 1 &&
+      automation.lowShelfDb.at(-1)!.value === 0 && automation.highPassHz.at(-1)!.value === 0 &&
+      automation.lowPassHz.at(-1)!.value === nyquist ? at.frame + automation.durationFrames : null;
     this.start = {at: {...at}, entryCueId: 'mix-entry'};
     this.entryFrame = entryOffsetFrames;
     this.finishFrame = at.frame + this.recording.buffer.length - entryOffsetFrames;
@@ -249,6 +256,21 @@ export class RecordedSource implements PlayableSource {
     this.phase = 'stopping';
   }
 
+  /**
+   * S18 set mode: once a mix entry's automation has finished, every lane holds its neutral end
+   * value (unity gain, open filters), so the entry graph is replaced by the direct connection.
+   * The source can then own one later mix exit. Refused before the entry has completed or
+   * when the entry automation did not end neutral.
+   */
+  settleMixEntry(): boolean {
+    if (this.mixEntryEndFrame === null || !this.mixGraph || this.transitionFrame !== null) return false;
+    this.checkGeneration();
+    if (this.clock!.currentFrame < this.mixEntryEndFrame) return false;
+    this.mixGraph.restore(); this.mixGraph = null;
+    this.mixEntryEndFrame = null;
+    return true;
+  }
+
   /** Restore the original start envelope and finish only before an exit has begun. */
   cancelTransition(): boolean {
     if (this.transitionFrame === null) return true;
@@ -266,6 +288,8 @@ export class RecordedSource implements PlayableSource {
     if (this.fadeIn && this.start!.at.frame + this.fadeIn >= transitionFrame) {
       this.gain!.gain.linearRampToValueAtTime(1, (this.start!.at.frame + this.fadeIn) / rate);
     }
+    // S18: a settled mix entry keeps its prepared-EOF gate, which cancelScheduledValues removed.
+    if (this.start!.entryCueId === 'mix-entry') this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
     // Web Audio replaces a future scheduled stop when stop() is called again.
     this.node!.stop(this.naturalEndFrame / rate);
     this.finishFrame = this.naturalEndFrame;

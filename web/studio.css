@@ -158,3 +158,15 @@ main { flex: 1; padding: 16px 18px; width: 100%; max-width: 1400px; margin: 0 au
   .gen-form .check, .gen-form .wide { grid-column: 1 / -1; }
   .master input { width: 80px; }
 }
+
+/* S18 set mode */
+.set-card { display: flex; flex-direction: column; gap: 10px; }
+.set-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.set-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.set-controls select { max-width: 100%; }
+.set-mix { margin: 0; font-weight: 600; }
+.set-sub { margin: 6px 0 0; font-size: 13px; color: var(--dim); font-weight: 600; }
+.phone-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.phone-box p { margin: 0; flex-basis: 100%; }
+.phone-box .check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.list li .song-meta { color: var(--dim); font-size: 12px; white-space: nowrap; }
