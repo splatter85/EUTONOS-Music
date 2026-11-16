@@ -83,6 +83,7 @@ Follow [Work Model: per-slice handoff policy](../WORK_MODEL.md#per-slice-handoff
 | **EMF-S16** | **PC (COMPLETE engineering scope, 2026-11-14)** | EMF02/06/12 material and taste | S14, EMS-S01 | Import EMS rated takes as owner-local DJ material through the unchanged pack contract, with ratings as labelled taste data. Validate every take in the catalogue; audition only an explicit equal-requested-BPM pair, unreviewed, with a zero-overlap cut and no harmonic assertion. [Contract](../S16_RATED_TAKES.md); no audio published. |
 | **EMF-S17** | **PC (IN MAIN, engineering scope, 2026-11-15)** | EMF05 listening convenience | S14–S16 DJ | Phone listening to the live PC DJ: observational master-output tap, MediaRecorder → loopback relay → one ffmpeg MP3 stream fanned out to phone listeners; allowlisted phone commands executed through the DJ page's own controls. [Guide](../S17_PHONE_LISTENING.md). Real phone, lock screen and listening NOT TESTED. |
 | **EMF-S18** | **PC (IN MAIN for engineering scope, checked on Windows; increment 1 at `1f62ad4`, increments 2+3 merged at `3cf8421`, 2026-11-15; listening NOT TESTED)** | EMF09/11/13 transitions; EMF06 material | S16 | DJ set mode from every love/like rated take. Increment 1: Node-only set intake into one unreviewed zero-route pack (max 32 takes, 512 MiB). Increment 2: any-to-any automatic mix without authored routes, per-song analysis cache, lazy decoding, measured-or-requested bar grids and a route-free crossfade/cut fallback. Increment 3: Studio set page with queue reorder, Next on a 4/8-bar boundary, Auto every 16/32/64 bars (stop or loop at the end) and phone Auto. [Contract](../S18_SET_MODE.md), [handoff](../handoffs/EMF-S18-HANDOFF.md); Windows only; listening NOT TESTED. |
+| **EMF-S19** | **PC (IN PROGRESS, 2026-11-15)** | EMF09/11/13 transitions | S18 | DJ transitions III: bounded full-song analysis and overlap rendering, sample-accurate native continuation, then eligible styles (filter sweep, tempo ramp, loop-extend, brake and loudness match). Generated fixtures only; Windows checks and no listening claims. Branch `work/emf-s19-transitions` from `3cd8d42`; coordinator integrates. [Guide](../S19_TRANSITIONS.md). |
 | **EMF-S13** | **CLOUD + PC** | Remaining EMF16–19 and open parents | Relevant stage evidence | Optional producer jobs, assembled review, broader Windows qualification and explicit full-campaign owner release decision. |
 
 ### Exactly when to involve the PC
@@ -157,6 +158,8 @@ These IDs and meanings are retained. M1 and M2 are smaller milestone evidence, n
 All required checks and EMF19 must be satisfied for full completion. A provider may remain unsupported with an explicit limit; that does not remove the production-boundary test or claim singing has shipped. Three-day breadth, arbitrary-song accompaniment, all genres, all FL actions, remote streaming and a broad public pack catalogue are later outcomes, not hidden criteria for the first pilot.
 
 ## Current checkpoint
+
+**S19 IN PROGRESS (2026-11-15):** full-song smooth blends first, then transition styles. Isolated branch from `3cd8d42`; see the [S19 guide](../S19_TRANSITIONS.md). Required gates and coordinator merge are pending. Overall effort percentage remains unknown.
 
 ### EMS-S01 + EMF-S16 built and locally verified
 
