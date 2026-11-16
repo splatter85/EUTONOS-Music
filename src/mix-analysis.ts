@@ -1,3 +1,5 @@
+import {measureLoudness} from './audio-analysis.js';
+
 /**
  * Original deterministic, bounded music-analysis heuristics (no runtime dependency).
  * Constant tempo and 4/4 are hypotheses, not an inferred time-signature contract.
@@ -13,6 +15,35 @@ export const MIX_ANALYSIS_LIMITS = Object.freeze({
   maxChannelSamples: 16_777_216, minBpm: 60, maxBpm: 180,
 });
 export const SONG_ANALYSIS_WINDOW = Object.freeze({policy: 'song-mono-window@1' as const, seconds: 60});
+export const MIX_LEVEL_VERSION = 'bs1770-k-window@1' as const;
+export interface MixLevelEvidence {
+  readonly version: typeof MIX_LEVEL_VERSION; readonly sampleRate: number;
+  readonly startFrame: number; readonly frames: number; readonly channels: 1 | 2;
+  readonly lufs: number | null; readonly samplePeak: number;
+}
+export interface NativeSamplePeak {readonly version: 'native-sample-peak@1'; readonly frames: number; readonly value: number;}
+
+/** Cheap finite/sample-peak scan only; not an oversampled true-peak measurement. */
+export function nativeSamplePeak(input: MixPcm): NativeSamplePeak {
+  let value = 0;
+  for (const channel of input.channels) for (const sample of channel) {
+    if (!Number.isFinite(sample) || Math.abs(sample) > 16) throw new Error('Native peak scan refuses invalid PCM.');
+    value = Math.max(value, Math.abs(sample));
+  }
+  return {version: 'native-sample-peak@1', frames: input.channels[0]!.length, value};
+}
+export function mixLevelWindowFrames(frames: number, rate: number, channels: number): number {
+  return Math.min(frames, Math.floor(SONG_ANALYSIS_WINDOW.seconds * rate), Math.floor(MIX_ANALYSIS_LIMITS.maxChannelSamples / channels));
+}
+/** Stereo is measured by channel energy, never an averaged mono signal. */
+export function measureMixLevel(input: MixPcm): MixLevelEvidence {
+  const frames = mixLevelWindowFrames(input.channels[0]?.length ?? 0, input.sampleRate, input.channels.length);
+  const channels = input.channels.map(c => c.subarray(0, frames));
+  validate({sampleRate: input.sampleRate, channels});
+  const measured = measureLoudness(channels, input.sampleRate);
+  return {version: MIX_LEVEL_VERSION, sampleRate: input.sampleRate, startFrame: 0, frames,
+    channels: channels.length as 1 | 2, lufs: measured.integrated_lufs, samplePeak: nativeSamplePeak({sampleRate: input.sampleRate, channels}).value};
+}
 export interface TempoCandidate {
   readonly bpm: number;
   /** Ranked evidence score, not a probability. */
@@ -100,6 +131,8 @@ export interface MixAnalysis {
   readonly version: typeof MIX_ANALYSIS_VERSION;
   readonly sampleRate: number;
   readonly frames: number;
+  readonly level?: MixLevelEvidence;
+  readonly nativePeak?: NativeSamplePeak;
   /** Set mode only: evidence covers this bounded native-song interval, not the whole song. */
   readonly analyzedWindow?: {readonly policy: typeof SONG_ANALYSIS_WINDOW.policy; readonly startFrame: number; readonly frames: number};
   readonly tempo: TempoEstimate;
@@ -676,6 +709,7 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
       chroma: localChroma.map(x => total ? x / total : 0)});
   }
   const analysis: MixAnalysis = {version: MIX_ANALYSIS_VERSION, sampleRate: input.sampleRate, frames, tempo: estimate.tempo,
+    level: measureMixLevel(input), nativePeak: nativeSamplePeak(input),
     beatGrid: {frames: beats, confidence: beatConfidence, maxFitErrorSeconds: estimate.fitError},
     structure: {meter: [4, 4], assumed: true, downbeatFrames, downbeatConfidence, phraseFrames,
       phraseConfidence, phraseBars: 4},

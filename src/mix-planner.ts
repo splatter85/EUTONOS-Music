@@ -1,5 +1,5 @@
-import {analyzeMixAudio, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate} from './mix-analysis.js';
-import {bassSwapAutomation, cleanCutAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
+import {analyzeMixAudio, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate, type MixLevelEvidence} from './mix-analysis.js';
+import {bassSwapAutomation, cleanCutAutomation, crossfadeAutomation, filterSweepAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -13,7 +13,17 @@ export interface HarmonicCompatibility {
   readonly circleDistance: number | null; readonly score: number;
   readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
-export type MixRecipe = 'blend' | 'cut' | 'echo-out';
+export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match';
+export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match'].includes(recipe);
+export const LEVEL_MATCH_LIMITS = Object.freeze({maxGain: 4, samplePeakCeiling: 10 ** (-1 / 20)});
+export interface LevelMatchPlan {
+  readonly from: MixLevelEvidence; readonly to: MixLevelEvidence;
+  readonly fromGain: number; readonly toGain: number;
+  readonly rawDeltaLu: number; readonly beforeDeltaLu: number; readonly matchedDeltaLu: number;
+  readonly nativeSamplePeak: number; readonly maxGain: number; readonly samplePeakCeiling: number;
+  readonly fromNativeSamplePeak: number; readonly incomingPeakBudget: number;
+  readonly renderGainApplied?: number;
+}
 export const MIX_CANDIDATE_LIMIT = 6;
 export interface MixPlannerOptions {
   readonly recipe?: MixRecipe | 'auto';
@@ -27,6 +37,8 @@ export interface MixPlannerOptions {
   /** An explicit requested shift is still subject to range and harmonic checks. */
   readonly pitchSemitones?: number;
   readonly returnToOriginalTempo?: boolean;
+  /** Captured current A gain, never a proposed change to an already-audible source. */
+  readonly fromLevelGain?: number;
 }
 export interface AutomaticMixPlan {
   readonly kind: 'mix'; readonly version: typeof MIX_PLANNER_VERSION;
@@ -41,6 +53,7 @@ export interface AutomaticMixPlan {
   readonly fromBpm: number; readonly toBpm: number;
   readonly tempoRatio: number; readonly pitchSemitones: number;
   readonly returnToOriginalTempo: boolean;
+  readonly levelMatch?: LevelMatchPlan;
   readonly confidence: number;
   readonly evidence: {readonly tempo: number; readonly beat: number; readonly key: number;
     readonly cue: number; readonly phrase: number};
@@ -83,12 +96,51 @@ const shifted = (key: TonalKey, semitones: number): TonalKey =>
 const fallback = (reason: string): MixFallback => ({kind: 'fallback', version: MIX_PLANNER_VERSION, reason});
 const unit = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
 
+/** Final prepared headroom may further constrain B, without changing A or hiding the residual. */
+export function withPreparedLevelGain(plan: AutomaticMixPlan, gain: number): AutomaticMixPlan {
+  if (!plan.levelMatch) return plan;
+  if (!Number.isFinite(gain) || gain <= 0 || gain > plan.levelMatch.toGain) throw new Error('Invalid prepared level gain.');
+  const level = plan.levelMatch;
+  return {...plan, levelMatch: {...level, toGain: gain,
+    matchedDeltaLu: level.to.lufs! + 20 * Math.log10(gain) - level.from.lufs! - 20 * Math.log10(level.fromGain)}};
+}
+
+function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions): MixDecision {
+  const plan = planBlend(from, to, options);
+  if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend') return plan;
+  if (options.recipe === 'filter-sweep') return {...plan, recipe: 'filter-sweep', automation: filterSweepAutomation(plan.overlapFrames, plan.sampleRate)};
+  if (options.recipe !== 'loudness-match') return fallback('Unsupported beatmatched style.');
+  const valid = (a: MixAnalysis): boolean => !!a.level && a.level.version === MIX_LEVEL_VERSION && a.level.sampleRate === a.sampleRate &&
+    Number.isSafeInteger(a.level.startFrame) && a.level.startFrame >= 0 && Number.isSafeInteger(a.level.frames) && a.level.frames > 0 &&
+    a.level.startFrame + a.level.frames <= a.frames && a.level.lufs !== null && Number.isFinite(a.level.lufs) && a.level.lufs >= -70 && a.level.lufs <= 60 &&
+    a.level.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && a.level.frames * a.level.channels <= 16_777_216 &&
+    (!a.analyzedWindow || a.level.startFrame >= a.analyzedWindow.startFrame &&
+      a.level.startFrame + a.level.frames <= a.analyzedWindow.startFrame + a.analyzedWindow.frames) &&
+    Number.isFinite(a.level.samplePeak) && a.level.samplePeak >= 0 && a.level.samplePeak <= 16 &&
+    [1, 2].includes(a.level.channels) && !!a.nativePeak && a.nativePeak.version === 'native-sample-peak@1' && a.nativePeak.frames === a.frames &&
+    Number.isFinite(a.nativePeak.value) && a.nativePeak.value > 0 && a.nativePeak.value <= 16 && a.nativePeak.value + 1e-7 >= a.level.samplePeak;
+  if (!valid(from) || !valid(to)) return fallback('Level match needs measured bounded K-weighted levels and a full native sample-peak scan; silent/unknown levels refuse.');
+  const fromGain = options.fromLevelGain ?? 1;
+  const target = from.level!.lufs! + 20 * Math.log10(fromGain);
+  const availablePower = LEVEL_MATCH_LIMITS.samplePeakCeiling ** 2 - (from.nativePeak!.value * fromGain) ** 2;
+  if (availablePower <= 0) return fallback('A already consumes the loudness-match combined sample-peak ceiling; its audible gain is preserved.');
+  const incomingPeakBudget = Math.sqrt(availablePower);
+  const gain = Math.min(LEVEL_MATCH_LIMITS.maxGain, 10 ** ((target - to.level!.lufs!) / 20), incomingPeakBudget / to.nativePeak!.value);
+  const levelMatch: LevelMatchPlan = {from: {...from.level!}, to: {...to.level!}, fromGain, toGain: gain,
+    rawDeltaLu: to.level!.lufs! - from.level!.lufs!, beforeDeltaLu: to.level!.lufs! - target,
+    matchedDeltaLu: to.level!.lufs! + 20 * Math.log10(gain) - target,
+    nativeSamplePeak: to.nativePeak!.value, fromNativeSamplePeak: from.nativePeak!.value, incomingPeakBudget, ...LEVEL_MATCH_LIMITS};
+  return {...plan, recipe: 'loudness-match', levelMatch, automation: crossfadeAutomation(plan.overlapFrames, plan.sampleRate),
+    reasons: [...plan.reasons, 'K-weighted levels describe their bounded stereo/mono windows, not whole-song loudness. B gain is constant and bounded by native sample peak and +12 dB; residual mismatch is reported.']};
+}
+
 /** Validate derived data before it can become a native playback schedule. */
 function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
   const window = a.analyzedWindow;
   const evidenceEnd = window ? window.startFrame + window.frames : a.frames;
   return Number.isSafeInteger(a.sampleRate) && a.sampleRate >= 8000 && a.sampleRate <= 192000 &&
     Number.isSafeInteger(a.frames) && a.frames > 0 &&
+    (!a.level || Number.isFinite(a.level.samplePeak) && a.level.samplePeak >= 0 && a.level.samplePeak <= 16) &&
     (window ? window.policy === SONG_ANALYSIS_WINDOW.policy && Number.isSafeInteger(window.startFrame) && window.startFrame >= 0 &&
       Number.isSafeInteger(window.frames) && window.frames > 0 && evidenceEnd <= a.frames &&
       window.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && window.frames <= 16_777_216 : a.frames <= a.sampleRate * 180) &&
@@ -253,7 +305,8 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
     });
 }
 function validOptions(options: MixPlannerOptions): boolean {
-  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out'].includes(options.recipe)) &&
+  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match'].includes(options.recipe)) &&
+    (options.fromLevelGain === undefined || Number.isFinite(options.fromLevelGain) && options.fromLevelGain > 0 && options.fromLevelGain <= LEVEL_MATCH_LIMITS.maxGain) &&
     (options.echoContentConfirmed === undefined || typeof options.echoContentConfirmed === 'boolean') &&
     (options.allowPitchShift === undefined || typeof options.allowPitchShift === 'boolean') &&
     (options.returnToOriginalTempo === undefined || typeof options.returnToOriginalTempo === 'boolean') &&
@@ -269,8 +322,8 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
   const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] : ['blend', 'echo-out', 'cut'] as const;
   const plans: AutomaticMixPlan[] = [];
   for (const recipe of recipes) {
-    if (recipe === 'blend') {
-      const blend = planBlend(from, to, options);
+    if (recipe === 'blend' || recipe === 'filter-sweep' || recipe === 'loudness-match') {
+      const blend = styledBlend(from, to, options);
       if (blend.kind === 'mix') plans.push(blend);
     } else plans.push(...alternatePlans(from, to, options, recipe));
   }
@@ -281,7 +334,7 @@ export function planAutomaticMix(from: MixAnalysis, to: MixAnalysis,
   if (!validOptions(options)) return fallback('Invalid or unsupported mix recipe/options.');
   const candidates = automaticMixCandidates(from, to, options);
   if (candidates.length) return candidates[0]!;
-  const blend = planBlend(from, to, options);
+  const blend = styledBlend(from, to, options);
   return blend.kind === 'fallback' ? blend : fallback('Selected recipe preconditions are not established.');
 }
 

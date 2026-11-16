@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio} from '../src/mix-analysis.js';
+import {analyzeMixAudio, measureMixLevel, MIX_ANALYSIS_LIMITS} from '../src/mix-analysis.js';
 import {renderTimePitch} from '../src/time-pitch.js';
 import {prepareTimePitch, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
   type MixWorkerRequest, type MixWorkerResponse} from '../src/mix-prepare.js';
@@ -23,7 +23,7 @@ class TestWorker {
     if (message.kind === 'render') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render',
       result: renderTimePitch(message.audio, message.options)};
     if (message.kind === 'analyze-one') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one',
-      result: analyzeMixAudio(message.audio, message.options)};
+      result: {...analyzeMixAudio(message.audio, message.options), level: measureMixLevel(message.levelAudio ?? message.audio)}};
     return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result: {
       from: analyzeMixAudio(message.from), to: analyzeMixAudio(message.to)}};
   }
@@ -56,6 +56,26 @@ test('prepare worker transfers private copies, returns complete output, and term
   assert.equal(result.audio.channels[0]!.length, Math.round(4000 / 1.04));
   assert.deepEqual(input.channels[0], before);
   assert.equal(worker.onmessage, null);
+}));
+
+test('song worker keeps anti-phase stereo levels independent of the mono tempo copy and caps total level payload at 192k', async () => withWorker(async () => {
+  const rate = 8000, left = Float32Array.from({length: rate * 2}, (_, i) => 0.1 * Math.sin(2 * Math.PI * 440 * i / rate));
+  const stereo = {sampleRate: rate, channels: [left, Float32Array.from(left, x => -x)]};
+  const pending = analyzeMixSongInWorker(stereo), worker = TestWorker.instances.at(-1)!;
+  assert.ok(worker.message?.kind === 'analyze-one');
+  assert.ok(worker.message.audio.channels[0]!.every(x => x === 0), 'anti-phase mono tempo copy cancels');
+  assert.equal(worker.message.levelAudio!.channels.length, 2);
+  worker.reply(); const result = await pending;
+  assert.equal(result.level!.channels, 2); assert.equal(result.level!.lufs, measureMixLevel(stereo).lufs);
+  assert.ok(result.level!.lufs !== null, 'stereo energy did not disappear');
+  const highRate = 192000, long = new Float32Array(highRate * 60);
+  const bounded = analyzeMixSongInWorker({sampleRate: highRate, channels: [long, long]});
+  const high = TestWorker.instances.at(-1)!; assert.ok(high.message?.kind === 'analyze-one');
+  assert.ok(high.message.levelAudio!.channels[0]!.length * 2 <= MIX_ANALYSIS_LIMITS.maxChannelSamples);
+  assert.ok(high.message.audio.channels[0]!.length + high.message.levelAudio!.channels[0]!.length * 2 <= MIX_ANALYSIS_LIMITS.maxChannelSamples, 'entire request stays within the total transfer budget');
+  assert.equal(high.message.audio.channels[0]!.length, highRate * 60, 'mono tempo interval remains separately bounded');
+  high.onerror!({message: 'intentional payload-only test stop'} as ErrorEvent);
+  await assert.rejects(bounded, /intentional payload-only/);
 }));
 
 test('analyze pair uses the worker, preserves both sources and returns two distinct reports', async () => withWorker(async () => {
@@ -151,6 +171,17 @@ test('song worker bounds a >180s input and rejects invalid evidence coordinates 
       : {...analysis, mixIn: [{frame: analysis.frames, seconds: analysis.frames / analysis.sampleRate, confidence: 1, score: 1, reasons: []}]};
     instance.reply({...response, result});
     await assert.rejects(pending, /invalid song analysis coordinates/);
+    assert.equal(instance.terminated, 1);
+  }
+  for (const corrupt of ['frames', 'channels', 'peak', 'start'] as const) {
+    const pending = analyzeMixSongInWorker(pcm()), instance = TestWorker.instances.at(-1)!;
+    const response = instance.response(); assert.ok(response.ok && response.kind === 'analyze-one');
+    const level = response.result.level!;
+    const changed = corrupt === 'frames' ? {...level, frames: level.frames - 1}
+      : corrupt === 'channels' ? {...level, channels: 2 as const}
+      : corrupt === 'peak' ? {...level, samplePeak: Infinity} : {...level, startFrame: 1};
+    instance.reply({...response, result: {...response.result, level: changed}});
+    await assert.rejects(pending, /level evidence/);
     assert.equal(instance.terminated, 1);
   }
 }));

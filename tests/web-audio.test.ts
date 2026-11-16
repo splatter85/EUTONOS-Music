@@ -113,6 +113,24 @@ test('recording lifecycle schedules source and complementary fades on the same a
   source.release();
 });
 
+test('fixed level gain is captured and survives caller option mutation and graph automation', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  const options = {allowFixtures: true, levelGain: 0.4};
+  const source = new RecordedSource(context.audio, recording(a, 48000), context.destination, options);
+  options.levelGain = 3;
+  await source.prepare(clock);
+  assert.equal(source.levelGain, 0.4);
+  assert.equal(context.gains[1]!.gain.value, 0.4);
+  options.levelGain = 0.8;
+  source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'});
+  source.transitionOut('exit', clock.stamp(388800));
+  assert.equal(source.levelGain, 0.4);
+  assert.equal(context.gains[1]!.gain.value, 0.4);
+  assert.deepEqual(context.gains[1]!.gain.calls, []);
+  source.release();
+  assert.ok(context.gains.every(g => g.connections.length === 0));
+});
+
 test('release cancels a future start after generation invalidation and is idempotent', async () => {
   const context = new ContextDouble();
   const clock = new WebAudioClock(context.audio);

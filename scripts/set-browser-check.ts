@@ -30,6 +30,7 @@ const SONGS = [
   {id: 'synthetic-174-b', bpm: 174, bars: 20, tonic: 4, mode: 'minor' as const},
 ];
 const set = await buildSyntheticSet(SONGS);
+let servedSet = set;
 let longSet: Awaited<ReturnType<typeof buildSyntheticSet>> | undefined;
 const server = createDemoServer(root);
 let browser: Browser | undefined;
@@ -69,7 +70,7 @@ try {
     const path = new URL(route.request().url()).pathname.replace('/local/s16-rated/', '');
     if (!/^(?:catalog\.json|pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav))$/.test(path)) return route.fulfill({status: 404});
     fetched.push(path);
-    try { return await route.fulfill({body: await readFile(join(set.out, ...path.split('/')))}); }
+    try { return await route.fulfill({body: await readFile(join(servedSet.out, ...path.split('/')))}); }
     catch { return route.fulfill({status: 404}); }
   });
   const page = await context.newPage();
@@ -132,8 +133,8 @@ try {
   // S19: real 180/181s stereo 48 kHz input, real analysis/render workers and native offline
   // audio. No confidence overrides; section/accent changes exist in the generated PCM.
   longSet = await buildSyntheticSet([
-    {id: 'long-122', bpm: 122, seconds: 180, stereo: true, transitionEvidence: true},
-    {id: 'long-128', bpm: 128, seconds: 181, stereo: true, transitionEvidence: true},
+    {id: 'long-122', bpm: 122, seconds: 180, stereo: true, transitionEvidence: true, gain: 0.5},
+    {id: 'long-128', bpm: 128, seconds: 181, stereo: true, transitionEvidence: true, gain: 0.2},
   ], 48000);
   await context.route(origin + '/s19-synthetic/**', async route => {
     const path = new URL(route.request().url()).pathname.replace('/s19-synthetic/', '');
@@ -141,55 +142,87 @@ try {
     try { return await route.fulfill({body: await readFile(join(longSet!.out, ...path.split('/')))}); }
     catch { return route.fulfill({status: 404}); }
   });
-  const nativeJoin = await page.evaluate(async () => {
+  const nativeJoins = await page.evaluate(async () => {
     const load = (path: string) => import(path);
     const {loadBrowserPack, decodeRecording} = await load('/dist/src/browser-pack.js') as typeof import('../src/browser-pack.js');
     const {MixAnalysisCache, browserMixPreparation, chooseSetTransition, renderSetBlend} = await load('/dist/src/mix-transition.js') as typeof import('../src/mix-transition.js');
     const {RecordedSource, WebAudioClock} = await load('/dist/src/web-audio.js') as typeof import('../src/web-audio.js');
     const loaded = await loadBrowserPack(new URL('/s19-synthetic/pack/manifest.json', location.href), false, fetch,
       {set: true, allowUnreviewed: true});
-    const rate = 48000, offline = new OfflineAudioContext(2, rate * 35, rate);
-    const recordings = await Promise.all(loaded.pack.assets.map(a => decodeRecording(loaded, offline, a)));
+    const rate = 48000, decoder = new OfflineAudioContext(2, 1, rate);
+    const recordings = await Promise.all(loaded.pack.assets.map(a => decodeRecording(loaded, decoder, a)));
     const [from, to] = recordings, cache = new MixAnalysisCache();
     const [a, b] = await Promise.all(recordings.map(r => cache.analyze(r, browserMixPreparation)));
     if (!a!.ok || !b!.ok) throw new Error('Actual song worker analysis unavailable.');
+    const results = [];
+    for (const recipe of ['blend', 'filter-sweep', 'loudness-match'] as const) {
+    const offline = new OfflineAudioContext(2, rate * 35, rate);
     const choice = chooseSetTransition({from: {asset: from!.asset, analysis: a!.analysis, frames: from!.buffer.length},
       to: {asset: to!.asset, analysis: b!.analysis, frames: to!.buffer.length, channels: 2},
-      sampleRate: rate, earliestFrame: 3 * rate, boundary: {bars: 4, anchorBar: 0}});
-    if (choice.kind !== 'analyzed' || choice.plan.recipe !== 'blend') throw new Error('Actual song workers did not select a blend: ' + JSON.stringify(choice));
+      sampleRate: rate, earliestFrame: 3 * rate, boundary: {bars: 4, anchorBar: 0}, options: {recipe}});
+    if (choice.kind !== 'analyzed' || choice.plan.recipe !== recipe) throw new Error('Actual song workers did not select ' + recipe + ': ' + JSON.stringify(choice));
     let preparedSamples = 0;
     const runtime = {...browserMixPreparation, render: async (...args: Parameters<typeof browserMixPreparation.render>) => {
       preparedSamples = args[0].channels[0]!.length * args[0].channels.length;
       return browserMixPreparation.render(...args);
     }};
     const ready = await renderSetBlend(offline, to!, choice.plan, b!.analysis, undefined, runtime);
-    const source = new RecordedSource(offline, ready.incoming, offline.destination, {allowUnreviewed: true});
+    const gain = ready.plan.levelMatch?.toGain ?? 1;
+    const source = new RecordedSource(offline, ready.incoming, offline.destination, {allowUnreviewed: true, levelGain: gain});
     const clock = new WebAudioClock(offline); await source.prepare(clock);
     const start = 4800, outgoing = new RecordedSource(offline, from!, offline.destination, {allowUnreviewed: true});
     await outgoing.prepare(clock);
     outgoing.scheduleStart({at: clock.stamp(start), entryCueId: from!.asset.cues.find(c => c.kind === 'entry')!.id});
     const at = start + choice.plan.fromExitFrame;
-    source.scheduleMixStart(clock.stamp(at), ready.entryFrame, choice.plan.automation.incoming);
-    outgoing.transitionMixOut(clock.stamp(at), choice.plan.fromExitFrame, choice.plan.automation.outgoing);
+    source.scheduleMixStart(clock.stamp(at), ready.entryFrame, ready.plan.automation.incoming);
+    outgoing.transitionMixOut(clock.stamp(at), choice.plan.fromExitFrame, ready.plan.automation.outgoing);
     const joinAt = at + ready.nativeJoin.outputFrame - ready.entryFrame;
     const output = await offline.startRendering();
-    let seamError = 0, nativeError = 0;
+    let seamError = 0, nativeError = 0, mixedSamplePeak = 0;
     for (let c = 0; c < 2; c++) {
       const actual = output.getChannelData(c), native = to!.buffer.getChannelData(c);
-      seamError = Math.max(seamError, Math.abs(actual[joinAt - 1]! - native[ready.nativeJoin.sourceFrame - 1]!));
-      for (let i = 0; i < 2048; i++) nativeError = Math.max(nativeError, Math.abs(actual[joinAt + i]! - native[ready.nativeJoin.sourceFrame + i]!));
+      seamError = Math.max(seamError, Math.abs(actual[joinAt - 1]! - native[ready.nativeJoin.sourceFrame - 1]! * gain));
+      for (let i = 0; i < 2048; i++) nativeError = Math.max(nativeError, Math.abs(actual[joinAt + i]! - native[ready.nativeJoin.sourceFrame + i]! * gain));
+      for (let i = at; i < joinAt + 2048; i++) mixedSamplePeak = Math.max(mixedSamplePeak, Math.abs(actual[i]!));
     }
     source.release(); outgoing.release();
-    return {recipe: choice.plan.recipe, preparedSamples, originalSamples: to!.buffer.length * 2, joinAt,
+    results.push({recipe: choice.plan.recipe, preparedSamples, originalSamples: to!.buffer.length * 2, joinAt,
       nativeFrame: ready.nativeJoin.sourceFrame, measuredJoin: b!.analysis.structure.downbeatFrames.includes(ready.nativeJoin.sourceFrame),
-      seamError, nativeError, analyzedFrames: [a!.analysis.analyzedWindow!.frames, b!.analysis.analyzedWindow!.frames]};
+      seamError, nativeError, mixedSamplePeak, gain, residualLu: ready.plan.levelMatch?.matchedDeltaLu,
+      levelChannels: [a!.analysis.level?.channels, b!.analysis.level?.channels],
+      analyzedFrames: [a!.analysis.analyzedWindow!.frames, b!.analysis.analyzedWindow!.frames]});
+    }
+    return results;
   });
-  assert.equal(nativeJoin.recipe, 'blend'); assert.equal(nativeJoin.measuredJoin, true);
+  for (const nativeJoin of nativeJoins) {
+  assert.equal(nativeJoin.measuredJoin, true);
   assert.ok(nativeJoin.preparedSamples < 12_000_000 / 4 && nativeJoin.preparedSamples < nativeJoin.originalSamples / 10, JSON.stringify(nativeJoin));
   assert.ok(nativeJoin.analyzedFrames.every(n => n <= 60 * 48000));
   assert.ok(nativeJoin.seamError < 1e-5 && nativeJoin.nativeError < 1e-5, JSON.stringify(nativeJoin));
+  assert.deepEqual(nativeJoin.levelChannels, [2, 2]);
+  if (nativeJoin.recipe === 'loudness-match') assert.ok(nativeJoin.mixedSamplePeak <= 10 ** (-1 / 20) + 1e-5);
   report.plans.push(JSON.stringify(nativeJoin));
-  report.checks.push('180s -> 181s stereo 48k 122 -> 128 really blends in actual workers with bounded PCM; native offline join matches predecessor and continuation samples');
+  report.checks.push(`180s -> 181s stereo 48k 122 -> 128 actual-worker ${nativeJoin.recipe}: bounded PCM, exact gained native predecessor/continuation`);
+  }
+  servedSet = longSet;
+  await page.reload();
+  await waitText(page, 'global-status', /Rated set.*loaded · 2 songs/);
+  await page.selectOption('#mix-recipe', 'filter-sweep');
+  await page.locator('#dj-play').click();
+  await waitText(page, 'dj-now', /long-122/);
+  await page.locator('#dj-next').click();
+  await waitText(page, 'set-mix', /Planned: Filter sweep/, 60000);
+  const selectedFilter = await text(page, 'set-mix');
+  await page.selectOption('#mix-recipe', 'loudness-match');
+  assert.equal(await text(page, 'set-mix'), selectedFilter, 'selector changes future requests only');
+  await page.locator('#dj-cancel').click();
+  await waitText(page, 'dj-next-title', /^Nothing scheduled$/);
+  await page.locator('#dj-next').click();
+  await waitText(page, 'set-mix', /Planned: Loudness match.*B level.*measured windows/, 60000);
+  report.plans.push(await text(page, 'set-mix'));
+  await page.locator('#dj-stop').click();
+  await waitText(page, 'dj-now', /^Nothing$/);
+  report.checks.push('Studio selected filter and loudness recipes use real workers; changing selection preserves scheduled effect, cancel permits the next recipe, level readout labels measured windows');
   assert.deepEqual(errors, []);
   console.log(`Set browser check passed (${report.checks.length} checks, ${report.browser}).`);
   for (const plan of report.plans) console.log(`  plan: ${plan}`);

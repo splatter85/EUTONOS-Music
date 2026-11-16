@@ -1,11 +1,17 @@
 import {TIME_PITCH_LIMITS, TIME_PITCH_PROCESSOR,
   type PreparedTimePitch, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
-import {MIX_ANALYSIS_LIMITS, MIX_ANALYSIS_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
+import {MIX_ANALYSIS_LIMITS, MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, mixLevelWindowFrames,
+  type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
 
 /** A selected minute of real evidence. Grid extrapolation is not additional cue evidence. */
 export {SONG_ANALYSIS_WINDOW} from './mix-analysis.js';
 export function songAnalysisWindowFrames(frames: number, sampleRate: number): number {
   return Math.min(frames, Math.floor(sampleRate * SONG_ANALYSIS_WINDOW.seconds), MIX_ANALYSIS_LIMITS.maxChannelSamples);
+}
+/** One request's mono tempo copy plus original-channel level copy share the transfer budget. */
+export function songLevelWindowFrames(frames: number, sampleRate: number, channels: number): number {
+  const monoFrames = songAnalysisWindowFrames(frames, sampleRate);
+  return Math.min(mixLevelWindowFrames(frames, sampleRate, channels), Math.floor((MIX_ANALYSIS_LIMITS.maxChannelSamples - monoFrames) / channels));
 }
 
 /** Validate worker-derived coordinates and evidence before rebinding to a full-song timeline. */
@@ -36,6 +42,15 @@ export function validateSongAnalysis(analysis: MixAnalysis, frames: number, samp
       [c.lowOnsets, c.midFlux, c.highFlux, c.rms, c.harmonicEnergy].every(n => Number.isFinite(n) && n >= 0))) {
     throw new Error('Mix worker returned invalid song analysis coordinates or evidence.');
   }
+  const level = analysis.level;
+  if (level && (level.version !== MIX_LEVEL_VERSION || level.sampleRate !== sampleRate || level.startFrame !== 0 ||
+    !Number.isSafeInteger(level.frames) || level.frames < 1 || level.frames > frames ||
+    ![1, 2].includes(level.channels) || level.frames * level.channels > MIX_ANALYSIS_LIMITS.maxChannelSamples ||
+    level.frames > sampleRate * SONG_ANALYSIS_WINDOW.seconds ||
+    !(level.lufs === null || Number.isFinite(level.lufs) && level.lufs >= -70 && level.lufs <= 60) ||
+    !Number.isFinite(level.samplePeak) || level.samplePeak < 0 || level.samplePeak > 16)) {
+    throw new Error('Mix worker returned invalid bounded level evidence.');
+  }
 }
 
 export const PREPARE_WORKER_PROTOCOL = 'eutonos.mix-preparation.v1' as const;
@@ -46,7 +61,7 @@ export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCO
   readonly from: TimePitchPcm; readonly to: TimePitchPcm} |
   /** S18: one song, already downmixed to mono so a full 180 s stereo take fits the analysis budget. */
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze-one';
-  readonly audio: TimePitchPcm; readonly options: MixAnalysisOptions};
+  readonly audio: TimePitchPcm; readonly levelAudio?: TimePitchPcm; readonly options: MixAnalysisOptions};
 export type MixWorkerResponse = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly ok: true; readonly kind: 'render'; readonly result: PreparedTimePitch} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'analyze';
@@ -166,16 +181,21 @@ export function monoAnalysisCopy(audio: TimePitchPcm): {sampleRate: number; chan
 
 /** S18: one song's analysis in a disposable worker, with the same abort/late-result rules. */
 export async function analyzeMixSongInWorker(audio: TimePitchPcm, signal?: AbortSignal,
-  options: MixAnalysisOptions = {}, timeoutMs = 30_000): Promise<MixAnalysis> {
+  options: MixAnalysisOptions = {}, levelAudio: TimePitchPcm = audio, timeoutMs = 30_000): Promise<MixAnalysis> {
   if (signal?.aborted) throw new Error('Mix preparation was cancelled.');
   const copy = monoAnalysisCopy(audio), frames = copy.channels[0].length;
+  const levelFrames = Math.min(levelAudio.channels[0]?.length ?? 0, songLevelWindowFrames(frames, levelAudio.sampleRate, levelAudio.channels.length));
+  if (levelAudio.sampleRate !== audio.sampleRate || ![1, 2].includes(levelAudio.channels.length) || levelFrames < 1 ||
+    levelAudio.channels.some(c => !(c instanceof Float32Array || c instanceof Float64Array) || c.length < levelFrames)) throw new Error('Invalid bounded stereo level input.');
+  const levelCopy = {sampleRate: audio.sampleRate, channels: levelAudio.channels.map(c => new Float32Array(c.subarray(0, levelFrames)))};
   const message: MixWorkerRequest = {protocol: PREPARE_WORKER_PROTOCOL, kind: 'analyze-one', audio: copy,
-    options: structuredClone(options)};
-  return runWorker(message, [copy.channels[0].buffer], data => {
+    levelAudio: levelCopy, options: structuredClone(options)};
+  return runWorker(message, [copy.channels[0].buffer, ...levelCopy.channels.map(c => c.buffer)], data => {
     if (!data.ok || data.kind !== 'analyze-one') {
       throw new Error('Mix worker returned invalid song analysis.');
     }
     validateSongAnalysis(data.result, frames, audio.sampleRate);
+    if (data.result.level?.frames !== levelFrames || data.result.level.channels !== levelCopy.channels.length) throw new Error('Mix worker level evidence does not match its stereo window.');
     return data.result;
   }, signal, timeoutMs);
 }

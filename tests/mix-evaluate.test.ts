@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio, type MixPcm} from '../src/mix-analysis.js';
-import {cleanCutAutomation, echoOutAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
+import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, type MixPcm} from '../src/mix-analysis.js';
+import {cleanCutAutomation, echoOutAutomation, filterSweepAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
 import {chooseEvaluatedMix, evaluateTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio,
   type TransitionEvaluation, type TransitionSpec} from '../src/mix-evaluate.js';
-import type {AutomaticMixPlan} from '../src/mix-planner.js';
+import {LEVEL_MATCH_LIMITS, type LevelMatchPlan, type AutomaticMixPlan} from '../src/mix-planner.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
 
 const rate = 16000, seconds = 14;
@@ -36,6 +36,30 @@ function blend(outgoing: MixAutomationPoint[], incoming: MixAutomationPoint[]): 
 }
 const flagged = (e: TransitionEvaluation, metric: string) => e.flags.find(f => f.metric === metric);
 const equalPower = blend(curve(overlap, x => Math.cos(Math.PI * x / 2)), curve(overlap, x => Math.sin(Math.PI * x / 2)));
+
+test('selected smooth styles retain flux checks; matched loudness uses an explicit gain-adjusted target', () => {
+  const from = noise(1, 0.05), to = noise(2, 0.2), fromLevel = measureMixLevel(from), toLevel = measureMixLevel(to);
+  const fromGain = 0.5, toGain = 10 ** ((fromLevel.lufs! + 20 * Math.log10(fromGain) - toLevel.lufs!) / 20);
+  const levelMatch: LevelMatchPlan = {from: fromLevel, to: toLevel, fromGain, toGain,
+    rawDeltaLu: toLevel.lufs! - fromLevel.lufs!, beforeDeltaLu: toLevel.lufs! - fromLevel.lufs! - 20 * Math.log10(fromGain), matchedDeltaLu: 0,
+    nativeSamplePeak: nativeSamplePeak(to).value, fromNativeSamplePeak: nativeSamplePeak(from).value,
+    incomingPeakBudget: Math.sqrt(LEVEL_MATCH_LIMITS.samplePeakCeiling ** 2 - (nativeSamplePeak(from).value * fromGain) ** 2), ...LEVEL_MATCH_LIMITS};
+  const matched = evaluateTransition(from, to, {...equalPower, recipe: 'loudness-match', levelMatch});
+  assert.equal(matched.verdict, 'pass', JSON.stringify(matched.flags));
+  assert.equal(matched.measurements!.boundaryFlux.judged, true);
+  assert.ok(Math.abs(matched.measurements!.levelMatch!.rawDeltaLu - 12) < 0.1);
+  assert.equal(matched.measurements!.levelMatch!.matchedDeltaLu, 0);
+  assert.ok(Math.abs(matched.measurements!.loudness.shortTermMaxDownLu!) < 0.6, JSON.stringify(matched.measurements!.loudness));
+  const sweep = evaluateTransition(noise(1), noise(2), {...equalPower, recipe: 'filter-sweep', automation: filterSweepAutomation(overlap, rate)});
+  assert.notEqual(sweep.verdict, 'fail', JSON.stringify(sweep.flags));
+  assert.equal(sweep.measurements!.boundaryFlux.judged, true);
+  const bad = {...equalPower, recipe: 'filter-sweep' as const, automation: {outgoing: equalPower.automation.outgoing,
+    incoming: {...equalPower.automation.incoming, gain: [{frame: 0, value: 0}, {frame: overlap - 1, value: 0}, {frame: overlap, value: 1}]}}};
+  assert.equal(evaluateTransition(noise(1), noise(2), bad).verdict, 'fail', 'a renamed abrupt change is still judged');
+  console.log('S19 style evaluator: ' + JSON.stringify([matched, sweep].map(e => ({recipe: e.recipe, verdict: e.verdict, flags: e.flags,
+    peakDbtp: e.measurements!.truePeakDbtp, loudness: e.measurements!.loudness, fluxDb: e.measurements!.boundaryFlux.excessDb,
+    level: e.measurements!.levelMatch}))));
+});
 
 test('thresholds are versioned and labelled experimental', () => {
   assert.equal(MIX_EVALUATION_THRESHOLDS.version, 'mix-evaluation-thresholds@1');

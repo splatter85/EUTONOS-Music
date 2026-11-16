@@ -104,7 +104,8 @@ function kFilters(rate: number): readonly [Coefficients, Coefficients] {
   return [shelf, [1, -2, 1, 2 * (r * r - 1) / rd, (1 - r / rq + r * r) / rd]];
 }
 
-function loudness(samples: readonly Float64Array[], rate: number) {
+/** Lightweight BS.1770 gated K-weighted measurement; no true-peak/spectrum pipeline. */
+export function measureLoudness(samples: readonly (Float32Array | Float64Array)[], rate: number) {
   const frames = samples[0]!.length, block = Math.round(rate * 0.4), hop = Math.round(rate * 0.1);
   const empty = {integrated_lufs: null, blocks_total: 0, blocks_after_absolute_gate: 0,
     blocks_after_relative_gate: 0, relative_gate_lufs: null};
@@ -258,7 +259,7 @@ export function analyzeAudio(audio: WavAudio, startSeconds = 0,
   }
   const interpolated = truePeak(samples, peak);
   return {start_seconds: start / rate, end_seconds: end / rate, frames, duration_seconds: frames / rate,
-    loudness: loudness(samples, rate), sample_peak: {linear: peak, dbfs: amplitudeDb(peak)},
+    loudness: measureLoudness(samples, rate), sample_peak: {linear: peak, dbfs: amplitudeDb(peak)},
     true_peak: {linear: interpolated, dbtp: amplitudeDb(interpolated), oversample: 4 as const,
       method: 'BS.1770-5 Annex 2 4x FIR estimate; zero-extended boundaries; sample-peak floor'},
     rms_dbfs: powerDb(sumSquares / (frames * samples.length)), rms_windows: rmsWindows,

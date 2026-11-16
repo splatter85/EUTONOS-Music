@@ -5,7 +5,7 @@ import test from 'node:test';
 import {decodeRecording, loadBrowserPack, SET_LIMITS, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {CONTROL_VERSION, ControlContract, type ControlRequest} from '../src/control.js';
 import {DeterministicDj} from '../src/dj.js';
-import {analyzeMixAudio, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mix-analysis.js';
+import {analyzeMixAudio, measureMixLevel, MIX_ANALYSIS_VERSION, type MixAnalysis} from '../src/mix-analysis.js';
 import {barAtOrAfter, chooseSetTransition, downbeatAt, equalPowerCrossfade, MixAnalysisCache, nextBoundary,
   planRouteFreeTransition, setBarGrid, type MixPreparationRuntime, type SetBarGrid} from '../src/mix-transition.js';
 import {SmallPlayer} from '../src/player.js';
@@ -46,7 +46,7 @@ function countingRuntime() {
   const runtime: MixPreparationRuntime = {
     analyze: async (from, to) => { calls.analyze++; return {from: analyzeMixAudio(from), to: analyzeMixAudio(to)}; },
     render: async (audio, options) => { calls.render++; return renderTimePitch(audio, options); },
-    analyzeOne: async (audio, _signal, options) => { calls.analyzeOne++; return analyzeMixAudio(audio, options); },
+    analyzeOne: async (audio, _signal, options, levelAudio) => { calls.analyzeOne++; return {...analyzeMixAudio(audio, options), level: measureMixLevel(levelAudio ?? audio)}; },
   };
   return {runtime, calls};
 }
@@ -442,14 +442,14 @@ test('set player blends 122 -> 128 with a returning time map, then mixes the pro
 
 test('180/181s stereo 48k set really blends within the unchanged render budget, joins native B ahead and then mixes out', async () => {
   const rate = 48000;
-  const songs = [{id: 'long-122', bpm: 122, seconds: 180, stereo: true, transitionEvidence: true},
-    {id: 'long-128', bpm: 128, seconds: 181, stereo: true, transitionEvidence: true}];
+  const songs = [{id: 'long-122', bpm: 122, seconds: 180, stereo: true, transitionEvidence: true, gain: 0.5},
+    {id: 'long-128', bpm: 128, seconds: 181, stereo: true, transitionEvidence: true, gain: 0.2}];
   const set = await buildSyntheticSet(songs, rate);
   try {
     const loaded = await loadSet(set), context = new SetContext(rate), base = countingRuntime();
     const renders: number[] = [], analyzed: number[] = [];
     const runtime: MixPreparationRuntime = {...base.runtime,
-      analyzeOne: async (audio, signal, options) => { analyzed.push(audio.channels[0]!.length); return base.runtime.analyzeOne!(audio, signal, options); },
+      analyzeOne: async (audio, signal, options, levelAudio) => { analyzed.push(audio.channels[0]!.length); return base.runtime.analyzeOne!(audio, signal, options, levelAudio); },
       render: async (audio, options, signal) => { renders.push(audio.channels[0]!.length * audio.channels.length); return base.runtime.render(audio, options, signal); }};
     const player = new SmallPlayer(context.audio, loaded, null, runtime);
     await player.playAsset(set.idFor('long-122'));
@@ -513,8 +513,42 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.equal(fault.sources[0]!.stops.length, 1); source.release();
     assert.ok(fault.sources.every(n => n.connections.length === 0));
     await checkLateAuto(set, loaded);
+    await checkSelectedSetRecipes(set, loaded);
   } finally { await set.cleanup(); }
 });
+
+async function checkSelectedSetRecipes(set: Awaited<ReturnType<typeof buildSyntheticSet>>, loaded: LoadedBrowserPack): Promise<void> {
+  const rate = 48000, context = new SetContext(rate), {runtime} = countingRuntime();
+  const player = new SmallPlayer(context.audio, loaded, null, runtime);
+  const dj = new DeterministicDj(player, loaded, 'explore', {handoff: 'mix', mix: {recipe: 'loudness-match'}});
+  const rev = () => dj.snapshot().control.revision;
+  await dj.request(req({type: 'queueTrack', trackId: set.idFor('long-122')}, rev()));
+  await dj.request(req({type: 'queueTrack', trackId: set.idFor('long-128')}, rev()));
+  await dj.request(req({type: 'transport', action: 'play'}, rev())); context.advance(0.5);
+  await dj.request(req({type: 'nextSong'}, rev()));
+  let snap = dj.snapshot().player, summary = snap.mix!.summary!;
+  assert.equal(summary.recipe, 'loudness-match', JSON.stringify(summary));
+  assert.deepEqual([summary.levelMatch!.from.channels, summary.levelMatch!.to.channels], [2, 2]);
+  const incomingGain = summary.levelMatch!.toGain;
+  assert.ok(incomingGain > 0 && incomingGain <= 4);
+  dj.setMixOptions({recipe: 'filter-sweep'});
+  assert.equal(dj.snapshot().player.mix!.summary!.recipe, 'loudness-match', 'future choice does not alter committed effect');
+  const starts = context.sources.map(n => n.starts.length);
+  context.advance((summary.nativeJoin!.at.frame - player.clock.currentFrame) / rate + 0.01);
+  snap = dj.snapshot().player;
+  assert.equal(snap.now[0], set.idFor('long-128'));
+  assert.deepEqual(context.sources.map(n => n.starts.length), starts);
+  // Requeue A so a second match must use the gain already audible on B.
+  await dj.request(req({type: 'queueTrack', trackId: set.idFor('long-122')}, rev()));
+  dj.setMixOptions({recipe: 'loudness-match', fromLevelGain: 3});
+  await dj.request(req({type: 'nextSong'}, rev()));
+  summary = dj.snapshot().player.mix!.summary!;
+  assert.equal(summary.recipe, 'loudness-match');
+  assert.equal(summary.levelMatch!.fromGain, incomingGain, 'continued native source gain overrides caller hint');
+  assert.equal(player.cancelPendingTransition(), true);
+  assert.ok(context.sources.slice(-2).every(n => n.stops.length > 0));
+  await dj.dispose();
+}
 
 async function checkLateAuto(set: Awaited<ReturnType<typeof buildSyntheticSet>>, loaded: LoadedBrowserPack): Promise<void> {
     const context = new SetContext(48000), {runtime} = countingRuntime();

@@ -11,7 +11,7 @@ import {analyzeMixAudio, type MixAnalysis, type MixPcm} from './mix-analysis.js'
 import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, validateMixAutomation, type MixAutomation,
   type MixAutomationPoint} from './mix-automation.js';
 import {automaticMixCandidates, type AutomaticMixPlan, type MixPlannerOptions,
-  type MixRecipe} from './mix-planner.js';
+  isBeatmatchedRecipe, type LevelMatchPlan, type MixRecipe} from './mix-planner.js';
 
 export const MIX_EVALUATOR_VERSION = 'transition-evaluator@1' as const;
 
@@ -60,6 +60,8 @@ export interface TransitionSpec {
   /** B input frames consumed per output frame (fromBpm / toBpm). 1 keeps B native. */
   readonly tempoRatio: number;
   readonly automation: {readonly outgoing: MixAutomation; readonly incoming: MixAutomation};
+  /** Intentional fixed gains; references are scaled transparently with the rendered sources. */
+  readonly levelMatch?: LevelMatchPlan;
 }
 
 export interface TransitionRender {
@@ -94,6 +96,8 @@ export interface TransitionMeasurements {
   readonly sampleJumpRatio: number | null;
   readonly silenceGapMs: number;
   readonly stereoCorrelation: number | null;
+  readonly levelMatch?: {readonly rawDeltaLu: number; readonly beforeDeltaLu: number; readonly matchedDeltaLu: number;
+    readonly fromGain: number; readonly toGain: number; readonly target: 'gain-adjusted measured windows'};
 }
 export interface TransitionEvaluation {
   readonly version: typeof MIX_EVALUATOR_VERSION;
@@ -231,6 +235,8 @@ function sampleAt(pcm: MixPcm, channel: number, frame: number): number {
 export function renderTransition(from: MixPcm, to: MixPcm, spec: TransitionSpec,
   prepared?: {readonly audio: MixPcm; readonly entryFrame: number}): TransitionRender {
   const rate = from.sampleRate;
+  const gainA = spec.levelMatch?.fromGain ?? 1, gainB = spec.levelMatch?.toGain ?? 1;
+  if (![gainA, gainB].every(g => Number.isFinite(g) && g > 0 && g <= 4)) throw new Error('Invalid fixed evaluation level gain.');
   if (to.sampleRate !== rate || (prepared && prepared.audio.sampleRate !== rate)) {
     throw new Error('Transition evaluation needs one sample rate.');
   }
@@ -262,10 +268,10 @@ export function renderTransition(from: MixPcm, to: MixPcm, spec: TransitionSpec,
   for (let ch = 0; ch < channels; ch++) {
     for (let n = 0; n < length; n++) {
       const a = sampleAt(from, ch, aFrame(n));
-      aNative[ch]![n] = a;
-      aOut[ch]![n] = n < S ? a : outgoing[ch]![n - S] ?? 0;
-      bNative[ch]![n] = bAt(ch, n - T);
-      if (n >= T) bOut[ch]![n] = incoming[ch]![n - T]!;
+      aNative[ch]![n] = a * gainA;
+      aOut[ch]![n] = (n < S ? a : outgoing[ch]![n - S] ?? 0) * gainA;
+      bNative[ch]![n] = bAt(ch, n - T) * gainB;
+      if (n >= T) bOut[ch]![n] = incoming[ch]![n - T]! * gainB;
       mix[ch]![n] = aOut[ch]![n]! + bOut[ch]![n]!;
     }
   }
@@ -446,8 +452,11 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
       shortTermMaxUpLu: shortTerm.up, shortTermMaxDownLu: shortTerm.down},
     lowBuildUp: {maxDb: lowMax, band: lowBand},
     beatPhase: analysis ? beatPhase(render, spec, analysis) : {maxError: null, meanError: null, beats: 0},
-    boundaryFlux: {excessDb: excess, atFrame: excessAt, judged: spec.recipe === 'blend'},
-    sampleJumpRatio: jump, silenceGapMs: gap * 10, stereoCorrelation: correlation};
+    boundaryFlux: {excessDb: excess, atFrame: excessAt, judged: isBeatmatchedRecipe(spec.recipe)},
+    sampleJumpRatio: jump, silenceGapMs: gap * 10, stereoCorrelation: correlation,
+    ...(spec.levelMatch ? {levelMatch: {rawDeltaLu: spec.levelMatch.rawDeltaLu, beforeDeltaLu: spec.levelMatch.beforeDeltaLu,
+      matchedDeltaLu: spec.levelMatch.matchedDeltaLu, fromGain: spec.levelMatch.fromGain, toGain: spec.levelMatch.toGain,
+      target: 'gain-adjusted measured windows' as const}} : {})};
 }
 
 /** Flags, verdict and an ordering penalty from the versioned thresholds. */
@@ -501,7 +510,7 @@ export function evaluateTransition(from: MixPcm, to: MixPcm, spec: TransitionSpe
 export function planTransitionSpec(plan: AutomaticMixPlan): TransitionSpec {
   return {recipe: plan.recipe, fromStartFrame: plan.fromExitFrame - plan.preRollFrames,
     preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame,
-    tempoRatio: plan.tempoRatio, automation: plan.automation};
+    tempoRatio: plan.tempoRatio, automation: plan.automation, ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {})};
 }
 
 export type EvaluatedMixDecision =

@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {analyzeMixAudio} from '../src/mix-analysis.js';
+import {analyzeMixAudio, nativeSamplePeak} from '../src/mix-analysis.js';
 import {DeterministicDj} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import {SmallPlayer} from '../src/player.js';
-import {prepareMixTransition, type MixPreparationRuntime} from '../src/mix-transition.js';
+import {prepareMixTransition, renderSetBlend, type MixPreparationRuntime} from '../src/mix-transition.js';
+import {planAutomaticMix} from '../src/mix-planner.js';
+import {evaluateTransition, planTransitionSpec} from '../src/mix-evaluate.js';
 import {outputFrameAtSource, renderTimePitch, type PreparedTimePitch} from '../src/time-pitch.js';
 import {ContextDouble, NodeDouble, ParameterDouble, deferred, fixturePack} from './audio-double.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
 
 function audioBuffer(rate: number, frames: number, count = 1): AudioBuffer {
   const channels = Array.from({length: count}, () => new Float32Array(frames));
@@ -88,6 +91,46 @@ test('a mix becomes scheduled only after its processed buffer is ready', async (
   assert.ok(snapshot.mix?.summary && snapshot.mix.summary.processor === 'eutonos-wsola@1');
   assert.equal(context.sources[1]!.starts.length, 1);
   player.stop();
+});
+
+test('selected pair recipes render end-to-end and bind live A gain instead of a caller hint', async () => {
+  for (const recipe of ['filter-sweep', 'loudness-match'] as const) {
+    const {player} = await setup();
+    await player.scheduleMix({recipe, fromLevelGain: 3});
+    const summary = player.snapshot().mix!.summary!;
+    assert.equal(summary.recipe, recipe);
+    if (recipe === 'loudness-match') assert.equal(summary.levelMatch!.fromGain, 1, 'actual source gain overrides offline hint');
+    player.stop();
+  }
+});
+
+test('level matching compensates real WSOLA normalization and permits a safely attenuated hot native join', async () => {
+  const rate = 16000, context = new MixContext(), fromPcm = makeSetFixture({id: 'hot', bpm: 120, bars: 16, transitionEvidence: true});
+  const sourcePeak = nativeSamplePeak(fromPcm).value;
+  const toPcm = {...fromPcm, channels: fromPcm.channels.map(c => Float32Array.from(c, x => x * 0.99 / sourcePeak))};
+  const quietA = {...fromPcm, channels: fromPcm.channels.map(c => Float32Array.from(c, x => x * 0.2))};
+  const a = analyzeMixAudio(quietA), b = analyzeMixAudio(toPcm);
+  const plan = planAutomaticMix(a, b, {recipe: 'loudness-match', returnToOriginalTempo: true});
+  assert.ok(plan.kind === 'mix', JSON.stringify(plan));
+  // The set seam requires measured downbeats; real 16k fixture 120 BPM exceeds the gate.
+  assert.ok(b.structure.downbeatConfidence >= 0.65);
+  const loaded = await fixturePack(), template = loaded.pack.assets[1]!;
+  const buffer = audioBuffer(rate, toPcm.channels[0]!.length);
+  buffer.copyToChannel(new Float32Array(toPcm.channels[0]!), 0);
+  const recording = {asset: {...template, file: {...template.file, frames: buffer.length}, timing: {...template.timing!, bars: 16}}, buffer};
+  const ready = await renderSetBlend(context.audio, recording, plan, b, undefined, inline);
+  assert.ok(ready.plan.levelMatch!.renderGainApplied! < 1, 'real processor needed normalization');
+  const gain = ready.plan.levelMatch!.toGain;
+  const last = ready.incoming.buffer.getChannelData(0).at(-1)!;
+  assert.equal(last, buffer.getChannelData(0)[ready.nativeJoin.sourceFrame - 1]);
+  assert.ok(0.99 * gain <= ready.plan.levelMatch!.incomingPeakBudget + 1e-7);
+  let peak = 0; for (const x of ready.incoming.buffer.getChannelData(0)) peak = Math.max(peak, Math.abs(x) * gain);
+  assert.ok(peak <= ready.plan.levelMatch!.incomingPeakBudget + 1e-7);
+  const evaluated = evaluateTransition(quietA, toPcm, planTransitionSpec(ready.plan), {from: a, to: b},
+    {audio: {sampleRate: rate, channels: [ready.incoming.buffer.getChannelData(0)]}, entryFrame: ready.entryFrame});
+  assert.equal(evaluated.bSource, 'prepared', 'evaluate the exact compensated playback PCM, not the raw processor receipt');
+  assert.equal(evaluated.measurements!.levelMatch!.toGain, gain);
+  assert.ok(Number.isFinite(evaluated.measurements!.truePeakDbtp));
 });
 test('Stop during processing aborts and a late successful result cannot revive audio', async () => {
   const block = blockedRuntime(), {context, player} = await setup(block.runtime);

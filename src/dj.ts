@@ -410,7 +410,7 @@ export class DeterministicDj {
         commandId, commands: waiting ? [] : [commandId], queueCommandId: choice.queueCommandId,
         state: this.boundState(choice.asset), generation: this.renderer.clock.engineGeneration,
         bridgeState: requested === bridgeState ? requested : null};
-      if (this.renderer.routeFree) await this.renderer.scheduleMixTo(choice.asset.id, this.setBoundaryValue);
+      if (this.renderer.routeFree) await this.renderer.scheduleMixTo(choice.asset.id, this.setBoundaryValue, {...this.mixOptions});
       else if (this.handoff === 'hybrid') {
         // The seed derives from the command ID, so a recorded command replays the same bridge.
         const policy = hybridPolicyForRoute(this.renderer.pair.route);

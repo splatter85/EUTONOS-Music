@@ -89,6 +89,8 @@ export interface RecordingOptions {
   readonly allowUnreviewed?: boolean;
   readonly fadeInFrames?: number;
   readonly fadeOutFrames?: number;
+  /** Fixed per-entry gain outside all transition lanes; retained through native continuation. */
+  readonly levelGain?: number;
 }
 
 /** One-shot recording implementation of the S01 shared source seam. */
@@ -103,6 +105,7 @@ export class RecordedSource implements PlayableSource {
   private continuationAt: number | null = null;
   private gain: GainNode | null = null;
   private entryGain: GainNode | null = null;
+  private levelNode: GainNode | null = null;
   private mixGraph: MixAutomationGraph | null = null;
   private start: SourceStart | null = null;
   private entryFrame = 0;
@@ -113,12 +116,15 @@ export class RecordedSource implements PlayableSource {
   private mixEntryEndFrame: number | null = null;
   private readonly fadeIn: number;
   private readonly fadeOut: number;
+  private readonly fixedLevelGain: number;
 
   constructor(private readonly context: BaseAudioContext, readonly recording: DecodedRecording,
     private readonly destination: AudioNode, private readonly options: RecordingOptions = {}) {
     this.reference = {id: recording.asset.id, revision: recording.asset.revision};
     this.fadeIn = options.fadeInFrames ?? 0;
     this.fadeOut = options.fadeOutFrames ?? 0;
+    this.fixedLevelGain = options.levelGain ?? 1;
+    requireAudio(Number.isFinite(this.levelGain) && this.levelGain > 0 && this.levelGain <= 4, 'Recording level gain must be positive and at most +12 dB.');
     requireAudio([this.fadeIn, this.fadeOut].every(n => Number.isSafeInteger(n) && n >= 0),
       'Fades must use nonnegative integer output frames.');
   }
@@ -157,13 +163,17 @@ export class RecordedSource implements PlayableSource {
       this.entryGain.connect(this.gain);
     }
     this.node.connect(this.entryGain ?? this.gain);
-    this.gain.connect(this.destination);
+    if (this.levelGain !== 1) {
+      this.levelNode = this.context.createGain(); this.levelNode.gain.value = this.levelGain;
+      this.gain.connect(this.levelNode); this.levelNode.connect(this.destination);
+    } else this.gain.connect(this.destination);
     const entryNode = this.node;
     this.node.onended = () => {
       entryNode.disconnect();
       if (continuation) return; // native continuation owns EOF; no callback starts it
       if (this.phase !== 'released') this.phase = 'ended';
       this.gain?.disconnect();
+      this.levelNode?.disconnect();
       this.mixGraph?.release(); this.mixGraph = null;
     };
     if (continuation) {
@@ -175,6 +185,7 @@ export class RecordedSource implements PlayableSource {
         nativeNode.disconnect();
         if (this.phase !== 'released') this.phase = 'ended';
         this.gain?.disconnect();
+        this.levelNode?.disconnect();
         this.mixGraph?.release(); this.mixGraph = null;
       };
     }
@@ -376,6 +387,7 @@ export class RecordedSource implements PlayableSource {
     }
     this.mixGraph?.release(); this.mixGraph = null;
     this.entryGain?.disconnect(); this.entryGain = null;
+    this.levelNode?.disconnect(); this.levelNode = null;
     this.phase = 'released';
     this.node = null;
     this.gain = null;
@@ -383,6 +395,7 @@ export class RecordedSource implements PlayableSource {
   }
 
   get endFrame(): number { return this.finishFrame; }
+  get levelGain(): number { return this.fixedLevelGain; }
   /** Virtual frames: bounded processed entry followed by untouched native PCM. */
   get playbackFrames(): number {
     const native = this.recording.continuation;

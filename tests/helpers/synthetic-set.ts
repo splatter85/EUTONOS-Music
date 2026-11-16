@@ -15,6 +15,7 @@ export interface SyntheticSong {
   readonly id: string; readonly bpm: number; readonly bars?: number;
   readonly tonic?: number; readonly mode?: 'major' | 'minor';
   readonly seconds?: number; readonly stereo?: boolean; readonly transitionEvidence?: boolean;
+  readonly gain?: number;
 }
 
 /** Original sectioned fixture, with real accent/activity changes rather than mocked analysis. */
@@ -30,6 +31,7 @@ export function makeSetFixture(song: SyntheticSong, sampleRate = 16000): MixPcm 
       channel[i] = (channel[i]! * (beat % 4 === 0 ? 1 : 0.8) + harmony[i]! * 0.35) * (Math.floor(bar / 4) % 2 === 0 ? 1 : 0.5);
     }
   }
+  if (song.gain !== undefined) for (let i = 0; i < channel.length; i++) channel[i] = channel[i]! * song.gain;
   const cropped = song.seconds ? channel.slice(0, Math.round(song.seconds * sampleRate)) : channel;
   return {sampleRate, channels: song.stereo ? [cropped, new Float32Array(cropped)] : [cropped]};
 }

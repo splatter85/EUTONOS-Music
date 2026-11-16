@@ -1,5 +1,5 @@
 import {renderTimePitch} from './time-pitch.js';
-import {analyzeMixAudio} from './mix-analysis.js';
+import {analyzeMixAudio, measureMixLevel} from './mix-analysis.js';
 import {PREPARE_WORKER_PROTOCOL, type MixWorkerRequest, type MixWorkerResponse} from './mix-prepare.js';
 
 // Keep DOM and worker ambient libraries separate. This module is loaded ONLY as a worker.
@@ -18,7 +18,8 @@ scope.onmessage = (event): void => {
       const result = {from: analyzeMixAudio(event.data.from), to: analyzeMixAudio(event.data.to)};
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result}, []);
     } else if (event.data.kind === 'analyze-one') {
-      const result = analyzeMixAudio(event.data.audio, event.data.options);
+      const analysis = analyzeMixAudio(event.data.audio, event.data.options);
+      const result = {...analysis, level: measureMixLevel(event.data.levelAudio ?? event.data.audio)};
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one', result}, []);
     } else throw new Error('Unsupported prepare job kind.');
   } catch (error) {

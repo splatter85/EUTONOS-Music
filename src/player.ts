@@ -8,7 +8,7 @@ import type {ProceduralPlan} from './phrase-plan.js';
 import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
-import type {MixPlannerOptions, MixRecipe} from './mix-planner.js';
+import {isBeatmatchedRecipe, type LevelMatchPlan, type MixPlannerOptions, type MixRecipe} from './mix-planner.js';
 import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
   replanPreparedMix, renderSetBlend, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
@@ -42,6 +42,7 @@ export interface MixSnapshot {
     readonly outputFrames: number; readonly returnToOriginalTempo: boolean;
     /** Set blend: original B offset and owner-clock join, scheduled with the entry source. */
     readonly nativeJoin?: {readonly sourceFrame: number; readonly outputFrame: number; readonly at: ClockStamp};
+    readonly levelMatch?: LevelMatchPlan;
     readonly fromHash: string; readonly toHash: string;
     /** S18 set mode only. Bars count from 1 in the outgoing song's grid. */
     readonly set?: SetMixDetail;
@@ -367,11 +368,11 @@ export class SmallPlayer {
       const earliest = Math.max(entry, this.clock.currentFrame - from.start.at.frame + entry +
         this.leadFrames + 2 * this.clock.sampleRate, options.minimumFromFrame ?? 0);
       const ready = await prepareMixTransition(this.context, outgoing.recording, to,
-        {...options, minimumFromFrame: earliest}, controller.signal, this.mixRuntime);
+        {...options, minimumFromFrame: earliest, fromLevelGain: outgoing.levelGain}, controller.signal, this.mixRuntime);
       if (!current()) return;
       if (ready.kind === 'fallback') { await useAuthoredFallback(ready.reason); return; }
       incoming = new RecordedSource(this.context, ready.incoming, this.output,
-        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
+        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed, levelGain: ready.plan.levelMatch?.toGain ?? 1});
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
@@ -409,6 +410,7 @@ export class SmallPlayer {
           processor: ready.processed.processor, fromExitFrame: plan.fromExitFrame,
           toEntryFrame: plan.toEntryFrame, processedEntryFrame: ready.entryFrame,
           outputFrames: ready.incoming.buffer.length, returnToOriginalTempo: plan.returnToOriginalTempo,
+          ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
           fromHash: this.pair.from.file.sha256, toHash: this.pair.to.file.sha256}};
       incoming = null; // ownership transferred to this.voices
     } catch (error) {
@@ -608,7 +610,8 @@ export class SmallPlayer {
    * analyzed blend, analyzed cut, then a route-free crossfade or clean cut. Never consults an
    * authored route. Preparation happens before commit; nothing is started by a timer.
    */
-  async scheduleMixTo(targetId: string, boundary: SetBoundary = {bars: 4, anchor: 'song'}): Promise<void> {
+  async scheduleMixTo(targetId: string, boundary: SetBoundary = {bars: 4, anchor: 'song'}, options: MixPlannerOptions = {}): Promise<void> {
+    options = {...options};
     requireAudio(this.routeFree, 'Set transitions need a set pack.');
     requireAudio(SET_BOUNDARY_BARS.includes(boundary.bars) && (boundary.anchor === 'song' || boundary.anchor === 'entry'),
       'Unsupported set boundary.');
@@ -674,7 +677,8 @@ export class SmallPlayer {
         from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames},
         to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
           channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
-        sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar}});
+        sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
+        options: {...options, fromLevelGain: outgoing.levelGain}});
       let choice = choose(true);
       if (choice.kind === 'unavailable') {
         this.mix = {phase: 'unavailable', reason: choice.reason, summary: null};
@@ -706,7 +710,8 @@ export class SmallPlayer {
         prepared.entryFrame + plan.overlapFrames <= prepared.incoming.buffer.length,
       'The set transition does not have enough audio for its handover.');
       incoming = new RecordedSource(this.context, prepared.incoming, this.output,
-        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed});
+        {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed,
+          levelGain: 'levelMatch' in plan ? plan.levelMatch?.toGain ?? 1 : 1});
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
@@ -732,6 +737,7 @@ export class SmallPlayer {
           fromExitFrame: plan.fromExitFrame, toEntryFrame: plan.toEntryFrame, processedEntryFrame: prepared.entryFrame,
           outputFrames: prepared.incoming.buffer.length,
           ...(prepared.nativeJoin ? {nativeJoin: {...prepared.nativeJoin, at: joinAt!}} : {}),
+          ...('levelMatch' in plan && plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
           returnToOriginalTempo: 'returnToOriginalTempo' in plan ? plan.returnToOriginalTempo : false,
           fromHash: fromSet.asset.file.sha256, toHash: toAsset.file.sha256,
           set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
@@ -761,9 +767,9 @@ export class SmallPlayer {
       entryFrame: number; mapping: TimePitchMapping | null; processor: string;
       sourceStartFrame?: number; nativeJoin?: {sourceFrame: number; outputFrame: number}}> {
     requireAudio(choice.kind !== 'unavailable', choice.kind === 'unavailable' ? choice.reason : '');
-    if (choice.kind === 'analyzed' && choice.plan.recipe === 'blend') {
+    if (choice.kind === 'analyzed' && isBeatmatchedRecipe(choice.plan.recipe)) {
       const ready = await renderSetBlend(this.context, to, choice.plan, analysisB!, signal, this.mixRuntime);
-      return {plan: choice.plan, incoming: ready.incoming, entryFrame: ready.entryFrame,
+      return {plan: ready.plan, incoming: ready.incoming, entryFrame: ready.entryFrame,
         mapping: ready.mapping, sourceStartFrame: ready.sourceStartFrame, nativeJoin: ready.nativeJoin,
         processor: ready.processor};
     }
