@@ -1,4 +1,4 @@
-/** EMS-S01 data intake. Private inventory and explicit two-take audition; never a review promotion. */
+/** EMS-S01/EMF-S18 data intake. Private inventory, explicit two-take audition or a rated set; never a review promotion. */
 import {createHash, randomUUID} from 'node:crypto';
 import {lstat, mkdir, open, readdir, realpath, rename, rm, writeFile} from 'node:fs/promises';
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
@@ -10,7 +10,11 @@ import {MAX_AUDITION_BYTES} from './browser-pack.js';
 export const RATED_EXPORT_VERSION = 'music-studio.rated-export.v1';
 export const RATED_CATALOG_VERSION = 'eutonos.rated-catalog.v1';
 export const RATED_INTAKE_LIMITS = Object.freeze({jsonBytes: 1024 * 1024, fileBytes: 256 * 1024 * 1024,
-  totalBytes: 8 * 1024 * 1024 * 1024, takes: 4096, pairBytes: MAX_AUDITION_BYTES});
+  totalBytes: 8 * 1024 * 1024 * 1024, takes: 4096, pairBytes: MAX_AUDITION_BYTES,
+  /** EMF-S18 set budget: total dj_audio bytes and take count of one set pack (no pair cap applies). */
+  setBytes: 512 * 1024 * 1024, setTakes: 32});
+/** `loved-liked` selects every love and like take; an explicit list names takes (love/like only). */
+export type SetSelection = 'loved-liked' | readonly string[];
 export type TakeRating = 'love' | 'like' | 'dislike';
 export interface RatedFile {path: string; sha256: string; bytes: number}
 export interface RatedTake {
@@ -24,6 +28,10 @@ export interface RatedCatalog {
   takes: RatedTake[];
   pair: null | {take_ids: [string, string]; asset_ids: [string, string]; manifest: 'pack/manifest.json';
     grid: 'requested-not-measured'; transition: 'zero-overlap-cut'; eligibility: 'unreviewed'; max_bytes: number};
+  /** EMF-S18 additive field; absent in catalogues written before S18 (readers must treat absence as null). */
+  set?: null | {selection: 'loved-liked' | 'explicit'; take_ids: string[]; asset_ids: string[]; manifest: 'pack/manifest.json';
+    grid: 'requested-not-measured'; transition: 'none-authored (DJ decides)'; eligibility: 'unreviewed';
+    order: 'catalog'; total_bytes: number; max_bytes: number; max_takes: number};
   limits: string[];
 }
 const digest = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -108,6 +116,29 @@ async function sourceReader(directory: string) {
   };
 }
 
+type ScratchReader = Awaited<ReturnType<typeof sourceReader>>;
+/** One requested-grid, unreviewed recording entry; PCM format and duration are re-checked from the copied audition bytes. */
+async function recordingAsset(read: ScratchReader, delivery: string, t: RatedTake, id: string, where: string) {
+  const bytes = await read(t.dj_audio.path, MAX_AUDIO_BYTES), info = readPcm16Wav(bytes);
+  if (Math.abs(info.frames / info.sample_rate - t.duration_seconds) > Math.max(0.05, 1 / info.sample_rate)) {
+    bad(t.id, 'duration differs from full-length audition audio');
+  }
+  if (t.tempo.bpm === null) bad(t.id, 'requested BPM is unknown; a requested grid cannot be assigned');
+  const bpm = t.tempo.bpm;
+  const bars = Math.floor(info.frames * bpm / (240 * info.sample_rate));
+  if (bars < 2 || bars > 4096) bad(where, 'each take needs at least two whole bars and at most 4096 bars');
+  // Round in the same frame domain as the pack validator, keeping every original tail frame.
+  if (quartersToFrames(bars * 4, bpm, info.sample_rate) > info.frames + 1) bad(where, 'whole-bar body exceeds the audio');
+  await writeFile(join(delivery, `${id}.wav`), bytes);
+  return {id, revision: 1, title: t.title, source_kind: 'recording', source: `${id}.wav`, expected_sha256: t.dj_audio.sha256,
+    rights: {origin: 'Owner-selected local Music Studio rated export; source identity and rights unverified.',
+      creator: 'As recorded in the private recipe; not verified', license: 'Owner-requested local audition only; no redistribution grant',
+      allowed_uses: ['playback'], evidence: 'PROVENANCE.md'},
+    eligibility: 'unreviewed', genres: [], states: ['browse', 'explore', 'drive', 'surge', 'afterglow'], key: null,
+    harmony_pitch_classes: null, timing: {bpm, meter: [4, 4], bars, phrase_bars: 1, first_downbeat_frame: 0},
+    cues: [{id: 'entry', kind: 'entry', position_quarters: 0}, {id: 'exit', kind: 'exit', position_quarters: (bars - 1) * 4}]};
+}
+
 function pairAssetId(id: string, side: 'a' | 'b'): string { return `s16-${side}-${digest(id).slice(0, 24)}`; }
 async function buildPair(scratch: string, catalog: RatedCatalog, ids: readonly [string, string]): Promise<void> {
   if (ids[0] === ids[1]) bad('pair', 'choose two distinct take ids');
@@ -120,27 +151,8 @@ async function buildPair(scratch: string, catalog: RatedCatalog, ids: readonly [
   await mkdir(delivery);
   const read = await sourceReader(scratch);
   const assets = [];
-  for (const [index, t] of [a, b].entries()) {
-    const bytes = await read(t.dj_audio.path, MAX_AUDIO_BYTES), info = readPcm16Wav(bytes);
-    if (Math.abs(info.frames / info.sample_rate - t.duration_seconds) > Math.max(0.05, 1 / info.sample_rate)) {
-      bad(t.id, 'duration differs from full-length audition audio');
-    }
-    const bpm = t.tempo.bpm!;
-    const bars = Math.floor(info.frames * bpm / (240 * info.sample_rate));
-    if (bars < 2 || bars > 4096) bad('pair', 'each take needs at least two whole bars and at most 4096 bars');
-    // Round in the same frame domain as the pack validator, keeping every original tail frame.
-    if (quartersToFrames(bars * 4, bpm, info.sample_rate) > info.frames + 1) bad('pair', 'whole-bar body exceeds the audio');
-    // The bounded DJ's initial deterministic sort must pick the directed route's A first.
-    const id = pairAssetId(t.id, index === 0 ? 'a' : 'b');
-    await writeFile(join(delivery, `${id}.wav`), bytes);
-    assets.push({id, revision: 1, title: t.title, source_kind: 'recording', source: `${id}.wav`, expected_sha256: t.dj_audio.sha256,
-      rights: {origin: 'Owner-selected local Music Studio rated export; source identity and rights unverified.',
-        creator: 'As recorded in the private recipe; not verified', license: 'Owner-requested local audition only; no redistribution grant',
-        allowed_uses: ['playback'], evidence: 'PROVENANCE.md'},
-      eligibility: 'unreviewed', genres: [], states: ['browse', 'explore', 'drive', 'surge', 'afterglow'], key: null,
-      harmony_pitch_classes: null, timing: {bpm, meter: [4, 4], bars, phrase_bars: 1, first_downbeat_frame: 0},
-      cues: [{id: 'entry', kind: 'entry', position_quarters: 0}, {id: 'exit', kind: 'exit', position_quarters: (bars - 1) * 4}]});
-  }
+  // The bounded DJ's initial deterministic sort must pick the directed route's A first.
+  for (const [index, t] of [a, b].entries()) assets.push(await recordingAsset(read, delivery, t, pairAssetId(t.id, index === 0 ? 'a' : 'b'), 'pair'));
   await writeFile(join(delivery, 'PROVENANCE.md'), 'Owner-requested local audition, not a rights certification. No redistribution or sample reuse is granted.\nRatings are owner taste labels, not listening review.\n4/4, frame-zero downbeat and constant tempo are requested-grid audition assumptions, not measured facts.\nThe zero-overlap cut may shorten the outgoing take and cut its tail. Full source and audition audio are retained privately.\nListening: NOT TESTED by the importer.\n');
   await writeFile(join(delivery, 'delivery.json'), JSON.stringify({schema_version: 'em.producer-delivery.v0',
     producer: {id: 'music-studio-rated-export', revision: 1, kind: 'owner-local', description: 'Explicit rated-takes audition, requested grid only'},
@@ -153,9 +165,57 @@ async function buildPair(scratch: string, catalog: RatedCatalog, ids: readonly [
     grid: 'requested-not-measured', transition: 'zero-overlap-cut', eligibility: 'unreviewed', max_bytes: MAX_AUDITION_BYTES};
 }
 
+/** Stable per take, independent of which other takes a set selects. */
+export function setAssetId(id: string): string { return `s18-${digest(id).slice(0, 24)}`; }
+/** Selects a set in catalog order (love set, then like set, each in export order) and refuses dislikes. */
+export function selectSet(catalog: RatedCatalog, selection: SetSelection): RatedTake[] {
+  let chosen: RatedTake[];
+  if (selection === 'loved-liked') chosen = catalog.takes.filter(t => t.rating === 'love' || t.rating === 'like');
+  else {
+    if (!Array.isArray(selection)) bad('set', 'expected loved-liked or a list of take ids');
+    const wanted = new Set<string>();
+    for (const id of selection) {
+      if (typeof id !== 'string' || wanted.has(id)) bad('set', 'explicit take ids must be distinct strings');
+      const take = catalog.takes.find(t => t.id === id);
+      if (!take) bad('set', `selected take ${id} is not in the rated inventory`);
+      if (take.rating === 'dislike') bad('set', `selected take ${id} is rated dislike; sets admit love and like takes only`);
+      wanted.add(id);
+    }
+    chosen = catalog.takes.filter(t => wanted.has(t.id));
+  }
+  if (chosen.length < 2) bad('set', 'a set needs at least two love or like takes');
+  if (chosen.length > RATED_INTAKE_LIMITS.setTakes) bad('set', `SET_TOO_LARGE: ${chosen.length} takes exceeds the ${RATED_INTAKE_LIMITS.setTakes}-take set budget; choose an explicit list`);
+  const total = chosen.reduce((sum, t) => sum + t.dj_audio.bytes, 0);
+  if (total > RATED_INTAKE_LIMITS.setBytes) {
+    bad('set', `SET_TOO_LARGE: ${total} audition bytes exceeds the ${RATED_INTAKE_LIMITS.setBytes / (1024 * 1024)} MiB set budget; original audio was not shortened`);
+  }
+  return chosen;
+}
+async function buildSet(scratch: string, catalog: RatedCatalog, selection: SetSelection): Promise<void> {
+  const chosen = selectSet(catalog, selection);
+  const delivery = join(scratch, '.delivery');
+  await mkdir(delivery);
+  const read = await sourceReader(scratch);
+  const assets = [];
+  for (const t of chosen) assets.push(await recordingAsset(read, delivery, t, setAssetId(t.id), 'set'));
+  await writeFile(join(delivery, 'PROVENANCE.md'), 'Owner-requested local set, not a rights certification. No redistribution or sample reuse is granted.\nRatings are owner taste labels, not listening review. Dislikes are never selected.\n4/4, frame-zero downbeat and constant tempo are requested-grid assumptions, not measured facts. Requested BPMs may differ between takes.\nNo transition routes are authored; any mix between takes is decided later by the DJ and is not reviewed here.\nFull source and audition audio are retained privately.\nListening: NOT TESTED by the importer.\n');
+  await writeFile(join(delivery, 'delivery.json'), JSON.stringify({schema_version: 'em.producer-delivery.v0',
+    producer: {id: 'music-studio-rated-export', revision: 1, kind: 'owner-local', description: 'Rated-takes set, requested grid only, no authored routes'},
+    pack: {id: 's18-rated-set', revision: 1}, assets, palettes: [], recipes: [], routes: []}, null, 2) + '\n');
+  const total = chosen.reduce((sum, t) => sum + t.dj_audio.bytes, 0);
+  // Audio plus delivery JSON and provenance; the importer's 256 MiB producer default stays unchanged for other callers.
+  await importDelivery(delivery, join(scratch, 'pack'), {maxDeliveryBytes: RATED_INTAKE_LIMITS.setBytes + 2 * 1024 * 1024});
+  await rm(delivery, {recursive: true, force: true});
+  catalog.set = {selection: selection === 'loved-liked' ? 'loved-liked' : 'explicit', take_ids: chosen.map(t => t.id),
+    asset_ids: assets.map(a => a.id), manifest: 'pack/manifest.json', grid: 'requested-not-measured',
+    transition: 'none-authored (DJ decides)', eligibility: 'unreviewed', order: 'catalog', total_bytes: total,
+    max_bytes: RATED_INTAKE_LIMITS.setBytes, max_takes: RATED_INTAKE_LIMITS.setTakes};
+}
+
 /** Imports to a NEW directory. Any validation/pair failure removes scratch and publishes nothing. */
 export async function importRatedTakes(sourceDirectory: string, outputDirectory: string,
-  options: {pair?: readonly [string, string]} = {}): Promise<RatedCatalog> {
+  options: {pair?: readonly [string, string]; set?: SetSelection} = {}): Promise<RatedCatalog> {
+  if (options.pair && options.set) bad('options', 'choose either --pair or --set, not both');
   const source = await realpath(sourceDirectory), output = resolve(outputDirectory);
   // Resolve existing parents before creating anything: a junction can make a
   // lexically external destination (including missing parents) enter the export.
@@ -186,14 +246,17 @@ export async function importRatedTakes(sourceDirectory: string, outputDirectory:
   await mkdir(dirname(output), {recursive: true});
   const scratch = join(dirname(output), `.rated-${randomUUID()}`);
   await mkdir(scratch);
-  const catalog: RatedCatalog = {schema_version: RATED_CATALOG_VERSION, takes: [], pair: null, limits: [
+  const catalog: RatedCatalog = {schema_version: RATED_CATALOG_VERSION, takes: [], pair: null, set: null, limits: [
     'Private inventory preserves original audio and recipe bytes and their hashes; no audio is published.',
     'Ratings are owner taste labels. Dislikes are retained as negative examples and never selected automatically.',
     'Requested tempo/key are not measured facts; ratings establish no rights, listening review or musical quality.',
     'Optional pair is explicit local unreviewed audition: requested 4/4 grid at frame zero, zero-overlap cut; outgoing tail may be cut.',
     'Technical import and hash checks only. Listening: NOT TESTED.',
-    'Inventory file facts and duration are recorded from the export; PCM format and duration are independently checked for the selected pair only.',
+    'Inventory file facts and duration are recorded from the export; PCM format and duration are independently checked for the selected pair or set only.',
   ]};
+  if (options.set) {
+    catalog.limits.push('Optional set is explicit local unreviewed material: love/like takes only, requested grid per take (BPMs may differ), no authored routes; the DJ decides transitions later. The current browser loader cannot yet play a set.');
+  }
   const groups = new Set<TakeRating>(), ids = new Set<string>();
   try {
     for (const entry of root.sets) {
@@ -221,6 +284,7 @@ export async function importRatedTakes(sourceDirectory: string, outputDirectory:
       }
     }
     if (options.pair) await buildPair(scratch, catalog, options.pair);
+    if (options.set) await buildSet(scratch, catalog, options.set);
     await writeFile(join(scratch, 'catalog.json'), JSON.stringify(catalog, null, 2) + '\n');
     // A new output only: never overwrite a previous owner's inventory.
     if (await lstat(output).then(() => true, () => false)) bad('output', 'OUTPUT_EXISTS: output appeared during import');

@@ -37,6 +37,10 @@ The audition remains **unreviewed** and owner-local. Use a zero-overlap cut with
 
 Use ignored `local/s16-rated/` for local output. Do not commit generated audio, owner-local export contents or private recipes. Synthetic checks and actual local handoff evidence must be reported separately from listening; neither means the owner accepted the music.
 
+## Set intake (EMF-S18 increment 1)
+
+Instead of `--pair`, `--set loved-liked` puts every love and like take into one unreviewed pack; `--set TAKE_ID,TAKE_ID,...` names love or like takes explicitly. Dislikes are always refused. `--set` and `--pair` cannot be combined. The set pack has no authored routes, so requested BPMs may differ; each take keeps a requested, unmeasured grid and null key/harmony. A set is limited to 32 takes and 512 MiB of audition audio instead of the 128 MiB pair cap. The catalogue's additive `set` field records the selection; `pair` behaves as before. The current browser loader cannot play a set yet, so import it to its own folder, for example `local/s18-rated-set/`, and keep `local/s16-rated/` for the pair demo. [S18 set mode](S18_SET_MODE.md) owns the contract and limits.
+
 After the checked handoff, [S10 owner listening](S10_LISTENING_SCORECARD.md) is next; Mission Control integration waits for that decision.
 
 ## Current engineering evidence

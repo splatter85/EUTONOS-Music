@@ -25,6 +25,8 @@ export const MAX_DROPPED_TAIL_PEAK = 0.001;
 const MAX_JSON_BYTES = 1024 * 1024;
 /** Everything one delivery may make the importer read, counting repeated sources each time. */
 export const MAX_DELIVERY_BYTES = 256 * 1024 * 1024;
+/** Hard ceiling for an explicitly raised delivery budget (EMF-S18 rated set: 512 MiB audio plus JSON/provenance). */
+export const MAX_SET_DELIVERY_BYTES = 514 * 1024 * 1024;
 /** Ids that name this repository's own S01 fixtures, recipe and route; an import cannot claim them. */
 const RESERVED_ID = /^s01-/;
 const RESERVED = new Set(['manifest.json', 'import.json']);
@@ -200,7 +202,13 @@ function generatorChecks(pack: AudioPack): GeneratorCheck[] {
  * Imports `<deliveryDir>/delivery.json` into a new pack directory. The output must not exist;
  * the pack is built beside it and renamed into place only after loadPack accepts it.
  */
-export async function importDelivery(deliveryDir: string, outputDir: string): Promise<{pack: AudioPack; receipt: ImportReceipt}> {
+export async function importDelivery(deliveryDir: string, outputDir: string,
+  options: {maxDeliveryBytes?: number} = {}): Promise<{pack: AudioPack; receipt: ImportReceipt}> {
+  // Callers may raise the read budget for a bounded owner-local set; producers keep the 256 MiB default.
+  const maxDelivery = options.maxDeliveryBytes ?? MAX_DELIVERY_BYTES;
+  if (!Number.isSafeInteger(maxDelivery) || maxDelivery <= 0 || maxDelivery > MAX_SET_DELIVERY_BYTES) {
+    fail('INVALID_DELIVERY', 'options.maxDeliveryBytes', `expected a positive integer at most ${MAX_SET_DELIVERY_BYTES / (1024 * 1024)} MiB`);
+  }
   const output = resolve(outputDir);
   if (await stat(output).then(() => true, () => false)) fail('OUTPUT_EXISTS', basename(output), 'choose a new output directory');
   const readFile = await packReader(deliveryDir);
@@ -208,7 +216,7 @@ export async function importDelivery(deliveryDir: string, outputDir: string): Pr
   const read = async (path: string) => {
     const bytes = await readFile(path);
     total += bytes.length;
-    if (total > MAX_DELIVERY_BYTES) fail('INVALID_DELIVERY', path, 'the delivery exceeds 256 MiB in total');
+    if (total > maxDelivery) fail('INVALID_DELIVERY', path, `the delivery exceeds ${maxDelivery / (1024 * 1024)} MiB in total`);
     return bytes;
   };
   const raw = await read('delivery.json');

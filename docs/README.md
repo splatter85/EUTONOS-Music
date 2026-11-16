@@ -24,6 +24,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S07 app](S07_APP.md) | Integrated demo, original/imported palette comparison, repeatable gates, review and Windows-only proof limits |
 | [S09 FL import](S09_FL_IMPORT.md) | Real FL renders through the unchanged contract, owner-local rights, fade-cut shaping, per-route hybrid policies and handoff measurements |
 | [Rated-takes handoff](S16_RATED_TAKES.md) | EMS-S01 export and EMF-S16 owner-local catalogue and explicit DJ audition contract; [export evidence](handoffs/EMS-S01-HANDOFF.md), [intake evidence](handoffs/EMF-S16-HANDOFF.md) |
+| [DJ set mode](S18_SET_MODE.md) | EMF-S18 (in progress): rated love/like set intake into one zero-route pack; later set playback and UI |
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
 | [EUTONOS Studio](STUDIO_APP.md) | The three-tab page (Produce, DJ Booth, Library) over the existing engines, the optional Music Studio generator link and its browser check |
