@@ -5,7 +5,7 @@ import {eligibleForPlayback} from './pack.js';
 import type {AudioAsset, MusicState, VersionRef} from './pack-types.js';
 import {compilePhrase, type S01PhraseState} from './phrase-plan.js';
 import type {ClockStamp} from './playable-source.js';
-import {SmallPlayer, type PlayerSnapshot} from './player.js';
+import {SET_BOUNDARY_BARS, SmallPlayer, type PlayerSnapshot, type SetBoundary} from './player.js';
 import type {MixPlannerOptions} from './mix-planner.js';
 
 export type DjExecutionStatus = 'pending' | 'queued' | 'scheduled' | 'started' | 'completed'
@@ -84,6 +84,10 @@ export class DeterministicDj {
   private handoff: DjHandoff;
   private readonly bridgeExit: HybridBridgeExit;
   private mixOptions: MixPlannerOptions;
+  /** S18 set mode: the boundary used by the next Next (Auto sets `entry` + N bars). */
+  private setBoundaryValue: SetBoundary = {bars: 4, anchor: 'song'};
+  /** S18 set mode: a Next is outstanding until its transition completes, fails or is cancelled. */
+  private armed = false;
 
   constructor(private readonly renderer: SmallPlayer, private readonly loaded: LoadedBrowserPack,
     initialState: MusicState = 'explore', options: DjOptions = {}) {
@@ -95,9 +99,11 @@ export class DeterministicDj {
     }
     this.recordings = loaded.pack.assets.filter(a => a.source_kind === 'recording')
       .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    const supported = new Set([renderer.pair.from.id, renderer.pair.to.id]);
+    // S18: a set player has no authored pair; every eligible set recording is available.
+    const supported = new Set(renderer.routeFree ? this.recordings.map(a => a.id) : [renderer.pair.from.id, renderer.pair.to.id]);
     this.available = new Set(this.recordings.filter(a => supported.has(a.id)
-      && loaded.files.has(a.file.path) && eligibleForPlayback(a, loaded.allowFixtures, loaded.allowUnreviewed)).map(a => a.id));
+      && (loaded.files.has(a.file.path) || loaded.lazy?.has(a.file.path) === true)
+      && eligibleForPlayback(a, loaded.allowFixtures, loaded.allowUnreviewed)).map(a => a.id));
     const genres = [...new Set(this.recordings.flatMap(a => [...a.genres]))].sort();
     this.control = new ControlContract({
       tracks: this.recordings.map(a => ({id: a.id, available: this.available.has(a.id)})),
@@ -165,6 +171,18 @@ export class DeterministicDj {
   get handoffMode(): DjHandoff { return this.handoff; }
   /** Options apply to the next selection; prepared/committed audio keeps its plan. */
   setMixOptions(options: MixPlannerOptions): void { this.mixOptions = {...options}; }
+  /** S18: true when the renderer plays a route-free set. */
+  get setMode(): boolean { return this.renderer.routeFree; }
+  /** S18: the boundary for later Next requests; a committed transition keeps its own. */
+  setSetBoundary(boundary: SetBoundary): void {
+    if (!SET_BOUNDARY_BARS.includes(boundary.bars) || (boundary.anchor !== 'song' && boundary.anchor !== 'entry')) {
+      throw new Error('Unsupported set boundary.');
+    }
+    this.setBoundaryValue = {...boundary};
+  }
+  get setBoundary(): SetBoundary { return {...this.setBoundaryValue}; }
+  /** S18: a Next is outstanding (preparing or scheduled). */
+  get nextArmed(): boolean { return this.armed; }
 
   async dispose(): Promise<void> {
     this.sync();
@@ -186,6 +204,7 @@ export class DeterministicDj {
           if (this.startingId) this.outcome(this.startingId, 'cancelled', 'Paused before start committed.');
           this.startTask = null;
           this.invalidatePreparation('Paused before preparation completed.');
+          this.armed = this.armed && this.transitionPlan !== null;
           const task = this.renderer.pause();
           await task;
           this.outcome(request.commandId, 'applied', 'Output gated and the audio clock paused.');
@@ -201,6 +220,7 @@ export class DeterministicDj {
           : 'Hold released. Rejected targets are not replayed.');
         break;
       case 'cancelNext': {
+        this.armed = false;
         this.invalidatePreparation('Pending selection cancelled.');
         if (!this.cancelFuture('cancelled', 'Pending selection cancelled; queue entries retained.')) {
           this.outcome(request.commandId, 'blocked', 'The transition has started. It will finish; Stop remains immediate.');
@@ -240,7 +260,23 @@ export class DeterministicDj {
         this.outcome(request.commandId, 'applied', 'Queue entry removed. Use Next or Play to schedule the remaining head.');
         break;
       }
+      case 'reorderQueue': {
+        this.sync();
+        const priorStatus = this.operations.get(request.queueCommandId)?.execution.status;
+        if (priorStatus === 'started' || priorStatus === 'completed') {
+          this.outcome(request.commandId, 'blocked', 'That entry has already started.');
+          break;
+        }
+        // Set mode re-targets an outstanding Next to the new head; otherwise order affects later picks only.
+        if (this.renderer.routeFree && (this.armed || this.transitionPlan || this.preparing)) await this.select(request.commandId);
+        else {
+          if (this.preparing) this.invalidatePreparation('Queue order changed before preparation completed.');
+          this.outcome(request.commandId, 'applied', 'Queue reordered. The new head is used by the next Next or Play.');
+        }
+        break;
+      }
       case 'setState': case 'requestGenre': case 'queueTrack': case 'nextSong':
+        if (request.type === 'nextSong' && this.renderer.routeFree) this.armed = true;
         await this.select(request.commandId);
         break;
     }
@@ -265,7 +301,8 @@ export class DeterministicDj {
     this.sourceStates.clear();
     const asset = selection.asset;
     const target = this.boundState(asset);
-    const task = this.renderer.play(asset.id === this.renderer.pair.from.id ? 'a' : 'b', ownership);
+    const task = this.renderer.routeFree ? this.renderer.playAsset(asset.id, ownership)
+      : this.renderer.play(asset.id === this.renderer.pair.from.id ? 'a' : 'b', ownership);
     this.startTask = task;
     this.startingId = commandId;
     this.startingQueueCommandId = selection.queueCommandId;
@@ -330,10 +367,15 @@ export class DeterministicDj {
       this.preparing = null;
       return;
     }
+    const replaced = this.transitionPlan;
     if (!this.cancelTransition('superseded', 'A newer selection replaced the future handoff.')) {
       this.outcome(commandId, 'blocked', 'The transition has started; it will finish.');
       this.preparing = null;
       return;
+    }
+    // S18: a reordered entry whose transition was replaced is still queued, not superseded.
+    if (replaced?.queueCommandId && this.control.snapshot().queue.some(q => q.commandId === replaced.queueCommandId)) {
+      this.outcome(replaced.queueCommandId, 'queued', 'Still queued; another entry now plays next.', replaced.source.id);
     }
     if (!choice.asset) {
       if (!waiting) this.outcome(commandId, 'no-match', choice.reason);
@@ -345,6 +387,18 @@ export class DeterministicDj {
       this.preparing = null;
       return;
     }
+    if (this.renderer.routeFree && !this.armed) {
+      // S18: queue edits never move the music by themselves; Next or Auto does.
+      if (!waiting) this.outcome(commandId, 'queued', 'Waiting for Next or Auto; the playing song continues.', choice.asset.id);
+      this.preparing = null;
+      return;
+    }
+    if (this.renderer.routeFree && this.handoff !== 'mix') {
+      this.armed = false;
+      this.outcome(commandId, 'no-match', 'A set has no authored routes; direct and hybrid handoffs are unavailable. Use automatic mix.', choice.asset.id);
+      this.preparing = null;
+      return;
+    }
     try {
       const requested = this.control.snapshot().requested.state;
       const bridgeState = bridgeStateFor(requested);
@@ -352,7 +406,8 @@ export class DeterministicDj {
         commandId, commands: waiting ? [] : [commandId], queueCommandId: choice.queueCommandId,
         state: this.boundState(choice.asset), generation: this.renderer.clock.engineGeneration,
         bridgeState: requested === bridgeState ? requested : null};
-      if (this.handoff === 'hybrid') {
+      if (this.renderer.routeFree) await this.renderer.scheduleMixTo(choice.asset.id, this.setBoundaryValue);
+      else if (this.handoff === 'hybrid') {
         // The seed derives from the command ID, so a recorded command replays the same bridge.
         const policy = hybridPolicyForRoute(this.renderer.pair.route);
         if (!policy) throw new Error(`No hybrid handoff policy covers route ${this.renderer.pair.route.id}.`);
@@ -368,6 +423,7 @@ export class DeterministicDj {
         this.outcome(commandId, 'cancelled', 'The transition was not committed.');
       }
     } catch (error) {
+      if (epoch === this.selectionEpoch) this.armed = false;
       if (epoch === this.selectionEpoch && !waiting) this.outcome(commandId, 'no-match',
         `${explanation(error)} Current audio is unchanged and queued entries are retained.`, choice.asset.id);
     } finally {
@@ -384,7 +440,16 @@ export class DeterministicDj {
       : this.recordings.filter(a => a.id !== current && a.states.includes(snapshot.requested.state)
         && (snapshot.requested.genreId === null || a.genres.includes(snapshot.requested.genreId)));
     const eligible = candidates.filter(a => this.available.has(a.id));
-    const asset = eligible.find(a => current === null || current === this.renderer.pair.from.id && a.id === this.renderer.pair.to.id);
+    let asset: AudioAsset | undefined;
+    if (this.renderer.routeFree) {
+      // S18 any-to-any: any eligible song other than the one playing. Without a queue head the
+      // set continues in pack (catalogue) order after the current song, wrapping once.
+      const order = this.renderer.setSongs().map(a => a.id);
+      const at = current === null ? -1 : order.indexOf(current);
+      const ranked = [...eligible].sort((x, y) =>
+        ((order.indexOf(x.id) - at + order.length) % order.length) - ((order.indexOf(y.id) - at + order.length) % order.length));
+      asset = ranked.find(a => current === null || a.id !== current);
+    } else asset = eligible.find(a => current === null || current === this.renderer.pair.from.id && a.id === this.renderer.pair.to.id);
     const reason = head
       ? `Manual queue head ${head.trackId} has no checked route from ${current ?? 'the stopped player'}. Remove it or Stop and Play it explicitly.`
       : `No eligible ${current ? 'different ' : ''}recording and checked route match ${snapshot.requested.state}${snapshot.requested.genreId ? ` / ${snapshot.requested.genreId}` : ''}. Current audio may finish naturally; no substitute or loop is invented.`;
@@ -461,6 +526,7 @@ export class DeterministicDj {
     this.transitionPlan = null;
     this.startAttempt = null;
     this.transitionAttempt = null;
+    this.armed = false;
     this.control.clearPrepared();
   }
 
@@ -509,9 +575,12 @@ export class DeterministicDj {
         this.updatePlan(plan, 'scheduled', 'The procedural bridge has entered; B enters at the bridge exit. It can no longer be cancelled; Stop remains immediate.');
       }
       if (plan.phase === 'scheduled' && player.currentFrame >= plan.at.frame) {
-        if (plan.queueCommandId) {
+        const reserved = plan.queueCommandId;
+        if (reserved) {
           const control = this.control.snapshot();
-          if (control.queue[0]?.commandId === plan.queueCommandId) this.control.acknowledgeQueueHead(plan.queueCommandId, control.revision);
+          if (control.queue[0]?.commandId === reserved) this.control.acknowledgeQueueHead(reserved, control.revision);
+          // S18: a reserved entry reordered away from the head is still removed once it starts.
+          else if (control.queue.some(q => q.commandId === reserved)) this.control.acknowledgeQueueEntry(reserved, control.revision);
         }
         plan = {...plan, phase: 'started'};
         this[key] = plan;
@@ -519,6 +588,7 @@ export class DeterministicDj {
       }
       if (plan.phase === 'started' && (plan.kind === 'start' || player.currentFrame >= plan.end!.frame)) {
         this.updatePlan(plan, 'completed', plan.kind === 'start' ? 'Playback start confirmed by the renderer clock.' : 'The renderer clock reached the handoff end.');
+        if (key === 'transitionPlan') this.armed = false;
         this[key] = null;
       }
     }
