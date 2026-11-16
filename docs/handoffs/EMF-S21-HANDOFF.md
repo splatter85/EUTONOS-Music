@@ -4,7 +4,7 @@
 **Slice:** EMF-S21 Part A. Part B is not started.
 **Disposition:** Part A BUILT on its worker branch, pending coordinator review and merge. The slice stays IN PROGRESS until Part A is merged and Part B is done or rescoped.
 **Environment:** PC, Windows 11, Node 26, headless Chromium (Playwright).
-**Base / branch:** `work/emf-s21-transitions` from `6b88d25`. Tested source: see [Verification](#verification-and-limits).
+**Base / branch:** `work/emf-s21-transitions` from `6b88d25`. Tested source: `4dca83ae786b5b2ebe39817ad27964aeefff3464` (clean tree).
 **Publication:** a local commit on the worker branch only. No merge, no push, no native board change (coordinator-owned).
 
 ## Assignment and scope
@@ -47,8 +47,8 @@ No audio, owner songs, credentials or derived private data were added. The optio
 
 | Command or check | Actual result | Evidence / limit |
 | --- | --- | --- |
-| `npm run check` (Windows) | RESULT_CHECK | build, Node tests, fixtures check, pack validation, S11 demo |
-| `npm run check:browser` (Windows) | RESULT_BROWSER | all nine browser scripts, including the new S21 set readout checks |
+| `npm run check` (Windows) | PASS (exit 0): 592 tests, 592 pass, 0 fail, 0 cancelled, 0 skipped; fixtures, validation and S11 demo passed | build, Node tests, fixtures check, pack validation, S11 demo |
+| `npm run check:browser` (Windows) | PASS (exit 0): all nine scripts in order (browser, s11, studio 15 checks, mix, phone, set 18 checks, deck, set-analysis, mix pre-check 7 checks), headless Chromium 151 | all nine browser scripts, including the new S21 set readout checks |
 | macOS / Linux | NOT RUN | not reachable from this PC |
 
 Audio was **rendered offline** in tests and checks only. It was **not played on physical output** and **not auditioned**. Listening is NOT TESTED. Passing safety limits does not mean a transition sounds good. `transition-safety@1` limits are engineering limits, not calibrated against listening.
@@ -81,7 +81,7 @@ Audio was **rendered offline** in tests and checks only. It was **not played on 
 ## Next handoff
 
 **Exactly one next actionable slice:** coordinator review and merge of `work/emf-s21-transitions` (PC). Then EMF-S21 Part B, or S10 owner listening of the S21 handovers, as the owner assigns.
-**Prerequisites:** this branch at the tested SHA; Windows PC.
+**Prerequisites:** this branch at `4dca83a` or its docs-only successor; Windows PC.
 **First action:** review the diff against `6b88d25`, re-run `npm run check` and `npm run check:browser`, then merge into `main` under the coordinator's rules.
 **Owner action:** none required for review. Listening needs real songs and a real audio device (S10).
 **Still not done:** Part B, listening, macOS and Linux.
