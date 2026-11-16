@@ -17,6 +17,9 @@ scope.onmessage = (event): void => {
     } else if (event.data.kind === 'analyze') {
       const result = {from: analyzeMixAudio(event.data.from), to: analyzeMixAudio(event.data.to)};
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze', result}, []);
+    } else if (event.data.kind === 'analyze-one') {
+      const result = analyzeMixAudio(event.data.audio, event.data.options);
+      scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one', result}, []);
     } else throw new Error('Unsupported prepare job kind.');
   } catch (error) {
     scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: false,
