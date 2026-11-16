@@ -1,5 +1,6 @@
 import {analyzeMixAudio, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate, type MixLevelEvidence} from './mix-analysis.js';
 import {bassSwapAutomation, cleanCutAutomation, crossfadeAutomation, filterSweepAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
+import {nativeRateInputAt, type NativeRateRamp} from './time-pitch.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -13,8 +14,9 @@ export interface HarmonicCompatibility {
   readonly circleDistance: number | null; readonly score: number;
   readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
-export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match';
-export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match'].includes(recipe);
+export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake';
+export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend'].includes(recipe);
+export const isSmoothRecipe = (recipe: string): boolean => isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp';
 export const LEVEL_MATCH_LIMITS = Object.freeze({maxGain: 4, samplePeakCeiling: 10 ** (-1 / 20)});
 export interface LevelMatchPlan {
   readonly from: MixLevelEvidence; readonly to: MixLevelEvidence;
@@ -39,6 +41,7 @@ export interface MixPlannerOptions {
   readonly returnToOriginalTempo?: boolean;
   /** Captured current A gain, never a proposed change to an already-audible source. */
   readonly fromLevelGain?: number;
+  readonly loopBars?: 4 | 8;
 }
 export interface AutomaticMixPlan {
   readonly kind: 'mix'; readonly version: typeof MIX_PLANNER_VERSION;
@@ -54,6 +57,11 @@ export interface AutomaticMixPlan {
   readonly tempoRatio: number; readonly pitchSemitones: number;
   readonly returnToOriginalTempo: boolean;
   readonly levelMatch?: LevelMatchPlan;
+  /** S is a native A anchor; T=S+entryDelayFrames. No virtual value replaces fromExitFrame. */
+  readonly entryDelayFrames?: number;
+  readonly outgoingEffectSourceFrame?: number;
+  readonly nativeRate?: {readonly outgoing: NativeRateRamp; readonly incoming?: NativeRateRamp; readonly pitchMoves: true};
+  readonly loopExtension?: {readonly bars: 4 | 8; readonly startFrame: number; readonly endFrame: number; readonly frames: number};
   readonly confidence: number;
   readonly evidence: {readonly tempo: number; readonly beat: number; readonly key: number;
     readonly cue: number; readonly phrase: number};
@@ -95,6 +103,9 @@ const shifted = (key: TonalKey, semitones: number): TonalKey =>
   ({tonic: mod12(key.tonic + semitones), mode: key.mode});
 const fallback = (reason: string): MixFallback => ({kind: 'fallback', version: MIX_PLANNER_VERSION, reason});
 const unit = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
+const nativeMotionPeak = (a: MixAnalysis, gain = 1): boolean => !!a.nativePeak && a.nativePeak.version === 'native-sample-peak@1' &&
+  a.nativePeak.frames === a.frames && Number.isFinite(a.nativePeak.value) && a.nativePeak.value >= 0 &&
+  a.nativePeak.value * gain <= LEVEL_MATCH_LIMITS.samplePeakCeiling + 1e-7;
 
 /** Final prepared headroom may further constrain B, without changing A or hiding the residual. */
 export function withPreparedLevelGain(plan: AutomaticMixPlan, gain: number): AutomaticMixPlan {
@@ -109,6 +120,34 @@ function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOpti
   const plan = planBlend(from, to, options);
   if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend') return plan;
   if (options.recipe === 'filter-sweep') return {...plan, recipe: 'filter-sweep', automation: filterSweepAutomation(plan.overlapFrames, plan.sampleRate)};
+  if (options.recipe === 'tempo-ramp') {
+    if (!nativeMotionPeak(from, options.fromLevelGain ?? 1) || !nativeMotionPeak(to)) return fallback('Native rate motion needs finite full-source effective sample-peak evidence.');
+    if (plan.pitchSemitones !== 0) return fallback('Native tempo ramp moves pitch; an independent pitch shift is unsupported.');
+    const frames = Math.round(2 * plan.overlapBeats * 60 * plan.sampleRate / (plan.fromBpm + plan.toBpm));
+    const outgoing = {start: 1, end: plan.toBpm / plan.fromBpm, frames}, incoming = {start: plan.tempoRatio, end: 1, frames};
+    if (plan.fromExitFrame + nativeRateInputAt(outgoing, frames) >= from.frames ||
+      plan.toEntryFrame + nativeRateInputAt(incoming, frames) >= to.frames) return fallback('Native ramp lacks source audio for its integrated beat count.');
+    return {...plan, recipe: 'tempo-ramp', overlapFrames: frames, nativeRate: {outgoing, incoming, pitchMoves: true},
+      returnToOriginalTempo: true, automation: crossfadeAutomation(frames, plan.sampleRate),
+      reasons: [...plan.reasons, 'Native playback-rate ramps share an integrated changing beat grid; pitch moves. Browser k-rate integration is nominal, not a per-sample warp guarantee.']};
+  }
+  if (options.recipe === 'loop-extend') {
+    const bars = options.loopBars ?? 4, grid = from.structure.downbeatFrames, index = grid.indexOf(plan.fromExitFrame);
+    const startFrame = grid[index - bars], endFrame = plan.fromExitFrame;
+    const barFrames = 4 * 60 * from.sampleRate / plan.fromBpm;
+    if (from.structure.downbeatConfidence < 0.65 || startFrame === undefined || startFrame < (from.analyzedWindow?.startFrame ?? 0) ||
+      grid.slice(index - bars, index).some((f, i) => Math.abs(grid[index - bars + i + 1]! - f - barFrames) > barFrames * 0.02) ||
+      (from.vocalSpans ?? []).some(s => s.startFrame < endFrame && s.endFrame > startFrame)) return fallback('Loop needs a measured 4/8-bar interval outside supplied vocal spans.');
+    const frames = endFrame - startFrame, normal = crossfadeAutomation(plan.overlapFrames, plan.sampleRate);
+    const shift = (a: MixAutomation): MixAutomation => ({...a, durationFrames: frames + a.durationFrames,
+      gain: [{frame: 0, value: 1}, ...a.gain.map(p => ({...p, frame: p.frame + frames}))],
+      lowShelfDb: [{frame: 0, value: 0}, ...a.lowShelfDb.map(p => ({...p, frame: p.frame + frames}))],
+      highPassHz: [{frame: 0, value: 0}, ...a.highPassHz.map(p => ({...p, frame: p.frame + frames}))],
+      lowPassHz: [{frame: 0, value: plan.sampleRate / 2}, ...a.lowPassHz.map(p => ({...p, frame: p.frame + frames}))]});
+    return {...plan, recipe: 'loop-extend', entryDelayFrames: frames, outgoingEffectSourceFrame: endFrame,
+      loopExtension: {bars, startFrame, endFrame, frames}, automation: {outgoing: shift(normal.outgoing), incoming: normal.incoming},
+      reasons: [...plan.reasons, 'One finite measured loop buys added clock time before B. PCM periodicity, energy and seam validation still required; vocal-free content is not established.']};
+  }
   if (options.recipe !== 'loudness-match') return fallback('Unsupported beatmatched style.');
   const valid = (a: MixAnalysis): boolean => !!a.level && a.level.version === MIX_LEVEL_VERSION && a.level.sampleRate === a.sampleRate &&
     Number.isSafeInteger(a.level.startFrame) && a.level.startFrame >= 0 && Number.isSafeInteger(a.level.frames) && a.level.frames > 0 &&
@@ -198,15 +237,19 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     return fallback('Audio analysis confidence is below the versioned mix thresholds.');
   }
   const fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!, tempoRatio = fromBpm / toBpm;
-  if (tempoRatio < MIX_LIMITS.tempoRatioMin || tempoRatio > MIX_LIMITS.tempoRatioMax) {
-    return fallback('Tempo match is outside the engineering limit of +/-8%.');
+  if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
+    tempoRatio > (options.recipe === 'tempo-ramp' ? 1.25 : MIX_LIMITS.tempoRatioMax)) {
+    return fallback(options.recipe === 'tempo-ramp' ? 'Native ramp ratio must stay within 0.8..1.25.' : 'Tempo match is outside the engineering limit of +/-8%.');
   }
+  if (options.recipe === 'tempo-ramp' && tempoRatio >= 0.92 && tempoRatio <= 1.08) return fallback('Native ramp is for changes beyond static comfort (0.92..1.08); use a pitch-preserving blend here.');
   const a: TonalKey = {tonic: from.key.tonic!, mode: from.key.mode!};
   const b: TonalKey = {tonic: to.key.tonic!, mode: to.key.mode!};
   let pitchSemitones = options.pitchSemitones ?? 0;
-  let harmonic = harmonicCompatibility(a, shifted(b, pitchSemitones));
+  const relativePitch = 12 * Math.log2(tempoRatio), nativeShift = Math.round(relativePitch);
+  if (options.recipe === 'tempo-ramp' && (pitchSemitones !== 0 || Math.abs(relativePitch - nativeShift) > 0.2)) return fallback('Native ramp needs relative detune within 0.2 semitone of a supported shifted key; independent pitch shifts are unsupported.');
+  let harmonic = harmonicCompatibility(a, shifted(b, options.recipe === 'tempo-ramp' ? nativeShift : pitchSemitones));
   // Preserve the original key whenever it already has a supported relation.
-  if (options.pitchSemitones === undefined && options.allowPitchShift && harmonic.score < 0.85) {
+  if (options.recipe !== 'tempo-ramp' && options.pitchSemitones === undefined && options.allowPitchShift && harmonic.score < 0.85) {
     const alternatives = [-2, -1, 1, 2].map(shift => ({shift, harmonic: harmonicCompatibility(a, shifted(b, shift))}))
       .sort((x, y) => (y.harmonic.score - Math.abs(y.shift) * 0.03) -
         (x.harmonic.score - Math.abs(x.shift) * 0.03) || Math.abs(x.shift) - Math.abs(y.shift) || x.shift - y.shift);
@@ -251,7 +294,7 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
 
 /** New recipes require explicit strong grid/cue evidence, independent of global harmony. */
 function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions,
-  recipe: 'cut' | 'echo-out'): AutomaticMixPlan[] {
+  recipe: 'cut' | 'echo-out' | 'brake'): AutomaticMixPlan[] {
   if (!validAnalysis(from, true) || !validAnalysis(to, true) || from.sampleRate !== to.sampleRate ||
       [from, to].some(a => a.tempo.confidence < MIX_LIMITS.tempoConfidence ||
         a.tempo.ambiguity > MIX_LIMITS.tempoAmbiguity || a.beatGrid.confidence < MIX_LIMITS.beatConfidence ||
@@ -267,7 +310,7 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
   const minimum = (options.minimumFromFrame ?? 0) + preRollFrames;
   const strong = (a: MixAnalysis, c: MixPointCandidate, incoming: boolean): boolean => {
     const e = c.evidence;
-    return !!e && c.confidence >= 0.65 && a.structure.downbeatFrames.includes(c.frame) &&
+    return !!e && c.confidence >= (recipe === 'brake' ? MIX_LIMITS.cueConfidence : 0.65) && a.structure.downbeatFrames.includes(c.frame) &&
       (incoming ? e.salience >= 0.65 && (e.boundary >= 0.6 || e.kind === 'track-start')
         : e.boundary >= 0.6) &&
       (recipe !== 'echo-out' || incoming || e.interference <= 0.35);
@@ -305,7 +348,8 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
     });
 }
 function validOptions(options: MixPlannerOptions): boolean {
-  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match'].includes(options.recipe)) &&
+  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match', 'tempo-ramp', 'loop-extend', 'brake'].includes(options.recipe)) &&
+    (options.loopBars === undefined || [4, 8].includes(options.loopBars)) &&
     (options.fromLevelGain === undefined || Number.isFinite(options.fromLevelGain) && options.fromLevelGain > 0 && options.fromLevelGain <= LEVEL_MATCH_LIMITS.maxGain) &&
     (options.echoContentConfirmed === undefined || typeof options.echoContentConfirmed === 'boolean') &&
     (options.allowPitchShift === undefined || typeof options.allowPitchShift === 'boolean') &&
@@ -322,10 +366,26 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
   const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] : ['blend', 'echo-out', 'cut'] as const;
   const plans: AutomaticMixPlan[] = [];
   for (const recipe of recipes) {
-    if (recipe === 'blend' || recipe === 'filter-sweep' || recipe === 'loudness-match') {
+    if (recipe === 'brake') {
+      const bases = alternatePlans(from, to, {...options, returnToOriginalTempo: false}, 'brake');
+      for (const base of bases) {
+        if (!nativeMotionPeak(from, options.fromLevelGain ?? 1) || !nativeMotionPeak(to)) continue;
+        if (base.fromBpm / base.toBpm >= 0.8 && base.fromBpm / base.toBpm <= 1.25) continue;
+        const frames = Math.round(Math.min(0.35, 30 / base.fromBpm) * base.sampleRate), handover = frames - Math.round(base.sampleRate * 0.02);
+        const ramp = {start: 1, end: 0.05, frames};
+        if (base.fromExitFrame + nativeRateInputAt(ramp, frames) >= from.frames) continue;
+        const open = crossfadeAutomation(frames, base.sampleRate).outgoing;
+        plans.push({...base, recipe: 'brake', preRollFrames: 0, entryDelayFrames: handover,
+          outgoingEffectSourceFrame: base.fromExitFrame, overlapFrames: frames - handover,
+          nativeRate: {outgoing: ramp, pitchMoves: true},
+          automation: {outgoing: {...open, gain: [{frame: 0, value: 1}, {frame: handover - Math.round(base.sampleRate * 0.02), value: 1}, {frame: handover, value: 0.15}, {frame: frames, value: 0}]},
+            incoming: crossfadeAutomation(frames - handover, base.sampleRate).incoming},
+          reasons: ['Short finite native slowdown with pitch drop and gain fade; B enters on its measured downbeat before A closes. Only entry beat phase is compared.']});
+      }
+    } else if (isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp') {
       const blend = styledBlend(from, to, options);
       if (blend.kind === 'mix') plans.push(blend);
-    } else plans.push(...alternatePlans(from, to, options, recipe));
+    } else if (recipe === 'cut' || recipe === 'echo-out') plans.push(...alternatePlans(from, to, options, recipe));
   }
   return plans.slice(0, MIX_CANDIDATE_LIMIT);
 }

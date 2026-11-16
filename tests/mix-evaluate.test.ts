@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, type MixPcm} from '../src/mix-analysis.js';
 import {cleanCutAutomation, echoOutAutomation, filterSweepAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
-import {chooseEvaluatedMix, evaluateTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio,
+import {chooseEvaluatedMix, evaluateTransition, renderTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio, planTransitionSpec,
   type TransitionEvaluation, type TransitionSpec} from '../src/mix-evaluate.js';
-import {LEVEL_MATCH_LIMITS, type LevelMatchPlan, type AutomaticMixPlan} from '../src/mix-planner.js';
+import {LEVEL_MATCH_LIMITS, planAutomaticMix, type LevelMatchPlan, type AutomaticMixPlan} from '../src/mix-planner.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
+import {renderSetBlend} from '../src/mix-transition.js';
+import {renderTimePitch} from '../src/time-pitch.js';
+import {fixturePack} from './audio-double.js';
 
 const rate = 16000, seconds = 14;
 /** Deterministic uniform noise (LCG), independent per seed. */
@@ -36,6 +40,47 @@ function blend(outgoing: MixAutomationPoint[], incoming: MixAutomationPoint[]): 
 }
 const flagged = (e: TransitionEvaluation, metric: string) => e.flags.find(f => f.metric === metric);
 const equalPower = blend(curve(overlap, x => Math.cos(Math.PI * x / 2)), curve(overlap, x => Math.sin(Math.PI * x / 2)));
+
+test('invalid motion metadata is refused before allocation or rate integration', () => {
+  const from = noise(1), to = noise(2);
+  for (const patch of [{entryDelayFrames: NaN}, {entryDelayFrames: 2 ** 32}, {entryDelayFrames: -1},
+    {nativeRate: {pitchMoves: true, outgoing: {start: 0, end: 1, frames: rate}}},
+    {nativeRate: {pitchMoves: true, outgoing: {start: 1, end: 1, frames: NaN}}},
+    {entryDelayFrames: 4, loopExtension: {bars: 4, startFrame: 0, endFrame: 4, frames: 4}}]) {
+    assert.throws(() => renderTransition(from, to, {...equalPower, ...patch} as TransitionSpec), /bounded|Native rate/);
+  }
+});
+
+test('motion evaluator uses explicit native-rate models and actual bounded WSOLA loop-entry PCM with unchanged thresholds', async () => {
+  const pcms = [120, 144, 90, 128].map(bpm => makeSetFixture({id: 'motion', bpm, tonic: bpm === 144 ? 0 : 9, bars: 20, transitionEvidence: true, gain: 0.5}));
+  const analyses = pcms.map(pcm => analyzeMixAudio(pcm)), rows = [];
+  const buffer = (channels: number, frames: number, sampleRate: number): AudioBuffer => {
+    const arrays = Array.from({length: channels}, () => new Float32Array(frames));
+    return {sampleRate, length: frames, numberOfChannels: channels, getChannelData: (i: number) => arrays[i]!,
+      copyToChannel: (samples: Float32Array, i: number) => arrays[i]!.set(samples)} as AudioBuffer;
+  };
+  const context = {sampleRate: rate, createBuffer: buffer} as unknown as BaseAudioContext;
+  const asset = (await fixturePack()).pack.assets[1]!;
+  for (const [recipe, ai, bi] of [['tempo-ramp', 0, 1], ['brake', 2, 3], ['loop-extend', 0, 3]] as const) {
+    const from = pcms[ai]!, to = pcms[bi]!, analysis = {from: analyses[ai]!, to: analyses[bi]!};
+    const plan = planAutomaticMix(analysis.from, analysis.to, {recipe, minimumFromFrame: 4 * rate, returnToOriginalTempo: recipe !== 'brake'});
+    assert.ok(plan.kind === 'mix', JSON.stringify(plan));
+    let prepared: {audio: MixPcm; entryFrame: number} | undefined;
+    if (recipe === 'loop-extend') {
+      const native = buffer(1, to.channels[0]!.length, rate); native.copyToChannel(new Float32Array(to.channels[0]!), 0);
+      const ready = await renderSetBlend(context, {asset, buffer: native}, plan, analysis.to, undefined,
+        {analyze: async () => analysis, render: async (audio, options) => renderTimePitch(audio, options)});
+      prepared = {audio: {sampleRate: rate, channels: [ready.incoming.buffer.getChannelData(0)]}, entryFrame: ready.entryFrame};
+    }
+    const result = evaluateTransition(from, to, planTransitionSpec(plan), analysis, prepared);
+    assert.equal(result.measurements!.boundaryFlux.judged, recipe !== 'brake');
+    assert.equal(result.bSource, recipe === 'tempo-ramp' ? 'native-rate-model' : recipe === 'loop-extend' ? 'prepared' : 'native');
+    assert.ok(result.measurements!.beatPhase.maxError! < 0.05, JSON.stringify(result.measurements!.beatPhase));
+    assert.equal(result.measurements!.silenceGapMs, 0);
+    rows.push({recipe, verdict: result.verdict, flags: result.flags, bSource: result.bSource, measurements: result.measurements});
+  }
+  console.log('S19 motion evaluator: ' + JSON.stringify(rows));
+});
 
 test('selected smooth styles retain flux checks; matched loudness uses an explicit gain-adjusted target', () => {
   const from = noise(1, 0.05), to = noise(2, 0.2), fromLevel = measureMixLevel(from), toLevel = measureMixLevel(to);

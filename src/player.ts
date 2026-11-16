@@ -8,10 +8,10 @@ import type {ProceduralPlan} from './phrase-plan.js';
 import {checkProceduralPlan, decodeProceduralSamples, ProceduralSource} from './procedural-source.js';
 import {checkedRoute, planTransition, RecordedSource, requireAudio, WebAudioClock,
   cueFrame, type CheckedRoute, type DecodedRecording} from './web-audio.js';
-import {isBeatmatchedRecipe, type LevelMatchPlan, type MixPlannerOptions, type MixRecipe} from './mix-planner.js';
+import {isBeatmatchedRecipe, type AutomaticMixPlan, type LevelMatchPlan, type MixPlannerOptions, type MixRecipe} from './mix-planner.js';
 import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  replanPreparedMix, renderSetBlend, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -29,7 +29,7 @@ export interface HybridSnapshot {
   readonly end: ClockStamp;
 }
 export interface MixSnapshot {
-  readonly phase: 'preparing' | 'scheduled' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
+  readonly phase: 'preparing' | 'scheduled' | 'prelude' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
   readonly reason: string;
   /** Earliest committed audible mix effect, which may precede B's entry. */
   readonly earliestEffect?: ClockStamp;
@@ -43,6 +43,9 @@ export interface MixSnapshot {
     /** Set blend: original B offset and owner-clock join, scheduled with the entry source. */
     readonly nativeJoin?: {readonly sourceFrame: number; readonly outputFrame: number; readonly at: ClockStamp};
     readonly levelMatch?: LevelMatchPlan;
+    readonly entryDelayFrames?: number;
+    readonly nativeRate?: AutomaticMixPlan['nativeRate'];
+    readonly loopExtension?: AutomaticMixPlan['loopExtension'];
     readonly fromHash: string; readonly toHash: string;
     /** S18 set mode only. Bars count from 1 in the outgoing song's grid. */
     readonly set?: SetMixDetail;
@@ -371,24 +374,27 @@ export class SmallPlayer {
         {...options, minimumFromFrame: earliest, fromLevelGain: outgoing.levelGain}, controller.signal, this.mixRuntime);
       if (!current()) return;
       if (ready.kind === 'fallback') { await useAuthoredFallback(ready.reason); return; }
+      const loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, ready.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
+      if (!current()) return;
       incoming = new RecordedSource(this.context, ready.incoming, this.output,
         {allowFixtures: this.loaded.allowFixtures, allowUnreviewed: !!this.loaded.allowUnreviewed, levelGain: ready.plan.levelMatch?.toGain ?? 1});
       await incoming.prepare(this.clock);
       if (!current()) { incoming.release(); incoming = null; return; }
       requireAudio(!this.plan, 'A transition already owns the next boundary.');
       let plan = ready.plan;
-      let at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
-      if (at.frame - plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+      let at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry + (plan.entryDelayFrames ?? 0));
+      if (at.frame - (plan.entryDelayFrames ?? 0) - plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+        requireAudio(!plan.loopExtension, 'Finite loop missed its prepared native anchor; preserve A.');
         const later = replanPreparedMix(ready, Math.max(earliest,
           this.clock.currentFrame + this.leadFrames - from.start.at.frame + entry));
         requireAudio(later.kind === 'mix',
           'Prepared mix missed its exact audio-clock deadline; no later analyzed cue is available.');
         plan = later;
-        at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry);
+        at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry + (plan.entryDelayFrames ?? 0));
       }
-      requireAudio(at.frame - plan.preRollFrames >= this.clock.currentFrame + this.leadFrames,
+      requireAudio(at.frame - (plan.entryDelayFrames ?? 0) - plan.preRollFrames >= this.clock.currentFrame + this.leadFrames,
         'Prepared mix missed its exact audio-clock deadline.');
-      const effect = this.clock.stamp(at.frame - plan.preRollFrames);
+      const effect = this.clock.stamp(at.frame - (plan.entryDelayFrames ?? 0) - plan.preRollFrames);
       const end = this.clock.stamp(at.frame + plan.overlapFrames);
       requireAudio(plan.fromExitFrame + plan.overlapFrames <= outgoing.recording.buffer.length &&
         ready.entryFrame + plan.overlapFrames <= ready.incoming.buffer.length,
@@ -399,7 +405,8 @@ export class SmallPlayer {
       // Outgoing A changes last. A refusal releases all prepared B effects before fallback.
       try {
         if (outgoingAutomation.echo) bindEchoReturn(outgoingAutomation, this.output);
-        outgoing.transitionMixOut(effect, plan.fromExitFrame - plan.preRollFrames, outgoingAutomation);
+        outgoing.transitionMixOut(effect, plan.fromExitFrame - plan.preRollFrames, outgoingAutomation,
+          {...(plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}), ...(loopBuffer ? {loopBuffer} : {})});
       } finally { unbindEchoReturn(outgoingAutomation); }
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'}});
       this.plan = {at, end};
@@ -411,6 +418,8 @@ export class SmallPlayer {
           toEntryFrame: plan.toEntryFrame, processedEntryFrame: ready.entryFrame,
           outputFrames: ready.incoming.buffer.length, returnToOriginalTempo: plan.returnToOriginalTempo,
           ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
+          ...(plan.entryDelayFrames ? {entryDelayFrames: plan.entryDelayFrames} : {}),
+          ...(plan.nativeRate ? {nativeRate: plan.nativeRate} : {}), ...(plan.loopExtension ? {loopExtension: plan.loopExtension} : {}),
           fromHash: this.pair.from.file.sha256, toHash: this.pair.to.file.sha256}};
       incoming = null; // ownership transferred to this.voices
     } catch (error) {
@@ -540,7 +549,7 @@ export class SmallPlayer {
       transitionAt: this.plan ? {...this.plan.at} : null,
       transitionEnd: this.plan ? {...this.plan.end} : null,
       handoff, mix: this.mix ? {...this.mix, phase: this.mix.summary && this.plan
-        ? frame < this.plan.at.frame ? 'scheduled' : frame < this.plan.end.frame ? 'mixing' : 'complete'
+        ? frame < this.plan.at.frame ? this.mix.earliestEffect && frame >= this.mix.earliestEffect.frame ? 'prelude' : 'scheduled' : frame < this.plan.end.frame ? 'mixing' : 'complete'
         : this.mix.phase, summary: this.mix.summary ? {...this.mix.summary} : null} : null,
       elapsedSeconds: first ? Math.max(0, Math.min(duration, (frame - first.start.at.frame) / this.clock.sampleRate)) : 0,
       durationSeconds: duration, currentFrame: frame, sampleRate: this.clock.sampleRate,
@@ -638,7 +647,7 @@ export class SmallPlayer {
       const nativeFrames = outgoing.nativeRecording.buffer.length;
       const requestedGrid = setBarGrid(fromSet.asset, null, rate);
       const currentBuffer = fromSet.offset + this.clock.currentFrame + this.leadFrames + 2 * rate - from.start.at.frame;
-      const currentNative = fromSet.nativeJoin && currentBuffer >= fromSet.nativeJoin.outputFrame
+      const currentNative = outgoing.nativeRate ? outgoing.nativeFrameAtClock(this.clock.currentFrame + this.leadFrames + 2 * rate) : fromSet.nativeJoin && currentBuffer >= fromSet.nativeJoin.outputFrame
         ? fromSet.nativeJoin.sourceFrame + currentBuffer - fromSet.nativeJoin.outputFrame
         : fromSet.mapping ? (fromSet.sourceStartFrame ?? 0) + sourceFrameAtOutput(fromSet.mapping, currentBuffer) : currentBuffer;
       const entryNative = fromSet.mapping ? (fromSet.sourceStartFrame ?? 0) + sourceFrameAtOutput(fromSet.mapping, fromSet.offset) : fromSet.offset;
@@ -658,10 +667,10 @@ export class SmallPlayer {
       if (!current()) return;
       const analysisA = a.ok ? a.analysis : null, analysisB = b.ok ? b.analysis : null;
       // Native A frame now, and the earliest native A frame with a two-second preparation allowance.
-      const toNative = (bufferFrame: number): number => fromSet.nativeJoin && bufferFrame >= fromSet.nativeJoin.outputFrame
+      const toNative = (bufferFrame: number): number => outgoing.nativeRate ? outgoing.nativeFrameAtClock(from.start.at.frame + bufferFrame - fromSet.offset) : fromSet.nativeJoin && bufferFrame >= fromSet.nativeJoin.outputFrame
         ? fromSet.nativeJoin.sourceFrame + bufferFrame - fromSet.nativeJoin.outputFrame
         : fromSet.mapping ? (fromSet.sourceStartFrame ?? 0) + sourceFrameAtOutput(fromSet.mapping, bufferFrame) : bufferFrame;
-      const toBuffer = (nativeFrame: number): number => fromSet.nativeJoin && nativeFrame >= fromSet.nativeJoin.sourceFrame
+      const toBuffer = (nativeFrame: number): number => outgoing.nativeRate ? nativeFrame : fromSet.nativeJoin && nativeFrame >= fromSet.nativeJoin.sourceFrame
         ? fromSet.nativeJoin.outputFrame + nativeFrame - fromSet.nativeJoin.sourceFrame
         : fromSet.mapping ? outputFrameAtSource(fromSet.mapping, nativeFrame - (fromSet.sourceStartFrame ?? 0)) : nativeFrame;
       const bufferAt = (clockFrame: number): number => fromSet.offset + clockFrame - from.start.at.frame;
@@ -684,26 +693,46 @@ export class SmallPlayer {
         this.mix = {phase: 'unavailable', reason: choice.reason, summary: null};
         requireAudio(false, choice.reason);
       }
-      let prepared = await this.prepareSetIncoming(choice, toRecording, analysisB, controller.signal)
+      let prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal)
         .catch(async error => {
           if (!current()) throw error;
           // A failed blend render falls back to native B; nothing has been scheduled yet.
           choice = choose(false);
           if (choice.kind === 'unavailable') throw error;
-          return this.prepareSetIncoming(choice, toRecording, analysisB, controller.signal);
+          return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
         });
       if (!current()) return;
-      let at = this.clock.stamp(from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset);
-      if (at.frame - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+      const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
+        from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset) + ('entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0));
+      const delayFor = (): number => 'entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0;
+      let at = atFor();
+      if (at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
         // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
         choice = choose(false);
         requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
-        prepared = await this.prepareSetIncoming(choice, toRecording, analysisB, controller.signal);
+        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
         if (!current()) return;
-        at = this.clock.stamp(from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset);
+        at = atFor();
+      }
+      let loopBuffer: AudioBuffer | undefined;
+      try {
+        if ('loopExtension' in prepared.plan) loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
+      } catch (error) {
+        if (!current()) throw error;
+        choice = choose(false);
+        requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
+        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+        at = atFor();
+      }
+      if (loopBuffer && at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+        choice = choose(false);
+        requireAudio(choice.kind !== 'unavailable', 'Finite loop missed S and no native fallback boundary remains.');
+        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+        at = atFor(); loopBuffer = undefined;
       }
       const plan = prepared.plan;
-      const effect = this.clock.stamp(at.frame - plan.preRollFrames);
+      if (!current()) return;
+      const effect = this.clock.stamp(at.frame - delayFor() - plan.preRollFrames);
       requireAudio(effect.frame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
       const exitBuffer = toBuffer(plan.fromExitFrame);
       requireAudio(exitBuffer + plan.overlapFrames <= outgoing.playbackFrames &&
@@ -719,7 +748,8 @@ export class SmallPlayer {
       const outgoingAutomation = structuredClone(plan.automation.outgoing);
       incoming.scheduleMixStart(at, prepared.entryFrame, plan.automation.incoming);
       // Outgoing A changes last; a refusal releases the prepared B and leaves A unchanged.
-      outgoing.transitionMixOut(effect, exitBuffer - plan.preRollFrames, outgoingAutomation);
+      outgoing.transitionMixOut(effect, exitBuffer - plan.preRollFrames, outgoingAutomation,
+        {...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}), ...(loopBuffer ? {loopBuffer} : {})});
       const joinAt = prepared.nativeJoin ? this.clock.stamp(at.frame + prepared.nativeJoin.outputFrame - prepared.entryFrame) : null;
       const end = joinAt ?? this.clock.stamp(at.frame + plan.overlapFrames);
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'},
@@ -738,6 +768,9 @@ export class SmallPlayer {
           outputFrames: prepared.incoming.buffer.length,
           ...(prepared.nativeJoin ? {nativeJoin: {...prepared.nativeJoin, at: joinAt!}} : {}),
           ...('levelMatch' in plan && plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
+          ...('entryDelayFrames' in plan && plan.entryDelayFrames ? {entryDelayFrames: plan.entryDelayFrames} : {}),
+          ...('nativeRate' in plan && plan.nativeRate ? {nativeRate: plan.nativeRate} : {}),
+          ...('loopExtension' in plan && plan.loopExtension ? {loopExtension: plan.loopExtension} : {}),
           returnToOriginalTempo: 'returnToOriginalTempo' in plan ? plan.returnToOriginalTempo : false,
           fromHash: fromSet.asset.file.sha256, toHash: toAsset.file.sha256,
           set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
@@ -762,11 +795,16 @@ export class SmallPlayer {
   }
 
   private async prepareSetIncoming(choice: SetTransitionChoice, to: DecodedRecording,
-    analysisB: MixAnalysis | null, signal: AbortSignal): Promise<{
+    analysisA: MixAnalysis | null, analysisB: MixAnalysis | null, signal: AbortSignal): Promise<{
       plan: Exclude<SetTransitionChoice, {kind: 'unavailable'}>['plan']; incoming: DecodedRecording;
       entryFrame: number; mapping: TimePitchMapping | null; processor: string;
       sourceStartFrame?: number; nativeJoin?: {sourceFrame: number; outputFrame: number}}> {
     requireAudio(choice.kind !== 'unavailable', choice.kind === 'unavailable' ? choice.reason : '');
+    if (choice.kind === 'analyzed' && ['tempo-ramp', 'brake'].includes(choice.plan.recipe)) {
+      const ready = await renderPlannedMix(this.context, {buffer: {length: choice.plan.fromFrames}}, to, choice.plan,
+        {from: analysisA!, to: analysisB!}, signal, this.mixRuntime);
+      return {plan: ready.plan, incoming: ready.incoming, entryFrame: ready.entryFrame, mapping: null, processor: ready.processed.processor};
+    }
     if (choice.kind === 'analyzed' && isBeatmatchedRecipe(choice.plan.recipe)) {
       const ready = await renderSetBlend(this.context, to, choice.plan, analysisB!, signal, this.mixRuntime);
       return {plan: ready.plan, incoming: ready.incoming, entryFrame: ready.entryFrame,

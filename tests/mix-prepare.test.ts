@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {analyzeMixAudio, measureMixLevel, MIX_ANALYSIS_LIMITS} from '../src/mix-analysis.js';
-import {renderTimePitch} from '../src/time-pitch.js';
-import {prepareTimePitch, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
+import {renderTimePitch, renderFiniteLoop} from '../src/time-pitch.js';
+import {prepareTimePitch, prepareFiniteLoop, analyzeMixPairInWorker, analyzeMixSongInWorker, SONG_ANALYSIS_WINDOW, PREPARE_WORKER_PROTOCOL,
   type MixWorkerRequest, type MixWorkerResponse} from '../src/mix-prepare.js';
 
 /** A transport double only; native Worker execution is separately checked in Chromium. */
@@ -20,6 +20,8 @@ class TestWorker {
   terminate(): void { this.terminated++; }
   response(): MixWorkerResponse {
     const message = this.message!;
+    if (message.kind === 'loop') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'loop',
+      result: renderFiniteLoop(message.audio, message.loopFrames, message.tailFrames, message.bars, message.levelGain)};
     if (message.kind === 'render') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render',
       result: renderTimePitch(message.audio, message.options)};
     if (message.kind === 'analyze-one') return {protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'analyze-one',
@@ -41,6 +43,22 @@ async function withWorker(run: () => Promise<void>): Promise<void> {
 }
 const pcm = () => ({sampleRate: 8000, channels: [Float64Array.from({length: 4000}, (_, i) =>
   0.4 * Math.sin(2 * Math.PI * 220 * i / 8000))]});
+
+test('finite loop worker owns private bounded PCM, validates its receipt, aborts and cannot revive a released request', async () => withWorker(async () => {
+  const input = {sampleRate: 8000, channels: [Float32Array.from({length: 80000}, (_, i) => 0.3 * Math.sin(2 * Math.PI * 220 * i / 8000))]};
+  const task = prepareFiniteLoop(input, 64000, 16000, 4, 1), worker = TestWorker.instances.at(-1)!;
+  assert.equal(worker.message!.kind, 'loop'); assert.equal(input.channels[0]!.length, 80000);
+  worker.reply(); const result = await task;
+  assert.equal(result.audio.channels[0]![0], input.channels[0]![64000]); assert.equal(worker.terminated, 1);
+  const malformed = prepareFiniteLoop(input, 64000, 16000, 4, 1), bad = TestWorker.instances.at(-1)!;
+  const response = bad.response(); assert.ok(response.ok && response.kind === 'loop');
+  bad.reply({...response, result: {...response.result, loopFrames: 1}});
+  await assert.rejects(malformed, /receipt/); assert.equal(bad.terminated, 1);
+  const controller = new AbortController(), pending = prepareFiniteLoop(input, 64000, 16000, 4, 1, controller.signal);
+  const late = TestWorker.instances.at(-1)!, callback = late.onmessage!, reply = late.response();
+  controller.abort(); await assert.rejects(pending, /cancelled/); callback({data: reply} as MessageEvent<MixWorkerResponse>);
+  assert.equal(late.terminated, 1);
+}));
 
 test('prepare worker transfers private copies, returns complete output, and terminates', async () => withWorker(async () => {
   const input = pcm(), before = input.channels[0]!.slice();

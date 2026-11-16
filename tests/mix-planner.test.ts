@@ -3,9 +3,29 @@ import test from 'node:test';
 import {analyzeMixAudio, type MixAnalysis} from '../src/mix-analysis.js';
 import {automaticMixCandidates, camelotKey, harmonicCompatibility, LEVEL_MATCH_LIMITS, planAutomaticMix, planMixFromAudio} from '../src/mix-planner.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
+import {makeSetFixture} from './helpers/synthetic-set.js';
 
 const a = analyzeMixAudio(makeMixFixture({bpm: 120, tonic: 9}));
 const b = analyzeMixAudio(makeMixFixture({bpm: 124, tonic: 9}));
+
+test('explicit motion styles enforce gap, transposed harmony and measured loop eligibility without changing auto', () => {
+  const make = (bpm: number, tonic = 9) => analyzeMixAudio(makeSetFixture({id: 'motion', bpm, tonic, bars: 20, transitionEvidence: true, gain: 0.5}));
+  const a = make(120), fast = make(144, 0), slow = make(90), matched = make(128);
+  const native = planAutomaticMix(a, fast, {recipe: 'tempo-ramp'});
+  assert.ok(native.kind === 'mix' && native.recipe === 'tempo-ramp');
+  assert.equal(native.pitchSemitones, 0); assert.equal(native.nativeRate!.pitchMoves, true);
+  assert.equal(planAutomaticMix(a, make(144), {recipe: 'tempo-ramp'}).kind, 'fallback', 'native-key relation is insufficient after rate transposition');
+  assert.equal(planAutomaticMix({...a, nativePeak: {...a.nativePeak!, value: 1}}, fast, {recipe: 'tempo-ramp'}).kind, 'fallback');
+  assert.equal(planAutomaticMix(a, matched, {recipe: 'tempo-ramp'}).kind, 'fallback', 'static-comfort pair retains pitch-preserving styles');
+  assert.equal(planAutomaticMix(slow, matched, {recipe: 'brake'}).kind, 'mix');
+  assert.equal(planAutomaticMix(a, matched, {recipe: 'brake'}).kind, 'fallback');
+  const loop = planAutomaticMix(a, matched, {recipe: 'loop-extend'});
+  assert.ok(loop.kind === 'mix' && loop.loopExtension);
+  assert.equal(loop.entryDelayFrames, loop.loopExtension.frames);
+  assert.equal(planAutomaticMix({...a, structure: {...a.structure, downbeatConfidence: 0.1}}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
+  assert.equal(planAutomaticMix({...a, vocalSpans: [{startFrame: 0, endFrame: a.frames}]}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
+  assert.ok(automaticMixCandidates(a, matched).every(p => ['blend', 'echo-out', 'cut'].includes(p.recipe)));
+});
 
 test('selectable filter sweep is a real smooth low-pass lane and auto retains its existing recipes', () => {
   const plain = planAutomaticMix(a, b), sweep = planAutomaticMix(a, b, {recipe: 'filter-sweep'});

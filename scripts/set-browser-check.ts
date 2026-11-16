@@ -32,6 +32,7 @@ const SONGS = [
 const set = await buildSyntheticSet(SONGS);
 let servedSet = set;
 let longSet: Awaited<ReturnType<typeof buildSyntheticSet>> | undefined;
+let motionSet: Awaited<ReturnType<typeof buildSyntheticSet>> | undefined;
 const server = createDemoServer(root);
 let browser: Browser | undefined;
 const errors: string[] = [];
@@ -223,6 +224,147 @@ try {
   await page.locator('#dj-stop').click();
   await waitText(page, 'dj-now', /^Nothing$/);
   report.checks.push('Studio selected filter and loudness recipes use real workers; changing selection preserves scheduled effect, cancel permits the next recipe, level readout labels measured windows');
+  motionSet = await buildSyntheticSet([...([120, 144, 90, 128].map(bpm => ({id: `motion-${bpm}`, bpm,
+    tonic: bpm === 144 ? 0 : 9, bars: 20, transitionEvidence: true, gain: 0.5}))),
+    {id: 'motion-144b', bpm: 144, tonic: 0, bars: 20, transitionEvidence: true, gain: 0.5}]);
+  await context.route(origin + '/s19-motion/**', async route => {
+    const path = new URL(route.request().url()).pathname.replace('/s19-motion/', '');
+    if (!/^(?:pack\/(?:audio\/)?[a-zA-Z0-9_-]+\.(?:json|md|wav))$/.test(path)) return route.fulfill({status: 404});
+    try { return await route.fulfill({body: await readFile(join(motionSet!.out, ...path.split('/')))}); }
+    catch { return route.fulfill({status: 404}); }
+  });
+  const motion = await page.evaluate(async ids => {
+    const load = (path: string) => import(path);
+    const {loadBrowserPack, decodeRecording} = await load('/dist/src/browser-pack.js') as typeof import('../src/browser-pack.js');
+    const {MixAnalysisCache, browserMixPreparation, chooseSetTransition, renderSetBlend, renderPlannedMix, prepareOutgoingLoop} = await load('/dist/src/mix-transition.js') as typeof import('../src/mix-transition.js');
+    const {RecordedSource, WebAudioClock} = await load('/dist/src/web-audio.js') as typeof import('../src/web-audio.js');
+    const {nativeRateInputAt, nativeRateOutputAt} = await load('/dist/src/time-pitch.js') as typeof import('../src/time-pitch.js');
+    const loaded = await loadBrowserPack(new URL('/s19-motion/pack/manifest.json', location.href), false, fetch, {set: true, allowUnreviewed: true});
+    const rate = 16000, decoder = new OfflineAudioContext(1, 1, rate), cache = new MixAnalysisCache();
+    const recordings = await Promise.all(loaded.pack.assets.map(a => decodeRecording(loaded, decoder, a)));
+    const analyses = await Promise.all(recordings.map(r => cache.analyze(r, browserMixPreparation)));
+    const rows = [];
+    let rampPlan: import('../src/mix-planner.js').AutomaticMixPlan | undefined;
+    for (const recipe of ['tempo-ramp', 'brake', 'loop-extend'] as const) {
+      const ai = recordings.findIndex(r => r.asset.id === ids[recipe === 'brake' ? 2 : 0]);
+      const bi = recordings.findIndex(r => r.asset.id === ids[recipe === 'tempo-ramp' ? 1 : 3]);
+      const from = recordings[ai]!, to = recordings[bi]!, a = analyses[ai]!, b = analyses[bi]!;
+      if (!a.ok || !b.ok) throw new Error('Actual motion analysis worker unavailable.');
+      const choice = chooseSetTransition({from: {asset: from.asset, analysis: a.analysis, frames: from.buffer.length},
+        to: {asset: to.asset, analysis: b.analysis, frames: to.buffer.length, channels: 1}, sampleRate: rate,
+        earliestFrame: 4 * rate, boundary: {bars: 4, anchorBar: 0}, options: {recipe}});
+      if (choice.kind !== 'analyzed' || choice.plan.recipe !== recipe) throw new Error('Actual motion selection failed: ' + JSON.stringify(choice));
+      const plan = choice.plan, offline = new OfflineAudioContext(1, rate * 70, rate), clock = new WebAudioClock(offline);
+      if (recipe === 'tempo-ramp') rampPlan = plan;
+      const ready = recipe === 'loop-extend' ? await renderSetBlend(offline, to, plan, b.analysis, undefined, browserMixPreparation) :
+        await renderPlannedMix(offline, from, to, plan, {from: a.analysis, to: b.analysis}, undefined, browserMixPreparation);
+      const loopBuffer = await prepareOutgoingLoop(offline, from, plan, 1, undefined, browserMixPreparation);
+      const outgoing = new RecordedSource(offline, from, offline.destination, {allowUnreviewed: true});
+      const incoming = new RecordedSource(offline, ready.incoming, offline.destination, {allowUnreviewed: true});
+      await outgoing.prepare(clock); await incoming.prepare(clock);
+      const start = 1600, effect = start + plan.fromExitFrame, entry = effect + (plan.entryDelayFrames ?? 0);
+      outgoing.scheduleStart({at: clock.stamp(start), entryCueId: from.asset.cues.find(c => c.kind === 'entry')!.id});
+      incoming.scheduleMixStart(clock.stamp(entry), ready.entryFrame, plan.automation.incoming);
+      outgoing.transitionMixOut(clock.stamp(effect), plan.fromExitFrame, plan.automation.outgoing,
+        {...(plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}), ...(loopBuffer ? {loopBuffer} : {})});
+      const endFrame = incoming.endFrame, rendered = await offline.startRendering(), samples = rendered.getChannelData(0);
+      let finite = true, peak = 0; for (const x of samples) { finite &&= Number.isFinite(x); peak = Math.max(peak, Math.abs(x)); }
+      let rateOffset: number | null = null, rateRmsError: number | null = null, eofError: number | null = null;
+      if (plan.nativeRate?.incoming) {
+        const ramp = plan.nativeRate.incoming, probe = entry + ramp.frames + 1024;
+        const native = to.buffer.getChannelData(0), nominal = plan.toEntryFrame + nativeRateInputAt(ramp, probe - entry);
+        const errorAt = (shift: number): number => {
+          let total = 0; for (let i = 0; i < 4096; i++) {
+            const at = nominal + shift + i, left = Math.floor(at), t = at - left;
+            const expected = native[left]! * (1 - t) + native[left + 1]! * t;
+            total += (samples[probe + i]! - expected) ** 2;
+          } return Math.sqrt(total / 4096);
+        };
+        let best = Infinity, shift = 0;
+        for (let x = -256; x <= 256; x++) { const error = errorAt(x); if (error < best) { best = error; shift = x; } }
+        const center = shift;
+        for (let x = center - 1; x <= center + 1; x += 0.02) { const error = errorAt(x); if (error < best) { best = error; shift = x; } }
+        rateOffset = shift; rateRmsError = best;
+        const nominalEnd = entry + Math.round(nativeRateOutputAt(ramp, to.buffer.length - plan.toEntryFrame));
+        let last = entry; for (let i = entry; i < nominalEnd + 512; i++) if (Math.abs(samples[i]!) > 1e-7) last = i;
+        eofError = last + 1 - nominalEnd;
+        if (last >= endFrame) throw new Error('Native EOF was outside its guarded lifecycle.');
+      }
+      const loopSeam = plan.loopExtension ? Math.abs(loopBuffer!.getChannelData(0)[0]! - from.buffer.getChannelData(0)[plan.fromExitFrame]!) : null;
+      incoming.release(); outgoing.release();
+      rows.push({recipe, finite, peak, addedFrames: entry - effect, loopSamples: loopBuffer?.length ?? 0, loopSeam,
+        rateOffset, rateRmsError, eofError, nativeRateMap: plan.nativeRate ? 'analytic nominal; browser k-rate measured separately' : null});
+    }
+    // Suspend the owner audio clock after a real native ramp, then schedule a loop Next on
+    // that same source. The duplicate generated 144 BPM take is a distinct playlist asset.
+    const ai = recordings.findIndex(r => r.asset.id === ids[1]), bi = recordings.findIndex(r => r.asset.id === ids[4]);
+    const from = recordings[ai]!, to = recordings[bi]!, a = analyses[ai]!, b = analyses[bi]!;
+    if (!a.ok || !b.ok) throw new Error('Native loop continuation analysis unavailable.');
+    const offline = new OfflineAudioContext(1, rate * 70, rate), clock = new WebAudioClock(offline), start = 1600;
+    const first = new RecordedSource(offline, {...from, nativeRate: rampPlan!.nativeRate!.incoming!}, offline.destination, {allowUnreviewed: true});
+    await first.prepare(clock); first.scheduleMixStart(clock.stamp(start), rampPlan!.toEntryFrame, rampPlan!.automation.incoming);
+    const suspended = offline.suspend((start + rampPlan!.overlapFrames + 512) / rate), rendering = offline.startRendering();
+    await suspended; if (!first.settleMixEntry()) throw new Error('Native rate entry did not settle.');
+    const next = chooseSetTransition({from: {asset: from.asset, analysis: a.analysis, frames: from.buffer.length},
+      to: {asset: to.asset, analysis: b.analysis, frames: to.buffer.length, channels: 1}, sampleRate: rate,
+      earliestFrame: first.nativeFrameAtClock(clock.currentFrame + 2 * rate), boundary: {bars: 4, anchorBar: 0}, options: {recipe: 'loop-extend'}});
+    if (next.kind !== 'analyzed' || next.plan.recipe !== 'loop-extend') throw new Error('Native-ramped loop Next failed: ' + JSON.stringify(next));
+    const plan = next.plan, loopBuffer = await prepareOutgoingLoop(offline, first.nativeRecording, plan, 1, undefined, browserMixPreparation);
+    const ready = await renderSetBlend(offline, to, plan, b.analysis, undefined, browserMixPreparation);
+    const second = new RecordedSource(offline, ready.incoming, offline.destination, {allowUnreviewed: true}); await second.prepare(clock);
+    const effect = first.clockFrameAtNative(plan.fromExitFrame), entry = effect + plan.entryDelayFrames!;
+    second.scheduleMixStart(clock.stamp(entry), ready.entryFrame, plan.automation.incoming);
+    first.transitionMixOut(clock.stamp(effect), plan.fromExitFrame, plan.automation.outgoing, {loopBuffer: loopBuffer!});
+    await offline.resume(); const output = (await rendering).getChannelData(0), fade = Math.round(rate * 0.02);
+    const baseline = Array.from({length: rate / 2}, (_, i) => Math.abs(output[effect - i - 1]! - output[effect - i - 2]!)).sort((x, y) => x - y);
+    let maxJump = 0, renderedPeak = 0;
+    for (const value of output) renderedPeak = Math.max(renderedPeak, Math.abs(value));
+    for (let i = effect; i < effect + fade * 2; i++) maxJump = Math.max(maxJump, Math.abs(output[i]! - output[i - 1]!));
+    const jumpRatio = maxJump / baseline[Math.floor(baseline.length * 0.999)]!;
+    first.release(); second.release();
+    rows.push({recipe: 'native-rate-to-loop', finite: output.every(Number.isFinite), peak: renderedPeak, addedFrames: plan.entryDelayFrames!,
+      loopSamples: loopBuffer!.length, loopSeam: null, rateOffset: null, rateRmsError: null, eofError: null, nativeRateMap: '20ms complementary splice', jumpRatio});
+    return rows;
+  }, [...[120, 144, 90, 128].map(bpm => motionSet!.idFor(`motion-${bpm}`)), motionSet.idFor('motion-144b')]);
+  for (const row of motion) {
+    assert.equal(row.finite, true); assert.ok(row.peak < 1);
+    if (row.recipe === 'tempo-ramp') { assert.ok(Math.abs(row.rateOffset!) <= 256 && row.rateRmsError! < 0.005 && Math.abs(row.eofError!) <= 256, JSON.stringify(row)); }
+    if (row.recipe === 'loop-extend') { assert.equal(row.addedFrames, 8 * 16000); assert.equal(row.loopSeam, 0); assert.ok(row.loopSamples < 12_000_000); }
+    if (row.recipe === 'native-rate-to-loop') assert.ok(row.jumpRatio! < 4, JSON.stringify(row));
+    report.plans.push(JSON.stringify(row)); report.checks.push(`actual-worker ${row.recipe} renders native browser PCM with bounded motion/loop evidence`);
+  }
+  servedSet = motionSet;
+  const motionTitle = (bpm: number) => `Synthetic ${bpm} BPM (motion-${bpm})`;
+  const moveMotion = async (bpm: number): Promise<void> => {
+    for (let guard = 0; guard < 8; guard++) {
+      const queued = await queueTitles(page), index = queued.indexOf(motionTitle(bpm));
+      assert.ok(index >= 0, `${bpm} queued`); if (index === 0) return;
+      await page.getByRole('button', {name: `Move ${motionTitle(bpm)} up`}).click();
+      await page.waitForFunction(([want, before]) => Array.from(document.querySelectorAll('#dj-queue li span:first-child'))
+        .findIndex(n => n.textContent?.includes(want!)) === Number(before) - 1, [motionTitle(bpm), String(index)]);
+    }
+  };
+  await page.reload(); await waitText(page, 'global-status', /Rated set.*loaded · 5 songs/);
+  await moveMotion(120); await page.locator('#dj-play').click(); await waitText(page, 'dj-now', /motion-120/);
+  await moveMotion(144); await page.selectOption('#mix-recipe', 'tempo-ramp'); await page.locator('#dj-next').click();
+  await waitText(page, 'set-mix', /Planned: Tempo ramp \(pitch moves\)/, 60000);
+  report.plans.push(await text(page, 'set-mix'));
+  await waitText(page, 'dj-now', /^Synthetic 144 BPM \(motion-144\)$/, 40000);
+  await page.getByRole('button', {name: `Add ${motionTitle(120)} to the queue`}).click(); await moveMotion(120);
+  await page.locator('#dj-next').click(); await waitText(page, 'set-mix', /Planned: Tempo ramp \(pitch moves\).*tempo change -16\.7%/, 60000);
+  report.plans.push(await text(page, 'set-mix')); await page.locator('#dj-stop').click(); await waitText(page, 'dj-now', /^Nothing$/);
+  report.checks.push('Studio actual-worker tempo ramp reaches native B, then Next plans from B with its integrated mapping');
+  for (const recipe of ['loop-extend', 'brake'] as const) {
+    await page.reload(); await waitText(page, 'global-status', /Rated set.*loaded · 5 songs/);
+    await moveMotion(recipe === 'brake' ? 90 : 120); await page.locator('#dj-play').click();
+    await waitText(page, 'dj-now', recipe === 'brake' ? /motion-90/ : /motion-120/);
+    await moveMotion(128); await page.selectOption('#mix-recipe', recipe); await page.locator('#dj-next').click();
+    await waitText(page, 'set-mix', recipe === 'brake' ? /Planned: Brake \(pitch drops\).*A slows before B enters.*A effect starts/ : /Planned: Loop extension.*adds 4 repeated A bars before B enters.*A effect starts/, 60000);
+    report.plans.push(await text(page, 'set-mix'));
+    await page.locator('#dj-cancel').click(); await waitText(page, 'dj-next-title', /^Nothing scheduled$/);
+    await page.locator('#dj-stop').click(); await waitText(page, 'dj-now', /^Nothing$/);
+    report.checks.push(`Studio selected ${recipe} prepares actual workers and distinguishes A prelude from delayed B entry; Cancel/Stop release it`);
+  }
   assert.deepEqual(errors, []);
   console.log(`Set browser check passed (${report.checks.length} checks, ${report.browser}).`);
   for (const plan of report.plans) console.log(`  plan: ${plan}`);
@@ -236,5 +378,6 @@ try {
   await new Promise<void>(resolve => server.close(() => resolve()));
   await set.cleanup();
   await longSet?.cleanup();
+  await motionSet?.cleanup();
   await writeFile(new URL('report.json', output), JSON.stringify(report, null, 2) + '\n');
 }

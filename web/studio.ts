@@ -212,7 +212,7 @@ $('mode-hybrid').addEventListener('click', () => setMode('hybrid'));
 $('mode-mix').addEventListener('click', () => setMode('mix'));
 $('mix-recipe').addEventListener('change', () => {
   const value = $<HTMLSelectElement>('mix-recipe').value;
-  if (!['auto', 'blend', 'filter-sweep', 'loudness-match', 'cut'].includes(value)) return;
+  if (!['auto', 'blend', 'filter-sweep', 'loudness-match', 'cut', 'tempo-ramp', 'loop-extend', 'brake'].includes(value)) return;
   mixRecipe = value as MixRecipe | 'auto';
   dj?.setMixOptions({recipe: mixRecipe});
   // A selector changes future requests only; committed sources and plan data keep ownership.
@@ -333,6 +333,7 @@ function renderDj(): void {
     : isSet && player?.mix?.summary?.set && player.transition === 'mixing' ? `Handing over now · ${describeSetMix(player.mix.summary)}`
     : player?.mix?.phase === 'fallback' && player.transition !== 'complete' ? 'Not sure about this pair — using the plain crossfade instead'
     : player?.mix?.summary && player.transition === 'scheduled' ? `${describeSetMix(player.mix.summary)} · starts in ${player.transitionInSeconds?.toFixed(1)}s`
+    : player?.mix?.phase === 'prelude' ? `A prelude is playing; B has not entered${player.mix.summary ? ` · ${describeSetMix(player.mix.summary)}` : ''}`
     : player?.mix?.phase === 'mixing' ? `Handing over A → B${player.mix.summary ? ` · ${describeSetMix(player.mix.summary)}` : ''}`
     : player?.transition === 'mixing' ? 'Crossfading A → B' : player?.transition === 'complete' ? 'Mix complete'
     : player?.transition === 'scheduled' && player.transitionInSeconds !== null ? `Mix starts in ${player.transitionInSeconds.toFixed(1)}s (on the next phrase)`

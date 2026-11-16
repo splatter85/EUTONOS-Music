@@ -39,7 +39,7 @@
             <button id="mode-mix" role="radio" aria-checked="false" type="button" title="Analyse both songs, match tempo on the beat and mix with EQ. Falls back to Crossfade when unsure.">Beatmatch</button>
           </div>
           <div class="xfader" aria-label="Crossfader position (automatic)"><span class="xf-end">A</span><div class="xf-track"><span id="bridge-lamp" class="bridge-lamp">Bridge</span><span id="xf-knob" class="xf-knob"></span></div><span class="xf-end">B</span></div>
-          <label id="mix-recipe-control" hidden>Beatmatch recipe<select id="mix-recipe" autocomplete="off"><option value="auto" selected>Auto</option><option value="blend">Beatmatched blend</option><option value="filter-sweep">Filter sweep</option><option value="loudness-match">Loudness match</option><option value="cut">Cut on the beat</option></select></label>
+          <label id="mix-recipe-control" hidden>Mix recipe<select id="mix-recipe" autocomplete="off"><option value="auto" selected>Auto</option><option value="blend">Beatmatched blend</option><option value="filter-sweep">Filter sweep</option><option value="loudness-match">Loudness match</option><option value="tempo-ramp">Tempo ramp (pitch moves)</option><option value="loop-extend">Loop extension</option><option value="brake">Brake (pitch drops)</option><option value="cut">Cut on the beat</option></select></label>
           <p id="rated-transition-help" class="dim" hidden>Rated auditions use a direct cut with no overlap. The requested grid is unmeasured; Bridge and Beatmatch are unavailable.</p>
           <p id="mix-status" class="mix-status">Ready</p>
           <div class="transport">

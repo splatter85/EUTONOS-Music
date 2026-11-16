@@ -3,13 +3,27 @@ import test from 'node:test';
 import {validatePackManifest} from '../src/pack.js';
 import type {AudioAsset, AudioPack} from '../src/pack-types.js';
 import {checkedRoute, cueFrame, planTransition, RecordedSource, WebAudioClock} from '../src/web-audio.js';
-import {bufferDouble, ContextDouble, fixturePack} from './audio-double.js';
+import {bufferDouble, ContextDouble, NodeDouble, ParameterDouble, fixturePack} from './audio-double.js';
+import {crossfadeAutomation, echoOutAutomation} from '../src/mix-automation.js';
 
 const {pack} = await fixturePack();
 const a = pack.assets[0]!;
 const routeId = pack.routes[0]!.id;
 const recording = (asset: AudioAsset, rate: number) => ({asset,
   buffer: bufferDouble(rate, Math.round(asset.file.frames * rate / asset.file.sample_rate), asset.file.channels)});
+
+test('native-rate opt-in voices refuse authored direct/hybrid cue identity timing', async () => {
+  const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+  Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+    type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+  const source = new RecordedSource(context.audio, {...recording(a, 48000), nativeRate: {start: 0.85, end: 1, frames: 48000}}, context.destination, {allowFixtures: true});
+  await source.prepare(clock);
+  assert.throws(() => source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'}), /mapped/);
+  assert.throws(() => source.getValidExits(), /mapped/);
+  source.scheduleMixStart(clock.stamp(4800), 0, crossfadeAutomation(48000, 48000).incoming);
+  assert.throws(() => source.transitionOut('exit', clock.stamp(388800)), /mapped/);
+  source.release();
+});
 
 /** Metadata-only fixture for checking pickup and selected-entry units. */
 function offsetPack(): AudioPack {
@@ -123,6 +137,7 @@ test('fixed level gain is captured and survives caller option mutation and graph
   assert.equal(context.gains[1]!.gain.value, 0.4);
   options.levelGain = 0.8;
   source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'});
+  assert.throws(() => source.transitionMixOut(clock.stamp(52800), 48000, echoOutAutomation(120, 48000).outgoing), /unity fixed/);
   source.transitionOut('exit', clock.stamp(388800));
   assert.equal(source.levelGain, 0.4);
   assert.equal(context.gains[1]!.gain.value, 0.4);

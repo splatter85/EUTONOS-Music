@@ -1,11 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {renderTimePitch, outputFrameAtSource, sourceFrameAtOutput, TIME_PITCH_LIMITS,
+import {renderTimePitch, renderFiniteLoop, nativeRateInputAt, nativeRateOutputAt, validateNativeRate, outputFrameAtSource, sourceFrameAtOutput, TIME_PITCH_LIMITS,
   type TimePitchPcm} from '../src/time-pitch.js';
 
 const near = (actual: number, expected: number, tolerance: number): void => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected} by more than ${tolerance}`);
 };
+test('native rate integral/inverse shares beat count, stays monotonic and keeps explicit pitch motion', () => {
+  const rate = 48000, bpmA = 120, bpmB = 144, beats = 8, frames = Math.round(2 * beats * 60 * rate / (bpmA + bpmB));
+  const a = {start: 1, end: bpmB / bpmA, frames}, b = {start: bpmA / bpmB, end: 1, frames};
+  for (const ramp of [a, b, {start: 1, end: 0.05, frames}]) {
+    validateNativeRate(ramp, rate); let previous = -Infinity;
+    for (let t = -1; t <= frames * 2; t += 113) {
+      const x = nativeRateInputAt(ramp, t); assert.ok(x > previous); previous = x;
+      near(nativeRateOutputAt(ramp, x), t, 1e-7);
+    }
+  }
+  near(nativeRateInputAt(a, frames) * bpmA, nativeRateInputAt(b, frames) * bpmB, 1e-7);
+  for (const end of [0, NaN, 1.3]) assert.throws(() => validateNativeRate({start: 1, end, frames}, rate));
+});
+
+test('finite loop adds exactly one repeat with native seam anchors and refuses unstable/vocal-independent PCM budgets', () => {
+  const rate = 8000, loop = rate * 8, tail = rate * 2;
+  const input = tone(rate, 10, 220, 0.3), prepared = renderFiniteLoop(input, loop, tail, 4);
+  const out = prepared.audio.channels[0]!, native = input.channels[0]!;
+  assert.equal(out.length, loop + tail); assert.equal(out[0], native[loop]);
+  assert.equal(out[loop - 1], native[loop - 1]); assert.equal(out[loop], native[loop]);
+  assert.ok(prepared.metrics.periodicity > 0.99); assert.equal(prepared.metrics.seamError, 0);
+  const quantized = renderFiniteLoop({...input, channels: [Float64Array.from(native, v => v + 1e-10)]}, loop, tail, 4);
+  assert.ok(quantized.metrics.seamError > 0 && quantized.metrics.seamError < 1e-7, 'actual Float64-to-Float32 anchor error is measured');
+  const unstable = {...input, channels: [Float32Array.from(native, (v, i) => i < rate * 2 ? v * 0.01 : v)]};
+  assert.throws(() => renderFiniteLoop(unstable, loop, tail, 4), /stable/);
+  assert.throws(() => renderFiniteLoop({...input, channels: [new Float32Array(12_000_001)]}, 12_000_000, 1, 4), /budget/);
+  assert.throws(() => renderFiniteLoop({...input, channels: [Float32Array.from(native, () => NaN)]}, loop, tail, 4), /finite/);
+});
 function tone(rate = 48000, seconds = 3, frequency = 440, amplitude = 0.4): TimePitchPcm {
   return {sampleRate: rate, channels: [Float32Array.from({length: Math.round(rate * seconds)},
     (_, frame) => amplitude * Math.sin(2 * Math.PI * frequency * frame / rate))]};

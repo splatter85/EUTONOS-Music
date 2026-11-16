@@ -1,4 +1,4 @@
-import {renderTimePitch} from './time-pitch.js';
+import {renderTimePitch, renderFiniteLoop} from './time-pitch.js';
 import {analyzeMixAudio, measureMixLevel} from './mix-analysis.js';
 import {PREPARE_WORKER_PROTOCOL, type MixWorkerRequest, type MixWorkerResponse} from './mix-prepare.js';
 
@@ -10,7 +10,10 @@ const scope = globalThis as unknown as {
 scope.onmessage = (event): void => {
   try {
     if (event.data?.protocol !== PREPARE_WORKER_PROTOCOL) throw new Error('Unsupported prepare protocol.');
-    if (event.data.kind === 'render') {
+    if (event.data.kind === 'loop') {
+      const job = event.data, result = renderFiniteLoop(job.audio, job.loopFrames, job.tailFrames, job.bars, job.levelGain);
+      scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'loop', result}, result.audio.channels.map(c => c.buffer as ArrayBuffer));
+    } else if (event.data.kind === 'render') {
       const result = renderTimePitch(event.data.audio, event.data.options);
       scope.postMessage({protocol: PREPARE_WORKER_PROTOCOL, ok: true, kind: 'render', result},
         result.audio.channels.map(channel => channel.buffer as ArrayBuffer));

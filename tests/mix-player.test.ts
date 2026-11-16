@@ -7,7 +7,7 @@ import {SmallPlayer} from '../src/player.js';
 import {prepareMixTransition, renderSetBlend, type MixPreparationRuntime} from '../src/mix-transition.js';
 import {planAutomaticMix} from '../src/mix-planner.js';
 import {evaluateTransition, planTransitionSpec} from '../src/mix-evaluate.js';
-import {outputFrameAtSource, renderTimePitch, type PreparedTimePitch} from '../src/time-pitch.js';
+import {outputFrameAtSource, renderTimePitch, renderFiniteLoop, type PreparedTimePitch} from '../src/time-pitch.js';
 import {ContextDouble, NodeDouble, ParameterDouble, deferred, fixturePack} from './audio-double.js';
 import {makeMixFixture} from './helpers/mix-fixtures.js';
 import {makeSetFixture} from './helpers/synthetic-set.js';
@@ -39,6 +39,7 @@ class MixContext extends ContextDouble {
 const inline: MixPreparationRuntime = {
   analyze: async (from, to) => ({from: analyzeMixAudio(from), to: analyzeMixAudio(to)}),
   render: async (audio, options) => renderTimePitch(audio, options),
+  renderLoop: async (audio, loop, tail, bars, gain) => renderFiniteLoop(audio, loop, tail, bars, gain),
 };
 async function setup(runtime: MixPreparationRuntime = inline) {
   const loaded = await fixturePack(), context = new MixContext();

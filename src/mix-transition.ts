@@ -1,9 +1,9 @@
 import {analyzeMixPairInWorker, analyzeMixSongInWorker, monoAnalysisCopy, prepareTimePitch,
-  SONG_ANALYSIS_WINDOW, songLevelWindowFrames, validateSongAnalysis} from './mix-prepare.js';
+  SONG_ANALYSIS_WINDOW, songLevelWindowFrames, validateSongAnalysis, prepareFiniteLoop} from './mix-prepare.js';
 import {MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, nativeSamplePeak, type NativeSamplePeak, type MixAnalysis, type MixAnalysisOptions, type MixPcm} from './mix-analysis.js';
 import {planAutomaticMix, isBeatmatchedRecipe, withPreparedLevelGain, LEVEL_MATCH_LIMITS,
   type AutomaticMixPlan, type MixDecision, type MixPlannerOptions} from './mix-planner.js';
-import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
+import {outputFrameAtSource, TIME_PITCH_LIMITS, type PreparedFiniteLoop, type PreparedTimePitch, type TimePitchOptions} from './time-pitch.js';
 import {cleanCutAutomation, crossfadeAutomation, type MixAutomation} from './mix-automation.js';
 import type {AudioAsset} from './pack-types.js';
 import type {DecodedRecording} from './web-audio.js';
@@ -13,17 +13,19 @@ export interface MixPreparationRuntime {
   render(audio: MixPcm, options: TimePitchOptions, signal?: AbortSignal): Promise<PreparedTimePitch>;
   /** S18 optional: one song (mono). Without it, set mode analyzes the mono copy through `analyze`. */
   analyzeOne?(audio: MixPcm, signal?: AbortSignal, options?: MixAnalysisOptions, levelAudio?: MixPcm): Promise<MixAnalysis>;
+  renderLoop?(audio: MixPcm, loopFrames: number, tailFrames: number, bars: 4 | 8, levelGain: number, signal?: AbortSignal): Promise<PreparedFiniteLoop>;
 }
 export const browserMixPreparation: MixPreparationRuntime = {
   analyze: analyzeMixPairInWorker,
   render: prepareTimePitch,
   analyzeOne: analyzeMixSongInWorker,
+  renderLoop: prepareFiniteLoop,
 };
 export interface ReadyMixTransition {
   readonly kind: 'ready'; readonly plan: AutomaticMixPlan;
   readonly incoming: DecodedRecording; readonly entryFrame: number;
   readonly processed: PreparedTimePitch | {
-    readonly processor: 'native-pcm@1'; readonly audio: MixPcm;
+    readonly processor: 'native-pcm@1' | 'native-rate@1'; readonly audio: MixPcm;
     readonly mapping: PreparedTimePitch['mapping']; readonly metrics: null;
   };
   readonly analysis: {readonly from: MixAnalysis; readonly to: MixAnalysis};
@@ -47,6 +49,32 @@ function checkAbort(signal?: AbortSignal): void {
 function pcm(recording: DecodedRecording): MixPcm {
   return {sampleRate: recording.buffer.sampleRate,
     channels: Array.from({length: recording.buffer.numberOfChannels}, (_, i) => recording.buffer.getChannelData(i))};
+}
+
+/** Copy only the measured loop and handover tail; validate the actual returned PCM independently. */
+export async function prepareOutgoingLoop(context: BaseAudioContext, from: DecodedRecording, plan: AutomaticMixPlan,
+  levelGain: number, signal?: AbortSignal, runtime: MixPreparationRuntime = browserMixPreparation): Promise<AudioBuffer | undefined> {
+  const loop = plan.loopExtension;
+  if (!loop) return undefined;
+  if (!runtime.renderLoop || from.processed || loop.endFrame !== plan.fromExitFrame || loop.endFrame - loop.startFrame !== loop.frames ||
+    loop.startFrame < 0 || loop.endFrame + plan.overlapFrames > from.buffer.length ||
+    (loop.frames + plan.overlapFrames) * from.buffer.numberOfChannels > TIME_PITCH_LIMITS.maxSamples) throw new Error('Loop lacks a bounded native source/worker.');
+  const audio = {sampleRate: context.sampleRate, channels: Array.from({length: from.buffer.numberOfChannels}, (_, c) =>
+    from.buffer.getChannelData(c).subarray(loop.startFrame, loop.endFrame + plan.overlapFrames))};
+  const ready = await runtime.renderLoop(audio, loop.frames, plan.overlapFrames, loop.bars, levelGain, signal);
+  checkAbort(signal);
+  if (ready.processor !== 'finite-loop@1' || ready.loopFrames !== loop.frames || ready.tailFrames !== plan.overlapFrames ||
+    ready.audio.sampleRate !== context.sampleRate || ready.audio.channels.length !== audio.channels.length ||
+    !Number.isFinite(ready.metrics.periodicity) || ready.metrics.periodicity < 0.35 ||
+    !Number.isFinite(ready.metrics.energyRatio) || ready.metrics.energyRatio > 4 || !Number.isFinite(ready.metrics.seamError) || ready.metrics.seamError > 1e-7) throw new Error('Invalid finite loop evidence.');
+  const buffer = context.createBuffer(audio.channels.length, loop.frames + plan.overlapFrames, context.sampleRate);
+  ready.audio.channels.forEach((channel, c) => {
+    if (!(channel instanceof Float32Array) || channel.length !== buffer.length || channel[0] !== audio.channels[c]![loop.frames] ||
+      channel[loop.frames - 1] !== audio.channels[c]![loop.frames - 1] || channel[loop.frames] !== audio.channels[c]![loop.frames]) throw new Error('Finite loop changed a native seam anchor.');
+    for (const value of channel) if (!Number.isFinite(value) || Math.abs(value) * levelGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Invalid effective finite loop PCM.');
+    buffer.copyToChannel(new Float32Array(channel), c);
+  });
+  return buffer;
 }
 
 /** Reconcile the processor's common attenuation before a fixed native-continuation gain. */
@@ -97,6 +125,13 @@ export async function renderPlannedMix(context: BaseAudioContext,
   runtime: MixPreparationRuntime = browserMixPreparation): Promise<ReadyMixTransition> {
   checkAbort(signal);
   const b = pcm(to);
+  if (plan.recipe === 'tempo-ramp' || plan.recipe === 'brake') {
+    for (const channel of b.channels) for (const value of channel) if (!Number.isFinite(value) || Math.abs(value) > TIME_PITCH_LIMITS.peakCeiling + 1e-7) throw new Error('Native rate entry failed sample-peak/finite validation.');
+    return {kind: 'ready', plan, analysis, entryFrame: plan.toEntryFrame,
+      incoming: {...to, ...(plan.nativeRate?.incoming ? {nativeRate: plan.nativeRate.incoming} : {})},
+      processed: {processor: 'native-rate@1', audio: b, metrics: null,
+        mapping: {inputFrames: to.buffer.length, outputFrames: to.buffer.length, tempoRatio: 1, pitchSemitones: 0, returnToOriginal: null}}};
+  }
   if (!isBeatmatchedRecipe(plan.recipe)) {
     // Native B is already decoded: do not fabricate a WSOLA render/receipt.
     for (const channel of b.channels) for (const value of channel) {
@@ -517,9 +552,9 @@ export function chooseSetTransition(input: SetTransitionInput): SetTransitionCho
       const selected = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : 'blend';
       const blend = selected === 'echo-out' ? {kind: 'fallback' as const, reason: 'Set mode does not offer echo-out.'} :
         planAutomaticMix(scoped, to.analysis, {...input.options, recipe: selected, minimumFromFrame: earliestFrame,
-          returnToOriginalTempo: selected !== 'cut'});
+          returnToOriginalTempo: !['cut', 'brake'].includes(selected)});
       if (blend.kind === 'mix') {
-        if (blend.recipe === 'cut') return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
+        if (['cut', 'tempo-ramp', 'brake'].includes(blend.recipe) && to.channels <= 2) return {kind: 'analyzed', plan: blend, exitBar: barOf(blend.fromExitFrame),
           boundaryBar: first.bar, fromGrid, toGrid, notes};
         try {
           const window = setBlendWindow(blend, to.analysis, to.frames);

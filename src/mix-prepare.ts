@@ -1,5 +1,5 @@
 import {TIME_PITCH_LIMITS, TIME_PITCH_PROCESSOR,
-  type PreparedTimePitch, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
+  type PreparedTimePitch, type PreparedFiniteLoop, type TimePitchOptions, type TimePitchPcm} from './time-pitch.js';
 import {MIX_ANALYSIS_LIMITS, MIX_ANALYSIS_VERSION, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, mixLevelWindowFrames,
   type MixAnalysis, type MixAnalysisOptions} from './mix-analysis.js';
 
@@ -55,14 +55,17 @@ export function validateSongAnalysis(analysis: MixAnalysis, frames: number, samp
 
 export const PREPARE_WORKER_PROTOCOL = 'eutonos.mix-preparation.v1' as const;
 export interface MixPairAnalysis {readonly from: MixAnalysis; readonly to: MixAnalysis;}
-export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
+export type MixWorkerRequest = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'loop';
+  readonly audio: TimePitchPcm; readonly loopFrames: number; readonly tailFrames: number; readonly bars: 4 | 8; readonly levelGain: number} |
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly kind: 'render'; readonly audio: TimePitchPcm; readonly options: TimePitchOptions} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze';
   readonly from: TimePitchPcm; readonly to: TimePitchPcm} |
   /** S18: one song, already downmixed to mono so a full 180 s stereo take fits the analysis budget. */
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly kind: 'analyze-one';
   readonly audio: TimePitchPcm; readonly levelAudio?: TimePitchPcm; readonly options: MixAnalysisOptions};
-export type MixWorkerResponse = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
+export type MixWorkerResponse = {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'loop'; readonly result: PreparedFiniteLoop} |
+  {readonly protocol: typeof PREPARE_WORKER_PROTOCOL;
   readonly ok: true; readonly kind: 'render'; readonly result: PreparedTimePitch} |
   {readonly protocol: typeof PREPARE_WORKER_PROTOCOL; readonly ok: true; readonly kind: 'analyze';
   readonly result: MixPairAnalysis} |
@@ -122,6 +125,23 @@ function runWorker<T>(message: MixWorkerRequest, transfer: ArrayBuffer[], valida
     try { worker.postMessage(message, transfer); }
     catch (error) { finish(null, error instanceof Error ? error : new Error(String(error))); }
   });
+}
+
+/** Browser loop preparation remains worker-owned and bounded; no synchronous DSP fallback. */
+export async function prepareFiniteLoop(audio: TimePitchPcm, loopFrames: number, tailFrames: number, bars: 4 | 8,
+  levelGain: number, signal?: AbortSignal): Promise<PreparedFiniteLoop> {
+  const copy = privateCopy(audio);
+  return runWorker({protocol: PREPARE_WORKER_PROTOCOL, kind: 'loop', audio: copy, loopFrames, tailFrames, bars, levelGain},
+    copy.channels.map(c => c.buffer), data => {
+      if (!data.ok || data.kind !== 'loop' || data.result.processor !== 'finite-loop@1' || data.result.loopFrames !== loopFrames ||
+        data.result.tailFrames !== tailFrames || data.result.audio.sampleRate !== audio.sampleRate ||
+        data.result.audio.channels.length !== audio.channels.length || data.result.audio.channels.some(c => !(c instanceof Float32Array) || c.length !== loopFrames + tailFrames) ||
+        !Number.isFinite(data.result.metrics.periodicity) || data.result.metrics.periodicity < 0.35 || data.result.metrics.periodicity > 1.000001 ||
+        !Number.isFinite(data.result.metrics.energyRatio) || data.result.metrics.energyRatio < 1 || data.result.metrics.energyRatio > 4 ||
+        !Number.isFinite(data.result.metrics.peak) || data.result.metrics.peak < 0 || data.result.metrics.peak * levelGain > TIME_PITCH_LIMITS.peakCeiling + 1e-7 ||
+        !Number.isFinite(data.result.metrics.seamError) || data.result.metrics.seamError < 0 || data.result.metrics.seamError > 1e-7) throw new Error('Invalid finite loop worker receipt.');
+      return data.result;
+    }, signal, 30000);
 }
 
 /** Browser only. Node calls renderTimePitch directly. No synchronous browser fallback. */

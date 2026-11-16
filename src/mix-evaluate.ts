@@ -8,10 +8,11 @@
  */
 import {analyzeAudio} from './audio-analysis.js';
 import {analyzeMixAudio, type MixAnalysis, type MixPcm} from './mix-analysis.js';
+import {nativeRateInputAt, nativeRateOutputAt, renderFiniteLoop, validateNativeRate, TIME_PITCH_LIMITS} from './time-pitch.js';
 import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, validateMixAutomation, type MixAutomation,
   type MixAutomationPoint} from './mix-automation.js';
 import {automaticMixCandidates, type AutomaticMixPlan, type MixPlannerOptions,
-  isBeatmatchedRecipe, type LevelMatchPlan, type MixRecipe} from './mix-planner.js';
+  isSmoothRecipe, type LevelMatchPlan, type MixRecipe} from './mix-planner.js';
 
 export const MIX_EVALUATOR_VERSION = 'transition-evaluator@1' as const;
 
@@ -62,6 +63,9 @@ export interface TransitionSpec {
   readonly automation: {readonly outgoing: MixAutomation; readonly incoming: MixAutomation};
   /** Intentional fixed gains; references are scaled transparently with the rendered sources. */
   readonly levelMatch?: LevelMatchPlan;
+  readonly entryDelayFrames?: number;
+  readonly nativeRate?: AutomaticMixPlan['nativeRate'];
+  readonly loopExtension?: AutomaticMixPlan['loopExtension'];
 }
 
 export interface TransitionRender {
@@ -70,11 +74,11 @@ export interface TransitionRender {
   readonly S: number; readonly T: number; readonly E: number;
   readonly mix: readonly Float64Array[];
   readonly aOut: readonly Float64Array[]; readonly bOut: readonly Float64Array[];
-  /** Unprocessed A and B on the same timeline. B holds its own audio before its entry (zero at a
+  /** Intended source placement before gain/EQ (including rate/loop motion). B holds its audio before entry (zero at a
    * track start); loudness and silence targets use B only from T. */
   readonly aNative: readonly Float64Array[]; readonly bNative: readonly Float64Array[];
   /** How B was placed: native PCM, a supplied prepared buffer, or a pitch-changing resample. */
-  readonly bSource: 'native' | 'prepared' | 'linear-resample';
+  readonly bSource: 'native' | 'prepared' | 'linear-resample' | 'native-rate-model';
 }
 
 export type EvaluationMetric = 'automation' | 'truePeak' | 'loudness' | 'lowBuildUp' | 'beatPhase' |
@@ -248,26 +252,50 @@ export function renderTransition(from: MixPcm, to: MixPcm, spec: TransitionSpec,
       !Number.isFinite(spec.tempoRatio) || spec.tempoRatio <= 0) {
     throw new Error('Transition evaluation spec is invalid.');
   }
+  const delay = spec.entryDelayFrames ?? 0;
+  if (!Number.isSafeInteger(delay) || delay < 0 || delay > rate * 60) throw new Error('Invalid bounded entry delay.');
+  if (spec.nativeRate) {
+    if (spec.nativeRate.pitchMoves !== true) throw new Error('Native rate model must disclose pitch movement.');
+    validateNativeRate(spec.nativeRate.outgoing, rate);
+    if (spec.nativeRate.incoming) { validateNativeRate(spec.nativeRate.incoming, rate); if (spec.nativeRate.incoming.end !== 1) throw new Error('Native entry must settle to unity.'); }
+  }
+  if (spec.loopExtension) {
+    const l = spec.loopExtension;
+    if (![4, 8].includes(l.bars) || ![l.startFrame, l.endFrame, l.frames].every(Number.isSafeInteger) || l.startFrame < 0 ||
+      l.endFrame !== spec.fromStartFrame || l.endFrame - l.startFrame !== l.frames || l.frames !== delay || l.frames < l.bars * 32 ||
+      l.endFrame + spec.automation.incoming.durationFrames > from.channels[0]!.length) throw new Error('Invalid bounded loop coordinates.');
+  }
   const context = Math.round(MIX_EVALUATION_THRESHOLDS.contextSeconds * rate);
   const pre = Math.min(context, spec.fromStartFrame);
   const outgoingFrames = spec.automation.outgoing.durationFrames;
-  const S = pre, T = S + spec.preRollFrames;
+  const S = pre, T = S + spec.preRollFrames + (spec.entryDelayFrames ?? 0);
   const E = Math.max(S + outgoingFrames, T + spec.automation.incoming.durationFrames);
   const length = E + context;
   const channels = Math.max(from.channels.length, to.channels.length, (prepared?.audio.channels.length ?? 1));
-  const aFrame = (n: number) => spec.fromStartFrame - pre + n;
-  const bSource: TransitionRender['bSource'] = prepared ? 'prepared' : spec.tempoRatio === 1 ? 'native' : 'linear-resample';
+  if (!Number.isSafeInteger(length) || length * channels > TIME_PITCH_LIMITS.maxSamples) throw new Error('Transition evaluation exceeds its bounded PCM budget.');
+  const aFrame = (n: number) => spec.fromStartFrame + (spec.nativeRate && n >= S ? nativeRateInputAt(spec.nativeRate.outgoing, n - S) : n - S);
+  const loop = spec.loopExtension;
+  const loopAudio = loop ? renderFiniteLoop({sampleRate: rate, channels: from.channels.map(c =>
+    c.subarray(loop.startFrame, loop.endFrame + spec.automation.incoming.durationFrames))}, loop.frames,
+    spec.automation.incoming.durationFrames, loop.bars, gainA).audio : null;
+  const aAt = (ch: number, n: number): number => {
+    if (!loopAudio || n < S) return sampleAt(from, ch, aFrame(n));
+    const k = n - S, fade = Math.round(rate * 0.02), weight = Math.min(1, k / fade);
+    return sampleAt(loopAudio, ch, k) * weight + sampleAt(from, ch, spec.fromStartFrame + k) * (1 - weight);
+  };
+  const bSource: TransitionRender['bSource'] = prepared ? 'prepared' : spec.nativeRate?.incoming ? 'native-rate-model' : spec.tempoRatio === 1 ? 'native' : 'linear-resample';
   const bAt = (ch: number, k: number): number => prepared
     ? sampleAt(prepared.audio, ch, prepared.entryFrame + k)
-    : sampleAt(to, ch, spec.toEntryFrame + k * spec.tempoRatio);
+    : sampleAt(to, ch, spec.toEntryFrame + (spec.nativeRate?.incoming ? nativeRateInputAt(spec.nativeRate.incoming, k) : k * spec.tempoRatio));
   const make = () => Array.from({length: channels}, () => new Float64Array(length));
   const aOut = make(), bOut = make(), aNative = make(), bNative = make(), mix = make();
-  const outgoing = renderGraph(rate, channels, Math.min(outgoingFrames, Math.max(0, from.channels[0]!.length - aFrame(S))),
-    spec.automation.outgoing, (ch, k) => sampleAt(from, ch, aFrame(S + k)));
+  const outgoing = renderGraph(rate, channels, loopAudio ? Math.min(outgoingFrames, loopAudio.channels[0]!.length) :
+    Math.min(outgoingFrames, Math.max(0, from.channels[0]!.length - aFrame(S))),
+    spec.automation.outgoing, (ch, k) => aAt(ch, S + k));
   const incoming = renderGraph(rate, channels, length - T, spec.automation.incoming, bAt);
   for (let ch = 0; ch < channels; ch++) {
     for (let n = 0; n < length; n++) {
-      const a = sampleAt(from, ch, aFrame(n));
+      const a = aAt(ch, n);
       aNative[ch]![n] = a * gainA;
       aOut[ch]![n] = (n < S ? a : outgoing[ch]![n - S] ?? 0) * gainA;
       bNative[ch]![n] = bAt(ch, n - T) * gainB;
@@ -327,7 +355,23 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
     return {maxError: null, meanError: null, beats: 0};
   }
   const rate = render.sampleRate, period = 60 * rate / fromBpm;
-  const aIndex = (f: number) => render.S + (f - spec.fromStartFrame);
+  if (spec.recipe === 'brake') {
+    const error = Math.min(...analysis.to.beatGrid.frames.map(f => Math.abs(f - spec.toEntryFrame))) / (60 * rate / analysis.to.tempo.bpm!);
+    return {maxError: error, meanError: error, beats: 1}; // B entry only; A deliberately leaves its grid
+  }
+  if (spec.nativeRate?.incoming) {
+    const ramps = spec.nativeRate;
+    const grid = analysis.from.beatGrid.frames.map(f => render.S + nativeRateOutputAt(ramps.outgoing, f - spec.fromStartFrame));
+    const errors = analysis.to.beatGrid.frames.map(f => render.T + nativeRateOutputAt(ramps.incoming!, f - spec.toEntryFrame))
+      .filter(n => n >= render.T - 1 && n <= render.E).map(n => {
+        const distance = Math.min(...grid.map(g => Math.abs(g - n)));
+        const k = Math.max(0, Math.min(ramps.outgoing.frames, n - render.S));
+        const speed = ramps.outgoing.start + (ramps.outgoing.end - ramps.outgoing.start) * k / ramps.outgoing.frames;
+        return distance / (period / speed);
+      });
+    return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length, beats: errors.length} : {maxError: null, meanError: null, beats: 0};
+  }
+  const aIndex = (f: number) => render.S + (f - spec.fromStartFrame) + (spec.entryDelayFrames ?? 0);
   const grid = analysis.from.beatGrid.frames.map(aIndex).filter(n => n <= render.T + period);
   if (!grid.length) return {maxError: null, meanError: null, beats: 0};
   // Cut and echo keep B at its native tempo by design, so only B's entry beat is judged.
@@ -347,7 +391,8 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
 export function measureTransition(render: TransitionRender, spec: TransitionSpec,
   analysis?: {readonly from: MixAnalysis; readonly to: MixAnalysis}): TransitionMeasurements {
   const rate = render.sampleRate, length = render.mix[0]!.length, {S, T, E} = render;
-  const span = Math.max(1, E - S), x = (n: number) => Math.max(0, Math.min(1, (n - S) / span));
+  const targetStart = spec.entryDelayFrames ? T : S;
+  const span = Math.max(1, E - targetStart), x = (n: number) => Math.max(0, Math.min(1, (n - targetStart) / span));
 
   // True peak (BS.1770 4x estimate from the shared WAV analysis).
   const peak = analyzeAudio({sample_rate: rate, channels: render.mix.length, frames: length, format: 'float32',
@@ -452,7 +497,7 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
       shortTermMaxUpLu: shortTerm.up, shortTermMaxDownLu: shortTerm.down},
     lowBuildUp: {maxDb: lowMax, band: lowBand},
     beatPhase: analysis ? beatPhase(render, spec, analysis) : {maxError: null, meanError: null, beats: 0},
-    boundaryFlux: {excessDb: excess, atFrame: excessAt, judged: isBeatmatchedRecipe(spec.recipe)},
+    boundaryFlux: {excessDb: excess, atFrame: excessAt, judged: isSmoothRecipe(spec.recipe)},
     sampleJumpRatio: jump, silenceGapMs: gap * 10, stereoCorrelation: correlation,
     ...(spec.levelMatch ? {levelMatch: {rawDeltaLu: spec.levelMatch.rawDeltaLu, beforeDeltaLu: spec.levelMatch.beforeDeltaLu,
       matchedDeltaLu: spec.levelMatch.matchedDeltaLu, fromGain: spec.levelMatch.fromGain, toGain: spec.levelMatch.toGain,
@@ -508,9 +553,11 @@ export function evaluateTransition(from: MixPcm, to: MixPcm, spec: TransitionSpe
 
 /** The renderer's view of a planner proposal. */
 export function planTransitionSpec(plan: AutomaticMixPlan): TransitionSpec {
-  return {recipe: plan.recipe, fromStartFrame: plan.fromExitFrame - plan.preRollFrames,
+  return {recipe: plan.recipe, fromStartFrame: plan.outgoingEffectSourceFrame ?? plan.fromExitFrame - plan.preRollFrames,
     preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame,
-    tempoRatio: plan.tempoRatio, automation: plan.automation, ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {})};
+    tempoRatio: plan.tempoRatio, automation: plan.automation, ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
+    ...(plan.entryDelayFrames ? {entryDelayFrames: plan.entryDelayFrames} : {}),
+    ...(plan.nativeRate ? {nativeRate: plan.nativeRate} : {}), ...(plan.loopExtension ? {loopExtension: plan.loopExtension} : {})};
 }
 
 export type EvaluatedMixDecision =
