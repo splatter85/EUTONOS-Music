@@ -25,6 +25,47 @@ test('native-rate opt-in voices refuse authored direct/hybrid cue identity timin
   source.release();
 });
 
+test('near-EOF native slowdowns use consumed samples and restore the original EOF on cancellation', async () => {
+  for (const {remaining, end} of [{remaining: 9600, end: 0.05}, {remaining: 16000, end: 0.8}])
+  for (const entry of ['authored', 'mix-entry', 'native-rate'] as const) {
+    const context = new ContextDouble(), clock = new WebAudioClock(context.audio);
+    Object.assign(context, {createBiquadFilter: () => Object.assign(new NodeDouble(context.audio), {
+      type: 'lowpass', frequency: new ParameterDouble(), gain: new ParameterDouble(), Q: new ParameterDouble()}) as unknown as BiquadFilterNode});
+    const recorded = {...recording(a, 48000), ...(entry === 'native-rate' ? {nativeRate: {start: 0.85, end: 1, frames: 48000}} : {})};
+    const source = new RecordedSource(context.audio, recorded, context.destination, {allowFixtures: true});
+    await source.prepare(clock);
+    if (entry === 'authored') source.scheduleStart({at: clock.stamp(4800), entryCueId: 'entry'});
+    else {
+      source.scheduleMixStart(clock.stamp(4800), 0, crossfadeAutomation(48000, 48000).incoming);
+      context.currentTime = 1.1;
+      assert.equal(source.settleMixEntry(), true);
+    }
+    const originalEnd = source.endFrame, offset = recorded.buffer.length - remaining;
+    const effect = source.clockFrameAtNative(offset), duration = 16800, finish = effect + duration;
+    assert.ok(finish > originalEnd, 'slowdown output extends beyond the old unity-rate EOF');
+    source.transitionMixOut(clock.stamp(effect), offset, crossfadeAutomation(duration, 48000).outgoing,
+      {rate: {start: 1, end, frames: duration}});
+    assert.equal(source.endFrame, finish);
+    assert.equal(context.sources[0]!.stops.at(-1), finish / 48000);
+    assert.equal(context.gains[0]!.gain.calls.at(-1)!.kind, 'cancel', 'an old mix-entry EOF gate cannot silence the slowed tail');
+    assert.equal(source.cancelTransition(), true);
+    assert.equal(source.endFrame, originalEnd);
+    assert.equal(context.sources[0]!.stops.at(-1), originalEnd / 48000);
+    assert.equal(context.gains[0]!.gain.calls.filter(call => call.time === originalEnd / 48000).at(-1)!.kind,
+      entry === 'mix-entry' ? 'set' : 'cancel', 'cancellation preserves the original native-EOF versus explicit-gate policy');
+    assert.deepEqual(context.sources[0]!.playbackRate.calls.slice(-2), [
+      {kind: 'cancel', time: effect / 48000}, {kind: 'set', value: 1, time: effect / 48000}]);
+    assert.throws(() => source.transitionMixOut(clock.stamp(effect), offset,
+      crossfadeAutomation(duration, 48000).outgoing, {rate: {start: 1, end: 1.25, frames: duration}}), /exceeds decoded/);
+    source.transitionMixOut(clock.stamp(effect), offset, crossfadeAutomation(duration, 48000).outgoing,
+      {rate: {start: 1, end, frames: duration}});
+    context.currentTime = effect / 48000;
+    assert.equal(source.cancelTransition(), false, 'a begun slowdown cannot be undone');
+    assert.equal(source.endFrame, finish);
+    source.release();
+  }
+});
+
 /** Metadata-only fixture for checking pickup and selected-entry units. */
 function offsetPack(): AudioPack {
   const shifted: AudioAsset = {...a, file: {...a.file, frames: a.file.frames + 7, bytes: a.file.bytes + 14},

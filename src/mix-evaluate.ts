@@ -289,8 +289,11 @@ export function renderTransition(from: MixPcm, to: MixPcm, spec: TransitionSpec,
     : sampleAt(to, ch, spec.toEntryFrame + (spec.nativeRate?.incoming ? nativeRateInputAt(spec.nativeRate.incoming, k) : k * spec.tempoRatio));
   const make = () => Array.from({length: channels}, () => new Float64Array(length));
   const aOut = make(), bOut = make(), aNative = make(), bNative = make(), mix = make();
+  const remainingNativeFrames = Math.max(0, from.channels[0]!.length - aFrame(S));
+  const availableOutputFrames = spec.nativeRate
+    ? Math.ceil(nativeRateOutputAt(spec.nativeRate.outgoing, remainingNativeFrames)) : remainingNativeFrames;
   const outgoing = renderGraph(rate, channels, loopAudio ? Math.min(outgoingFrames, loopAudio.channels[0]!.length) :
-    Math.min(outgoingFrames, Math.max(0, from.channels[0]!.length - aFrame(S))),
+    Math.min(outgoingFrames, availableOutputFrames),
     spec.automation.outgoing, (ch, k) => aAt(ch, S + k));
   const incoming = renderGraph(rate, channels, length - T, spec.automation.incoming, bAt);
   for (let ch = 0; ch < channels; ch++) {

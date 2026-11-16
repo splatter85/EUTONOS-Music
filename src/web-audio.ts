@@ -316,7 +316,9 @@ export class RecordedSource implements PlayableSource {
     const consumed = extra.rate ? nativeRateInputAt(extra.rate, automation.durationFrames) : automation.durationFrames;
     requireAudio(extra.loopBuffer ? extra.loopBuffer.length === automation.durationFrames && extra.loopBuffer.sampleRate === rate &&
       extra.loopBuffer.numberOfChannels === this.recording.buffer.numberOfChannels :
-      sourceOffsetFrames + consumed <= this.playbackFrames && at.frame + automation.durationFrames <= this.finishFrame,
+      sourceOffsetFrames + consumed <= this.playbackFrames &&
+        // A new rate changes the clock-domain EOF; decoded consumption remains the tail bound.
+        (extra.rate !== undefined || at.frame + automation.durationFrames <= this.finishFrame),
       'Mix exit automation exceeds decoded audio.');
     requireAudio(automation.gain[0]!.value === 1 && automation.gain.at(-1)!.value === 0 &&
       automation.lowShelfDb[0]!.value === 0 && automation.highPassHz[0]!.value === 0 &&
@@ -330,7 +332,11 @@ export class RecordedSource implements PlayableSource {
     }
     const graph = createMixAutomationGraph(this.context, loop ?? this.node!, this.loopSplice?.entry ?? this.gain!, at.frame, automation);
     try {
-      if (extra.rate) { this.scheduleRate(this.node!, extra.rate, at.frame); this.exitRate = true; }
+      if (extra.rate) {
+        // A settled mix entry may have a unity-rate EOF gate beyond this exit's start.
+        this.gain!.gain.cancelScheduledValues(this.naturalEndFrame / rate);
+        this.scheduleRate(this.node!, extra.rate, at.frame); this.exitRate = true;
+      }
       if (loop) {
         loop.start(at.frame / rate); loop.stop((at.frame + automation.durationFrames) / rate);
         // Native-rate k-rate integration can be a quantum away from the nominal sample.
@@ -347,6 +353,8 @@ export class RecordedSource implements PlayableSource {
       loop?.disconnect();
       this.restoreLoopSplice();
       if (extra.rate) { this.node!.playbackRate.cancelScheduledValues(at.frame / rate); this.node!.playbackRate.setValueAtTime(1, at.frame / rate); this.exitRate = false; }
+      if (extra.rate && this.start.entryCueId === 'mix-entry' && !this.entryRate)
+        this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
       try { this.node!.stop(this.naturalEndFrame / rate); } catch { /* retain original scheduling error */ }
       throw error;
     }
@@ -401,7 +409,7 @@ export class RecordedSource implements PlayableSource {
       this.gain!.gain.linearRampToValueAtTime(1, (this.start!.at.frame + this.fadeIn) / rate);
     }
     // S18: a settled mix entry keeps its prepared-EOF gate, which cancelScheduledValues removed.
-    if (this.start!.entryCueId === 'mix-entry') this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
+    if (this.start!.entryCueId === 'mix-entry' && !this.entryRate) this.gain!.gain.setValueAtTime(0, this.naturalEndFrame / rate);
     // Web Audio replaces a future scheduled stop when stop() is called again.
     this.node!.stop(this.naturalEndFrame / rate);
     this.finishFrame = this.naturalEndFrame;

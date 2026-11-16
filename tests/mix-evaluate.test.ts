@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {analyzeMixAudio, measureMixLevel, nativeSamplePeak, type MixPcm} from '../src/mix-analysis.js';
-import {cleanCutAutomation, echoOutAutomation, filterSweepAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
+import {cleanCutAutomation, crossfadeAutomation, echoOutAutomation, filterSweepAutomation, type MixAutomation, type MixAutomationPoint} from '../src/mix-automation.js';
 import {chooseEvaluatedMix, evaluateTransition, renderTransition, MIX_EVALUATION_THRESHOLDS, planEvaluatedMixFromAudio, planTransitionSpec,
   type TransitionEvaluation, type TransitionSpec} from '../src/mix-evaluate.js';
 import {LEVEL_MATCH_LIMITS, planAutomaticMix, type LevelMatchPlan, type AutomaticMixPlan} from '../src/mix-planner.js';
@@ -48,6 +48,24 @@ test('invalid motion metadata is refused before allocation or rate integration',
     {nativeRate: {pitchMoves: true, outgoing: {start: 1, end: 1, frames: NaN}}},
     {entryDelayFrames: 4, loopExtension: {bars: 4, startFrame: 0, endFrame: 4, frames: 4}}]) {
     assert.throws(() => renderTransition(from, to, {...equalPower, ...patch} as TransitionSpec), /bounded|Native rate/);
+  }
+});
+
+test('near-EOF native slowdown evaluation retains outgoing audio beyond unity-rate EOF', () => {
+  const sampleRate = 48000, duration = 16800;
+  const channel = Float32Array.from({length: sampleRate}, (_, n) => 0.2 * Math.cos(2 * Math.PI * 440 * n / sampleRate));
+  const pcm = {sampleRate, channels: [channel, Float32Array.from(channel)]};
+  for (const {remaining, end} of [{remaining: 9600, end: 0.05}, {remaining: 16000, end: 0.8}]) {
+    const render = renderTransition(pcm, pcm, {recipe: 'brake', fromStartFrame: sampleRate - remaining,
+      preRollFrames: 0, entryDelayFrames: duration - 960, toEntryFrame: 0, tempoRatio: 1,
+      nativeRate: {pitchMoves: true, outgoing: {start: 1, end, frames: duration}},
+      automation: {outgoing: crossfadeAutomation(duration, sampleRate).outgoing,
+        incoming: crossfadeAutomation(960, sampleRate).incoming}});
+    const late = render.aOut[0]!.subarray(render.S + remaining, render.S + duration);
+    assert.ok(late.some(sample => Math.abs(sample) > 0.001), 'valid native samples remain audible after the old unity-rate EOF');
+    assert.ok(render.aOut[0]!.subarray(render.S + duration - 128, render.S + duration).some(sample => sample !== 0),
+      'the native slowdown runs through its full output envelope');
+    assert.equal(render.aOut[0]![render.S + duration], 0, 'the outgoing graph stops at the output envelope end');
   }
 });
 
