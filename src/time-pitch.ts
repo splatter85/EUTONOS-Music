@@ -74,15 +74,18 @@ export interface TimePitchOptions {
   /** B's output tempo / original tempo. 1.04 makes a 100 BPM recording 104 BPM. */
   readonly tempoRatio: number;
   readonly pitchSemitones?: number;
-  /** Output-frame positions. Ramp the tempo ratio linearly back to 1. */
-  readonly returnToOriginal?: {readonly afterFrames: number; readonly rampFrames: number};
+  /** Output-frame positions. Ramp the tempo ratio back to 1 (linear, or S21 smoothstep). */
+  readonly returnToOriginal?: ReturnToOriginal;
 }
+/** S21: `smoothstep` eases the speed with 3u^2 - 2u^3; its integral equals the linear ramp's,
+ * so total frame counts are identical and only the intra-ramp mapping changes. */
+export interface ReturnToOriginal {readonly afterFrames: number; readonly rampFrames: number; readonly curve?: 'linear' | 'smoothstep';}
 export interface TimePitchMapping {
   readonly inputFrames: number;
   readonly outputFrames: number;
   readonly tempoRatio: number;
   readonly pitchSemitones: number;
-  readonly returnToOriginal: {readonly afterFrames: number; readonly rampFrames: number} | null;
+  readonly returnToOriginal: ReturnToOriginal | null;
 }
 export interface PreparedTimePitch {
   readonly processor: typeof TIME_PITCH_PROCESSOR;
@@ -101,6 +104,10 @@ const finite = (x: number): boolean => Number.isFinite(x);
 function rawInputAt(output: number, ratio: number, back: TimePitchMapping['returnToOriginal']): number {
   if (!back || output <= back.afterFrames) return output * ratio;
   const t = output - back.afterFrames, ramp = back.rampFrames;
+  if (t < ramp && back.curve === 'smoothstep') {
+    const u = t / ramp;
+    return ratio * back.afterFrames + ratio * t + (1 - ratio) * ramp * (u * u * u - u * u * u * u / 2);
+  }
   if (t < ramp) return ratio * back.afterFrames + ratio * t + (1 - ratio) * t * t / (2 * ramp);
   return ratio * back.afterFrames + (ratio + 1) * ramp / 2 + t - ramp;
 }
@@ -111,6 +118,15 @@ function rawOutputAt(input: number, ratio: number, back: TimePitchMapping['retur
   const remaining = input - ratio * back.afterFrames;
   const rampInput = (ratio + 1) * back.rampFrames / 2;
   if (remaining >= rampInput) return back.afterFrames + back.rampFrames + remaining - rampInput;
+  if (back.curve === 'smoothstep') {
+    // Monotonic (speed >= min(ratio, 1) > 0): bisection to sub-frame precision.
+    let low = 0, high = back.rampFrames;
+    for (let i = 0; i < 64 && high - low > 1e-6; i++) {
+      const mid = (low + high) / 2;
+      if (rawInputAt(back.afterFrames + mid, ratio, back) - ratio * back.afterFrames < remaining) low = mid; else high = mid;
+    }
+    return back.afterFrames + (low + high) / 2;
+  }
   const c = (1 - ratio) / (2 * back.rampFrames);
   const t = ratio === 1 ? remaining : 2 * remaining / (ratio + Math.sqrt(ratio * ratio + 4 * c * remaining));
   return back.afterFrames + t;
@@ -148,7 +164,8 @@ function validatedMapping(audio: TimePitchPcm, options: TimePitchOptions): TimeP
   check(finite(pitch) && Math.abs(pitch) <= TIME_PITCH_LIMITS.maxPitchSemitones,
     'Pitch shift must be within +/-2 semitones (engineering bounds).');
   const back = options.returnToOriginal ? {...options.returnToOriginal} : null;
-  if (back) check(Number.isSafeInteger(back.afterFrames) && back.afterFrames >= 0 &&
+  if (back) check((back.curve === undefined || back.curve === 'linear' || back.curve === 'smoothstep') &&
+    Number.isSafeInteger(back.afterFrames) && back.afterFrames >= 0 &&
     Number.isSafeInteger(back.rampFrames) && back.rampFrames >= Math.round(audio.sampleRate * 0.02) &&
     back.afterFrames * ratio < length && back.rampFrames <= length / TIME_PITCH_LIMITS.minTempoRatio &&
     rawInputAt(back.afterFrames + back.rampFrames, ratio, back) <= length,

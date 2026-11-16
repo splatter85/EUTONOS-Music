@@ -77,6 +77,19 @@
             <button id="set-requeue" class="chip" type="button">Queue the whole set</button>
           </div>
           <p id="set-mix" class="set-mix" role="status">No handover planned yet.</p>
+          <details id="set-why" class="set-why">
+            <summary>Why this handover</summary>
+            <dl class="facts"><dt>Recipe</dt><dd id="set-why-recipe">None yet</dd><dt>EQ moves</dt><dd id="set-why-choreo">None yet</dd>
+              <dt>B enters</dt><dd id="set-why-entry">None yet</dd><dt>Mode</dt><dd id="set-why-mode">Auto</dd></dl>
+            <ul id="set-why-reasons" class="dim"></ul>
+            <div class="set-controls">
+              <label class="check"><input id="set-explore" type="checkbox" autocomplete="off"> Explore (seeded variations)</label>
+              <label>seed<input id="set-explore-seed" type="number" min="0" step="1" value="1" autocomplete="off"></label>
+              <button class="chip" type="button" data-rate="love">Love it</button><button class="chip" type="button" data-rate="like">Like it</button>
+              <button class="chip" type="button" data-rate="dislike">Dislike it</button><button id="set-ratings-export" class="chip" type="button">Export ratings</button>
+            </div>
+            <p id="set-why-rating" class="dim" role="status">Ratings attach to the exact plan shown. They are stored in this browser only; nothing learns from them yet.</p>
+          </details>
           <p class="dim set-analysis-help">Before a handover, the DJ checks its planned mix. A failed or unavailable check keeps the current song. This experimental check covers the DJ’s plan; your EQ, filter and crossfader settings still apply separately.</p>
           <p id="set-auto-status" class="dim" role="status">Auto is off. When on, it moves to the next queued song every N bars from where each song came in, then stops at the end of the set (or loops).</p>
           <h4 class="set-sub">Songs in the set</h4>

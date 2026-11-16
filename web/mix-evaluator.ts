@@ -9,6 +9,7 @@
 import {analyzeAudio} from '../src/audio-analysis.js';
 import {analyzeMixAudio, type MixAnalysis, type MixPcm} from '../src/mix-analysis.js';
 import {nativeRateInputAt, nativeRateOutputAt, renderFiniteLoop, validateNativeRate, TIME_PITCH_LIMITS} from '../src/time-pitch.js';
+import {EQ_SPLIT, ThreeBandSplitter, type BandGap} from './eq-choreography.js';
 import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, validateMixAutomation, type MixAutomation,
   type MixAutomationPoint} from '../src/mix-automation.js';
 import {automaticMixCandidates, type AutomaticMixPlan, type MixPlannerOptions,
@@ -48,6 +49,41 @@ export const MIX_EVALUATION_THRESHOLDS = Object.freeze({
   /** Unprocessed context rendered before S and after E. */
   contextSeconds: 3,
 });
+
+/**
+ * S21 versioned safety set, judged beside (never inside) the frozen thresholds@1. Any flag is a
+ * rejection: the set path tries its next candidate. NOT calibrated against listening.
+ */
+export const TRANSITION_SAFETY_THRESHOLDS = Object.freeze({
+  version: 'transition-safety@1',
+  status: 'experimental: engineering rejection limits, not calibrated against listening',
+  /** Any rendered sample beyond full scale. */
+  clipSample: 1,
+  /** 4x oversampled true peak ceiling. */
+  truePeakDbtp: -1,
+  /** Low band (below the LR4 160 Hz split) of the mix over max(A native, B native from T). */
+  lowRiseDb: 3,
+  /** Low band of the mix below the interpolated A-to-B target, outside declared gaps (smooth recipes). */
+  bassHoleDb: -15,
+  /** Both low-band rules must persist this long: every 50 ms window across a 250 ms span must exceed the limit. */
+  sustainMs: 250,
+});
+export type SafetyMetric = 'clipping' | 'truePeakCeiling' | 'lowRise' | 'bassHole';
+export interface SafetyMeasurements {
+  readonly samplePeak: number;
+  readonly truePeakDbtp: number | null;
+  /** Largest 250 ms low-band rise over the louder native source. */
+  readonly lowRiseDb: number | null;
+  /** Deepest 250 ms low-band shortfall against the target outside declared gaps (null = unjudged). */
+  readonly bassHoleDb: number | null;
+  readonly bassHoleJudged: boolean;
+  readonly declaredGapFrames: number;
+}
+export interface SafetyVerdict {
+  readonly version: typeof TRANSITION_SAFETY_THRESHOLDS.version;
+  readonly verdict: 'pass' | 'fail';
+  readonly flags: readonly {readonly metric: SafetyMetric; readonly value: number; readonly threshold: number}[];
+}
 
 /** Everything the renderer needs; `planTransitionSpec` derives it from a planner proposal. */
 export interface TransitionSpec {
@@ -106,6 +142,8 @@ export interface TransitionMeasurements {
   readonly stereoCorrelation: number | null;
   readonly levelMatch?: {readonly rawDeltaLu: number; readonly beforeDeltaLu: number; readonly matchedDeltaLu: number;
     readonly fromGain: number; readonly toGain: number; readonly target: 'gain-adjusted measured windows'};
+  /** S21 transition-safety@1 inputs (absent on evaluations made before S21). */
+  readonly safety?: SafetyMeasurements;
 }
 export interface TransitionEvaluation {
   readonly version: typeof MIX_EVALUATOR_VERSION;
@@ -117,6 +155,8 @@ export interface TransitionEvaluation {
   readonly flags: readonly EvaluationFlag[];
   readonly measurements: TransitionMeasurements | null;
   readonly bSource: TransitionRender['bSource'] | null;
+  /** S21: the separate safety verdict; a fail rejects the candidate. */
+  readonly safety?: SafetyVerdict;
 }
 
 type Coefficients = [number, number, number, number, number];
@@ -201,6 +241,11 @@ function renderGraph(rate: number, channels: number, active: number, automation:
   const hpHz = laneReader(automation.highPassHz), lpHz = laneReader(automation.lowPassHz);
   const chains = Array.from({length: channels}, () =>
     [new Biquad(IDENTITY), new Biquad(IDENTITY), new Biquad(IDENTITY)] as const);
+  // S21 LR4 band lanes after the dry filters, mirroring createThreeBandSplit (flat at unity).
+  const bands = automation.bands;
+  const bandLow = bands ? laneReader(bands.low) : null, bandMid = bands ? laneReader(bands.mid) : null;
+  const bandHigh = bands ? laneReader(bands.high) : null;
+  const splitters = bands ? Array.from({length: channels}, () => new ThreeBandSplitter(rate)) : [];
   const echo = automation.echo;
   const send = echo ? laneReader(echo.send) : null, wet = echo ? laneReader(echo.wet) : null;
   const delays = echo ? Array.from({length: channels}, () => new Float64Array(echo.delayFrames)) : [];
@@ -212,9 +257,13 @@ function renderGraph(rate: number, channels: number, active: number, automation:
       for (const chain of chains) chain.forEach((filter, i) => { filter.c = coefficients[i]!; });
     }
     const g = gain(k), s = send?.(k) ?? 0, w = wet?.(k) ?? 0;
+    const gl = bandLow?.(k) ?? 1, gm = bandMid?.(k) ?? 1, gh = bandHigh?.(k) ?? 1;
     for (let ch = 0; ch < channels; ch++) {
       const x = input(ch, k), chain = chains[ch]!;
-      let y = g * chain[2].next(chain[1].next(chain[0].next(x)));
+      const dry = chain[2].next(chain[1].next(chain[0].next(x)));
+      let y: number;
+      if (bands) { const [l, m, h] = splitters[ch]!.next(dry); y = g * (gl * l + gm * m + gh * h); }
+      else y = g * dry;
       if (echo) {
         const line = delays[ch]!, delayed = line[cursor]!;
         line[cursor] = s * x + echo.feedback * loops[ch]!.next(delayed);
@@ -389,6 +438,18 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
       });
     return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length, beats: errors.length, judged: true} : unjudged('No B beat falls inside the compared window.');
   }
+  if (spec.recipe === 'meet-in-middle' && spec.nativeRate && !spec.nativeRate.incoming) {
+    // S21: A's grid follows its native-rate ramp; B is stretched to the meeting tempo from T.
+    const ramp = spec.nativeRate.outgoing, meetPeriod = period / ramp.end;
+    const grid = analysis.from.beatGrid.frames.map(f => render.S + nativeRateOutputAt(ramp, f - spec.fromStartFrame))
+      .filter(n => n >= render.T - meetPeriod && n <= render.E + meetPeriod);
+    if (!grid.length) return unjudged('No A beat falls inside the compared window.');
+    const errors = analysis.to.beatGrid.frames.map(g => render.T + (g - spec.toEntryFrame) / spec.tempoRatio)
+      .filter(n => n >= render.T - 1 && n <= render.E)
+      .map(n => Math.min(...grid.map(g => Math.abs(g - n))) / meetPeriod);
+    return errors.length ? {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length,
+      beats: errors.length, judged: true} : unjudged('No B beat falls inside the compared window.');
+  }
   const aIndex = (f: number) => render.S + (f - spec.fromStartFrame) + (spec.entryDelayFrames ?? 0);
   const grid = analysis.from.beatGrid.frames.map(aIndex).filter(n => n <= render.T + period);
   if (!grid.length) return unjudged('No A beat falls inside the compared window.');
@@ -510,7 +571,8 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
     if (vl > 1e-12 && vr > 1e-12) correlation = (slr / count - sl * sr / count ** 2) / Math.sqrt(vl * vr);
   }
 
-  return {truePeakDbtp: peak === null ? null : finite(peak),
+  const safety = measureSafety(render, spec, peak === null ? null : finite(peak));
+  return {truePeakDbtp: peak === null ? null : finite(peak), safety,
     loudness: {momentaryMaxUpLu: momentary.up, momentaryMaxDownLu: momentary.down,
       shortTermMaxUpLu: shortTerm.up, shortTermMaxDownLu: shortTerm.down},
     lowBuildUp: {maxDb: lowMax, band: lowBand},
@@ -521,6 +583,59 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
     ...(spec.levelMatch ? {levelMatch: {rawDeltaLu: spec.levelMatch.rawDeltaLu, beforeDeltaLu: spec.levelMatch.beforeDeltaLu,
       matchedDeltaLu: spec.levelMatch.matchedDeltaLu, fromGain: spec.levelMatch.fromGain, toGain: spec.levelMatch.toGain,
       target: 'gain-adjusted measured windows' as const}} : {})};
+}
+
+/** Declared EQ gaps in render indices (incoming gaps start at T, outgoing gaps at S). */
+function declaredGaps(render: TransitionRender, spec: TransitionSpec): [number, number][] {
+  const map = (gaps: readonly BandGap[] | undefined, origin: number) =>
+    (gaps ?? []).filter(g => g.band === 'low').map(g => [origin + g.startFrame, origin + g.endFrame] as [number, number]);
+  return [...map(spec.automation.incoming.declaredGaps, render.T), ...map(spec.automation.outgoing.declaredGaps, render.S)];
+}
+
+/** transition-safety@1 measurements: sample peak, true peak and the sustained low-band rules. */
+export function measureSafety(render: TransitionRender, spec: TransitionSpec, truePeakDbtp: number | null): SafetyMeasurements {
+  const rate = render.sampleRate, length = render.mix[0]!.length, {S, T, E} = render;
+  let samplePeak = 0;
+  for (const channel of render.mix) for (let n = 0; n < length; n++) samplePeak = Math.max(samplePeak, Math.abs(channel[n]!));
+  const low = (channels: readonly Float64Array[]) => prefix(bandEnergy(channels, rate, 20, EQ_SPLIT.lowMidHz));
+  const bFromT = render.bNative.map(c => Float64Array.from(c, (v, n) => n >= T ? v : 0));
+  const mix = low(render.mix), a = low(render.aNative), b = low(bFromT);
+  // 50 ms cells; a rule fires only when every cell across a 250 ms span breaks it (sustained, not a spike).
+  const cell = Math.round(0.05 * rate), run = Math.max(1, Math.round(TRANSITION_SAFETY_THRESHOLDS.sustainMs / 50));
+  const span = Math.max(1, E - S), x = (n: number) => Math.max(0, Math.min(1, (n - S) / span));
+  const gaps = declaredGaps(render, spec);
+  const cells = windows(length, cell, cell, S, E).filter(([s, e]) => s >= S && e <= E);
+  const peakTarget = Math.max(1e-30, ...cells.map(([s, e]) => Math.max(windowMean(a, s, e), windowMean(b, s, e))));
+  const judgeHole = isSmoothRecipe(spec.recipe);
+  // Per cell: rise over the louder native source (-inf when near-silent) and shortfall against the
+  // interpolated A-to-B target (+inf when unjudged: near-silent target or inside a declared gap).
+  const rises = cells.map(([s, e]) => {
+    const louder = Math.max(windowMean(a, s, e), windowMean(b, s, e));
+    return louder > 1e-6 * peakTarget ? db(Math.max(1e-30, windowMean(mix, s, e)) / louder) : -Infinity;
+  });
+  const shortfalls = cells.map(([s, e]) => {
+    if (!judgeHole || gaps.some(([g0, g1]) => s < g1 && e > g0)) return Infinity;
+    const mid = (s + e) / 2, target = (1 - x(mid)) * windowMean(a, s, e) + x(mid) * windowMean(b, s, e);
+    return target > 1e-4 * peakTarget ? db(Math.max(1e-30, windowMean(mix, s, e)) / target) : Infinity;
+  });
+  let rise: number | null = null, hole: number | null = null;
+  for (let k = 0; k + run <= cells.length; k++) {
+    const r = Math.min(...rises.slice(k, k + run)), h = Math.max(...shortfalls.slice(k, k + run));
+    if (Number.isFinite(r) && (rise === null || r > rise)) rise = r;
+    if (Number.isFinite(h) && (hole === null || h < hole)) hole = h;
+  }
+  return {samplePeak, truePeakDbtp, lowRiseDb: rise, bassHoleDb: judgeHole ? hole : null, bassHoleJudged: judgeHole,
+    declaredGapFrames: gaps.reduce((sum, [g0, g1]) => sum + g1 - g0, 0)};
+}
+
+/** Pure transition-safety@1 judgement of recorded measurements (re-runnable by validators). */
+export function judgeSafety(m: SafetyMeasurements): SafetyVerdict {
+  const t = TRANSITION_SAFETY_THRESHOLDS, flags: {metric: SafetyMetric; value: number; threshold: number}[] = [];
+  if (m.samplePeak > t.clipSample) flags.push({metric: 'clipping', value: m.samplePeak, threshold: t.clipSample});
+  if (m.truePeakDbtp !== null && m.truePeakDbtp > t.truePeakDbtp) flags.push({metric: 'truePeakCeiling', value: m.truePeakDbtp, threshold: t.truePeakDbtp});
+  if (m.lowRiseDb !== null && m.lowRiseDb > t.lowRiseDb) flags.push({metric: 'lowRise', value: m.lowRiseDb, threshold: t.lowRiseDb});
+  if (m.bassHoleJudged && m.bassHoleDb !== null && m.bassHoleDb < t.bassHoleDb) flags.push({metric: 'bassHole', value: m.bassHoleDb, threshold: t.bassHoleDb});
+  return {version: t.version, verdict: flags.length ? 'fail' : 'pass', flags};
 }
 
 /** Flags, verdict and an ordering penalty from the versioned thresholds. */
@@ -567,7 +682,8 @@ export function evaluateTransition(from: MixPcm, to: MixPcm, spec: TransitionSpe
   }
   const render = renderTransition(from, to, spec, prepared);
   const measurements = measureTransition(render, spec, analysis);
-  return {...base, ...judgeTransition(spec.recipe, measurements), measurements, bSource: render.bSource};
+  return {...base, ...judgeTransition(spec.recipe, measurements), measurements, bSource: render.bSource,
+    ...(measurements.safety ? {safety: judgeSafety(measurements.safety)} : {})};
 }
 
 /** The renderer's view of a planner proposal. */

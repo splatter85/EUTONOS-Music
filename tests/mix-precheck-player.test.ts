@@ -8,7 +8,7 @@ import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import {DeterministicDj} from '../src/dj.js';
 import {nativeSamplePeak} from '../src/mix-analysis.js';
 import type {MixPreparationRuntime} from '../src/mix-transition.js';
-import {SmallPlayer} from '../src/player.js';
+import {SET_CANDIDATE_ATTEMPTS, SmallPlayer} from '../src/player.js';
 import {PRECHECK_PROTOCOL, type PrecheckRequest, type PrecheckReport, type PrecheckRuntime} from '../web/mix-precheck-data.js';
 import {ContextDouble, NodeDouble, ParameterDouble, deferred} from './audio-double.js';
 import {buildSyntheticSet, decodePcm16} from './helpers/synthetic-set.js';
@@ -112,7 +112,10 @@ for (const verdict of ['fail', 'unavailable'] as const) test(verdict + ' creates
     const refusal = assert.rejects(pending, /DJ plan check/);
     gate.release(); await refusal;
     const snapshot = player.snapshot();
-    assert.equal(gate.calls, 1); assert.equal(context.sources.length, 1);
+    // S21: a measured FAIL tries the next untried candidate (bounded); an unavailable check stops at once.
+    if (verdict === 'fail') assert.ok(gate.calls >= 1 && gate.calls <= SET_CANDIDATE_ATTEMPTS, String(gate.calls));
+    else assert.equal(gate.calls, 1);
+    assert.equal(context.sources.length, 1);
     assert.deepEqual(a.stops, stops); assert.deepEqual(context.gains.map(node => node.gain.calls), gains);
     assert.equal(snapshot.voices[0]!.endFrame, naturalEnd); assert.equal(snapshot.now[0], ids[0]);
     assert.equal(snapshot.transition, 'none'); assert.equal(snapshot.mix!.phase, 'unavailable');
@@ -179,9 +182,11 @@ test('DJ refusal retains FIFO and disarms Next; Hold and explicit retry remain a
     assert.equal(refused.execution.status, 'no-match'); assert.match(refused.execution.reason, /DJ plan check FAIL/);
     assert.deepEqual(dj.snapshot().control.queue, before); assert.equal(dj.nextArmed, false);
     assert.equal(context.sources.length, 1); assert.equal(dj.snapshot().player.now[0], ids[0]); owners(player);
+    const refusedCalls = calls;
+    assert.ok(refusedCalls >= 1 && refusedCalls <= SET_CANDIDATE_ATTEMPTS, 'every untried candidate was checked once at most');
     verdict = 'warn';
     assert.equal((await command(dj, {type: 'nextSong'})).execution.status, 'scheduled', 'manual Next still works under Hold');
-    assert.equal(calls, 2); assert.equal(context.sources.length, 2); owners(player);
+    assert.equal(calls, refusedCalls + 1); assert.equal(context.sources.length, 2); owners(player);
     await command(dj, {type: 'cancelNext'});
     assert.deepEqual(dj.snapshot().control.queue, before);
     await command(dj, {type: 'transport', action: 'stop'});

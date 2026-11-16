@@ -30,8 +30,9 @@ export function deckPositionAt(input: DeckPositionInput): DeckPosition {
   } else if (input.mapping) {
     const map = input.mapping, back = map.returnToOriginal;
     source = (input.sourceStartFrame ?? 0) + sourceFrameAtOutput(map, output);
+    const u = back ? Math.min(1, Math.max(0, (output - back.afterFrames) / back.rampFrames)) : 0;
     speed = !back || output <= back.afterFrames ? map.tempoRatio
-      : map.tempoRatio + (1 - map.tempoRatio) * Math.min(1, (output - back.afterFrames) / back.rampFrames);
+      : map.tempoRatio + (1 - map.tempoRatio) * (back.curve === 'smoothstep' ? u * u * (3 - 2 * u) : u);
     pitch = map.pitchSemitones; mode = 'independent';
   }
   return {sourceFrame: Math.min(input.nativeFrames, Math.max(0, source)), speed, pitchSemitones: pitch, pitchMode: mode};

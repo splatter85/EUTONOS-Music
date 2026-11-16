@@ -58,6 +58,10 @@ export class StreamTapDouble extends NodeDouble {
 export class GainDouble extends NodeDouble {
   readonly gain = new ParameterDouble();
 }
+/** S21: the deck echo uses a delay line; only its scheduled delay time is observable here. */
+export class DelayDouble extends NodeDouble {
+  readonly delayTime = new ParameterDouble();
+}
 
 export class SourceDouble extends NodeDouble {
   readonly playbackRate = new ParameterDouble();
@@ -102,6 +106,12 @@ export class ContextDouble extends EventTarget {
     const node = new GainDouble(this.audio);
     this.gains.push(node);
     return node as unknown as GainNode;
+  }
+  readonly delays: DelayDouble[] = [];
+  createDelay(): DelayNode {
+    const node = new DelayDouble(this.audio);
+    this.delays.push(node);
+    return node as unknown as DelayNode;
   }
   readonly streamTaps: StreamTapDouble[] = [];
   createMediaStreamDestination(): MediaStreamAudioDestinationNode {

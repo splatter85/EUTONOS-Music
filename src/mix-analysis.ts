@@ -9,12 +9,15 @@ export interface MixPcm {
   readonly sampleRate: number;
   readonly channels: readonly (Float32Array | Float64Array)[];
 }
-export const MIX_ANALYSIS_VERSION = 'mix-analysis-v3' as const;
+export const MIX_ANALYSIS_VERSION = 'mix-analysis-v4' as const;
 export const MIX_ANALYSIS_LIMITS = Object.freeze({
   minSampleRate: 8000, maxSampleRate: 192000, maxSeconds: 180,
   maxChannelSamples: 16_777_216, minBpm: 60, maxBpm: 180,
 });
 export const SONG_ANALYSIS_WINDOW = Object.freeze({policy: 'song-mono-window@1' as const, seconds: 60});
+/** S21: whole-song coverage from bounded windows (each <= 60 s; the 180 s render cap is untouched). */
+export const SONG_MERGE_POLICY = Object.freeze({policy: 'song-window-merge@1' as const, hopSeconds: 48, maxWindows: 12,
+  tempoAgreement: 0.02, maxCues: 32});
 export const MIX_LEVEL_VERSION = 'bs1770-k-window@1' as const;
 export interface MixLevelEvidence {
   readonly version: typeof MIX_LEVEL_VERSION; readonly sampleRate: number;
@@ -135,6 +138,8 @@ export interface MixAnalysis {
   readonly nativePeak?: NativeSamplePeak;
   /** Set mode only: evidence covers this bounded native-song interval, not the whole song. */
   readonly analyzedWindow?: {readonly policy: typeof SONG_ANALYSIS_WINDOW.policy; readonly startFrame: number; readonly frames: number};
+  /** S21 whole-song merge: every bounded window whose evidence was kept, in native song frames. */
+  readonly analyzedWindows?: readonly SongWindowRef[];
   readonly tempo: TempoEstimate;
   readonly beatGrid: {readonly frames: readonly number[]; readonly confidence: number; readonly maxFitErrorSeconds: number | null};
   readonly structure: {
@@ -681,11 +686,12 @@ export function analyzeMixAudio(input: MixPcm, options: MixAnalysisOptions = {})
     return {frame, seconds: frame / input.sampleRate, confidence,
       reasons: [phrase ? 'four-bar phrase hypothesis' : '4/4 downbeat hypothesis',
         'constant-tempo audio estimate', 'relative local energy'],
-      inScore: (phrase ? 0.35 : 0.1) + 0.4 * (1 - relative) + 0.25 * quiet,
+      // S21: no position term for entries; phrase alignment and quietness only.
+      inScore: (phrase ? 0.55 : 0.25) + 0.3 * quiet,
       outScore: (phrase ? 0.35 : 0.1) + 0.4 * relative + 0.25 * quiet};
   });
   const rank = (kind: 'in' | 'out'): MixPointCandidate[] => points
-    .filter(p => kind === 'in' ? p.frame < frames * 0.6 : p.frame >= frames * 0.25 && p.frame < frames * 0.9)
+    .filter(p => kind === 'in' ? p.frame < frames * 0.9 : p.frame >= frames * 0.25 && p.frame < frames * 0.9)
     .map(p => ({frame: p.frame, seconds: p.seconds, confidence: p.confidence,
       score: kind === 'in' ? p.inScore : p.outScore, reasons: p.reasons}))
     .sort((a, b) => b.score - a.score || a.frame - b.frame);
@@ -807,7 +813,8 @@ function findCues(a: MixAnalysis, incoming: boolean): MixPointCandidate[] {
     const evidence: CueEvidence = {kind, boundary: strength, period, salience,
       windowEndFrame: window.at(-1)!.endFrame, interference, chroma: localChroma};
     const score = clamp(0.45 * strength + 0.2 * period + 0.2 * (incoming ? salience : 1 - interference) +
-      0.15 * (incoming ? 1 - base.frame / a.frames : base.frame / a.frames));
+      // S21: entries earn phrase alignment, never earliness (skip cost is applied by the planner).
+      0.15 * (incoming ? (a.structure.phraseFrames.includes(base.frame) ? 1 : 0.4) : base.frame / a.frames));
     // Grid and legacy evidence are upper bounds; novelty cannot rescue poor timing.
     const confidence = Math.min(base.confidence, a.beatGrid.confidence,
       a.structure.downbeatConfidence, trackStart || valley ? 1 : 0.5 + strength / 2);
@@ -817,8 +824,104 @@ function findCues(a: MixAnalysis, incoming: boolean): MixPointCandidate[] {
       'confidence-weighted 4/8/16-bar hypotheses', 'complete four-bar source window',
       'track-normalized four-bar activity; no semantic section labels']});
   }
-  return candidates.sort((a, b) => b.score - a.score || b.confidence - a.confidence || a.frame - b.frame).slice(0, 12);
+  // S21: without an earliness term equal phrase boundaries tie, so keep 16 per window (merge caps at 32).
+  return candidates.sort((a, b) => b.score - a.score || b.confidence - a.confidence || a.frame - b.frame).slice(0, 16);
 }
 
 export function findIncomingCues(analysis: MixAnalysis): MixPointCandidate[] { return findCues(analysis, true); }
 export function findOutgoingCues(analysis: MixAnalysis): MixPointCandidate[] { return findCues(analysis, false); }
+
+export interface SongWindowRef {readonly policy: typeof SONG_ANALYSIS_WINDOW.policy; readonly startFrame: number; readonly frames: number;}
+/** Window starts covering the whole song: 60 s windows every 48 s, the last aligned to the end. */
+export function songWindowStarts(frames: number, sampleRate: number): number[] {
+  const size = Math.round(SONG_ANALYSIS_WINDOW.seconds * sampleRate), hop = Math.round(SONG_MERGE_POLICY.hopSeconds * sampleRate);
+  if (!Number.isSafeInteger(frames) || frames <= 0) throw new Error('Invalid song length.');
+  if (frames <= size) return [0];
+  const starts: number[] = [];
+  for (let start = 0; start + size < frames && starts.length < SONG_MERGE_POLICY.maxWindows - 1; start += hop) starts.push(start);
+  starts.push(frames - size);
+  return [...new Set(starts)].sort((a, b) => a - b);
+}
+function windowSpan(w: MixAnalysis): {start: number; end: number} {
+  const start = w.analyzedWindow?.startFrame ?? 0;
+  return {start, end: start + (w.analyzedWindow?.frames ?? w.frames)};
+}
+/**
+ * Merge per-window analyses already rebound to native song frames. The reference window has the
+ * highest tempo confidence; windows whose BPM differs by more than 2% are excluded (recorded in
+ * limitations). Grid evidence is taken from each window's own region (split at overlap midpoints);
+ * phrases are recomputed globally every four merged downbeats; cues are deduplicated within 1/8 bar.
+ * The constant-tempo, assumed-4/4 limits of each window still apply.
+ */
+export function mergeSongWindows(windows: readonly MixAnalysis[]): MixAnalysis {
+  if (!windows.length) throw new Error('No song windows to merge.');
+  const sorted = [...windows].sort((x, y) => windowSpan(x).start - windowSpan(y).start);
+  const first = sorted[0]!;
+  if (sorted.some(w => w.frames !== first.frames || w.sampleRate !== first.sampleRate || w.version !== first.version)) throw new Error('Song windows disagree on the song.');
+  if (sorted.length === 1) return first;
+  const confidence = (w: MixAnalysis): number => w.tempo.bpm === null ? -1 : w.tempo.confidence;
+  const reference = [...sorted].sort((x, y) => confidence(y) - confidence(x) || windowSpan(x).start - windowSpan(y).start)[0]!;
+  const refBpm = reference.tempo.bpm;
+  const limitations: string[] = [];
+  const kept = sorted.filter(w => {
+    const agree = refBpm !== null && w.tempo.bpm !== null && Math.abs(w.tempo.bpm / refBpm - 1) <= SONG_MERGE_POLICY.tempoAgreement;
+    if (!agree && w !== reference) limitations.push(`Window at ${(windowSpan(w).start / w.sampleRate).toFixed(1)} s measured ${w.tempo.bpm?.toFixed(2) ?? 'no'} BPM (reference ${refBpm?.toFixed(2) ?? 'none'}); excluded.`);
+    return agree || w === reference;
+  });
+  // Ownership regions split at overlap midpoints, so each frame's evidence comes from one window.
+  const regions = kept.map((w, i) => {
+    const s = windowSpan(w), prev = kept[i - 1] ? windowSpan(kept[i - 1]!) : null, next = kept[i + 1] ? windowSpan(kept[i + 1]!) : null;
+    return {w, start: prev ? Math.round((s.start + Math.min(prev.end, s.end)) / 2) : s.start,
+      end: next ? Math.round((Math.max(next.start, s.start) + s.end) / 2) : s.end};
+  });
+  const owned = <T>(pick: (w: MixAnalysis) => readonly T[], frameOf: (x: T) => number): T[] =>
+    regions.flatMap(r => pick(r.w).filter(x => frameOf(x) >= r.start && frameOf(x) < r.end));
+  const increasing = (xs: number[]): number[] => xs.filter((x, i) => i === 0 || x > xs[i - 1]!);
+  const beats = increasing(owned(w => w.beatGrid.frames, x => x));
+  const downbeats = increasing(owned(w => w.structure.downbeatFrames, x => x));
+  const phraseFrames = downbeats.filter((_, i) => i % 4 === 0);
+  const mean = (f: (w: MixAnalysis) => number): number => kept.reduce((sum, w) => sum + f(w), 0) / kept.length;
+  const barFrames = refBpm ? 4 * 60 * first.sampleRate / refBpm : first.sampleRate * 2;
+  const dedupe = (cues: MixPointCandidate[]): MixPointCandidate[] => {
+    const out: MixPointCandidate[] = [];
+    for (const cue of [...cues].sort((x, y) => y.score - x.score || x.frame - y.frame)) {
+      if (out.some(c => Math.abs(c.frame - cue.frame) <= barFrames / 8)) continue;
+      out.push(cue);
+    }
+    return out.slice(0, SONG_MERGE_POLICY.maxCues);
+  };
+  const keyed = [...kept].sort((x, y) => y.key.confidence - x.key.confidence)[0]!;
+  const spans = mergedSpans(kept.flatMap(w => w.vocalSpans ?? []));
+  const {analyzedWindow: _single, ...base} = reference;
+  return {...base, version: first.version, frames: first.frames, sampleRate: first.sampleRate,
+    analyzedWindows: kept.map(w => { const s = windowSpan(w); return {policy: SONG_ANALYSIS_WINDOW.policy, startFrame: s.start, frames: s.end - s.start}; }),
+    beatGrid: {frames: beats, confidence: mean(w => w.beatGrid.confidence),
+      maxFitErrorSeconds: kept.some(w => w.beatGrid.maxFitErrorSeconds === null) ? null : Math.max(...kept.map(w => w.beatGrid.maxFitErrorSeconds!))},
+    structure: {...reference.structure, downbeatFrames: downbeats, phraseFrames,
+      downbeatConfidence: mean(w => w.structure.downbeatConfidence), phraseConfidence: mean(w => w.structure.phraseConfidence)},
+    key: keyed.key,
+    energyCurve: owned(w => w.energyCurve, e => e.startFrame),
+    ...(kept.every(w => w.cueFeatures) ? {cueFeatures: owned(w => w.cueFeatures!, c => c.frame)} : {}),
+    ...(kept.some(w => w.vocalSpans) ? {vocalSpans: spans} : {}),
+    mixIn: dedupe(kept.flatMap(w => [...w.mixIn])),
+    mixOut: dedupe(kept.flatMap(w => [...w.mixOut])),
+    limitations: [...reference.limitations.filter(l => !l.startsWith('Only native frames')),
+      `Whole-song evidence merged from ${kept.length} bounded windows (${SONG_MERGE_POLICY.policy}); tempo from the most confident window.`,
+      ...limitations]};
+}
+function mergedSpans(spans: readonly VocalSpan[]): VocalSpan[] {
+  const out: VocalSpan[] = [];
+  for (const s of [...spans].sort((a, b) => a.startFrame - b.startFrame)) {
+    const last = out.at(-1);
+    if (last && s.startFrame <= last.endFrame) out[out.length - 1] = {startFrame: last.startFrame, endFrame: Math.max(last.endFrame, s.endFrame)};
+    else out.push({startFrame: s.startFrame, endFrame: s.endFrame});
+  }
+  return out;
+}
+/** Native-frame interval covered by an analysis's evidence (single window, merged windows or whole). */
+export function evidenceSpan(a: MixAnalysis): {readonly start: number; readonly end: number} {
+  if (a.analyzedWindows?.length) return {start: Math.min(...a.analyzedWindows.map(w => w.startFrame)),
+    end: Math.max(...a.analyzedWindows.map(w => w.startFrame + w.frames))};
+  if (a.analyzedWindow) return {start: a.analyzedWindow.startFrame, end: a.analyzedWindow.startFrame + a.analyzedWindow.frames};
+  return {start: 0, end: a.frames};
+}

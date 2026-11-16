@@ -256,7 +256,10 @@ test('filter take and handback restore both lanes when the second native paramet
 
 test('crossfader take and handback preserve prior ownership after a partial native failure', () => {
   const context = new DeckContext(rate), mixer = new DeckMixer(context.audio, context.destination);
-  const bFader = context.gains[4] as TimelineGain;
+  // Locate B by graph shape: fader -> lifetime -> destination (S21 adds band gains per deck).
+  const master = context.destination;
+  const lifetimes = context.gains.filter(g => g.connections.includes(master));
+  const bFader = context.gains.find(g => g.connections.includes(lifetimes[1] as unknown as AudioNode)) as TimelineGain;
   assert.ok(bFader, 'B fader is the second deck bus');
   const original = bFader.gain.setValueAtTime.bind(bFader.gain);
   const refuseOnce = (): void => {

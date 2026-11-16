@@ -156,12 +156,21 @@ test('bar boundaries count from the song (Next) or from the entry bar (Auto)', (
   assert.deepEqual(nextBoundary(grid, 3, 16, 4 * 32000), {bar: 19, frame: 19 * 32000}, 'Auto: N bars after the entry bar');
 });
 
-test('route-free fallback: 90 -> 128 is a clean cut on the downbeat; 122 -> 128 crossfades one bar; equal tempo four', () => {
-  const rate = 16000, frames = 60 * rate;
-  const cut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, 8 * 4 * 60 * rate / 90, rate);
+test('route-free fallback: 90 -> 128 echo-resets (cut only as last resort); 122 -> 128 crossfades one bar; equal tempo four', () => {
+  const rate = 16000, frames = 60 * rate, exit = 8 * 4 * 60 * rate / 90;
+  // S21: a large tempo gap uses the filtered echo reset ending on the boundary downbeat.
+  const echo = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate);
+  assert.ok(echo.kind === 'route-free' && echo.recipe === 'fallback-echo-reset');
+  assert.equal(echo.fromExitFrame, exit);
+  assert.ok(echo.preRollFrames > 0 && echo.automation.outgoing.echo, 'echo pre-roll before the downbeat');
+  // When the pre-roll cannot fit after the earliest audible frame, the clean cut is the last resort.
+  const cut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {earliestFrame: exit - 1});
   assert.equal(cut.kind, 'route-free');
   assert.ok(cut.kind === 'route-free');
   assert.equal(cut.recipe, 'fallback-cut');
+  assert.equal(planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {earliestFrame: exit - 1, allowCut: false}).kind, 'unavailable', 'no cut when cuts are disallowed');
   assert.equal(cut.fromExitFrame, 8 * 4 * 60 * rate / 90, 'exactly on the boundary downbeat');
   assert.equal(cut.toEntryFrame, 0);
   assert.ok(cut.overlapFrames <= rate * 0.02, 'a short complementary cut');
@@ -201,7 +210,7 @@ test('set choice: any analyzed pair stays on the requested bar, else the route-f
     // 90 -> 128 never blends (tempo gap) and cuts on a bar that is a multiple of 4 from bar 1.
     const big = chooseSetTransition(input('synthetic-90', 'synthetic-128-a', true));
     if (big.kind === 'unavailable') assert.fail(big.reason);
-    assert.ok(['cut', 'fallback-cut'].includes(big.plan.recipe), big.plan.recipe);
+    assert.ok(['cut', 'fallback-cut', 'fallback-echo-reset', 'echo-out', 'brake'].includes(big.plan.recipe), big.plan.recipe);
     assert.equal(big.exitBar % 4, 0);
     assert.ok(Math.abs(big.plan.fromExitFrame - downbeatAt(big.fromGrid, big.exitBar)) <= big.fromGrid.barFrames / 8);
     // 122 -> 128 blends (analyzed) or falls back to a one-bar crossfade.
@@ -234,7 +243,7 @@ test('set player: lazy decode, any-to-any transitions at a bar boundary, settled
     let snap = player.snapshot();
     assert.equal(snap.transition, 'scheduled');
     const summary = snap.mix!.summary!;
-    assert.ok(['cut', 'fallback-cut'].includes(summary.recipe), summary.recipe);
+    assert.ok(['cut', 'fallback-cut', 'fallback-echo-reset', 'echo-out', 'brake'].includes(summary.recipe), summary.recipe);
     assert.equal(summary.set!.toId, s128a);
     assert.equal((summary.set!.exitBar - 1) % 4, 0, 'exit on a 4-bar boundary counted from bar 1');
     assert.equal(snap.transitionAt!.frame, start + summary.fromExitFrame);
@@ -436,8 +445,11 @@ test('set player blends 122 -> 128 with a returning time map, then mixes the pro
     // The processed song exits after its tempo return, mapped from native bars into its buffer.
     await player.scheduleMixTo(s90!, {bars: 4, anchor: 'song'});
     snap = player.snapshot(); summary = snap.mix!.summary!;
-    assert.ok(['cut', 'fallback-cut'].includes(summary.recipe), summary.recipe);
-    assert.equal((summary.set!.exitBar - 1) % 4, 0);
+    assert.ok(['cut', 'fallback-cut', 'fallback-echo-reset', 'echo-out', 'brake'].includes(summary.recipe), summary.recipe);
+    // S21: B now enters at a measured phrase and returns over a smoothstep, so on this 16-bar fixture
+    // the first 4-bar boundary after settling is the song end; the chooser then uses the latest earlier bar.
+    assert.ok((summary.set!.exitBar - 1) % 4 === 0 || summary.set!.notes.some(n => /lacks audio; using bar/.test(n)),
+      JSON.stringify(summary.set!.notes));
     assert.equal(summary.fromHash, loaded.pack.assets.find(a => a.id === s128b)!.file.sha256);
     assert.ok(summary.fromExitFrame >= Math.round(8 * 4 * 60 * 16000 / 128), 'native exit after the blend entry and tempo return');
     assert.equal(calls.analyzeOne, 3, 'each song analyzed once (cache hit for the processed song)');
@@ -473,7 +485,8 @@ test('180/181s stereo 48k set really blends within the unchanged render budget, 
     assert.equal(native.starts[0]!.offset * rate, join.sourceFrame);
     assert.equal(processed.buffer!.length, join.outputFrame);
     for (let c = 0; c < 2; c++) assert.equal(processed.buffer!.getChannelData(c).at(-1), nativeB.buffer.getChannelData(c)[join.sourceFrame - 1], 'last prepared sample is the exact native predecessor');
-    assert.ok(renders[0]! < TIME_PITCH_LIMITS.maxSamples / 4 && renders[0]! < 181 * rate * 2 / 10);
+    // S21: longer phrase overlaps and a smoothstep return lengthen the entry render; the budget itself is unchanged.
+    assert.ok(renders[0]! < TIME_PITCH_LIMITS.maxSamples / 4 && renders[0]! < 30 * rate * 2, String(renders[0]));
     assert.equal(TIME_PITCH_LIMITS.maxSamples, 12_000_000); assert.equal(SET_LIMITS.maxDecodedSongBytes, 128 * 1024 * 1024);
     assert.ok(analyzed.every(frames => frames <= SONG_ANALYSIS_WINDOW.seconds * rate));
     assert.equal(player.cancelPendingTransition(), true, 'before effect, cancellation releases both incoming one-shots');

@@ -5,7 +5,7 @@ import type {RouteFreePlan} from '../src/mix-transition.js';
 import type {MixAnalysis, MixPcm} from '../src/mix-analysis.js';
 import {nativeRateInputAt, validateNativeRate} from '../src/time-pitch.js';
 import {validateMixAutomation} from '../src/mix-automation.js';
-import {MIX_EVALUATION_THRESHOLDS, MIX_EVALUATOR_VERSION, judgeTransition, planTransitionSpec,
+import {MIX_EVALUATION_THRESHOLDS, MIX_EVALUATOR_VERSION, judgeSafety, judgeTransition, planTransitionSpec,
   type TransitionSpec, type TransitionEvaluation} from './mix-evaluator.js';
 
 export const PRECHECK_PROTOCOL = 'live-mix-precheck@1';
@@ -89,8 +89,10 @@ export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const toGain = 'levelMatch' in plan ? plan.levelMatch?.toGain ?? 1 : 1;
   check([request.fromGain, toGain].every(g => Number.isFinite(g) && g > 0 && g <= 4), 'Invalid captured fixed source gain.');
   const original: TransitionSpec = {...(plan.kind === 'mix' ? planTransitionSpec(plan) : {
-    recipe: plan.recipe === 'fallback-cut' ? 'cut' : 'blend', fromStartFrame: plan.fromExitFrame,
-    preRollFrames: 0, toEntryFrame: plan.toEntryFrame, tempoRatio: 1, automation: plan.automation
+    // S21: the route-free echo reset is judged as the echo-out recipe it is (native B, intended change).
+    recipe: plan.recipe === 'fallback-cut' ? 'cut' : plan.recipe === 'fallback-echo-reset' ? 'echo-out' : 'blend',
+    fromStartFrame: plan.fromExitFrame - plan.preRollFrames,
+    preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame, tempoRatio: 1, automation: plan.automation
   } as TransitionSpec), fixedGains: {from: request.fromGain, to: toGain}};
   validateMixAutomation(original.automation.outgoing, rate); validateMixAutomation(original.automation.incoming, rate);
   check(integer(original.fromStartFrame) && original.fromStartFrame < from.buffer.length &&
@@ -236,6 +238,15 @@ export function validatePrecheckEvaluation(value: unknown, recipe: TransitionSpe
     const judged = judgeTransition(recipe, m);
     check(evaluation.verdict === judged.verdict && evaluation.penalty === judged.penalty &&
       JSON.stringify(evaluation.flags) === JSON.stringify(judged.flags), 'Pre-check judgment differs from the fixed thresholds.');
+    // S21: the safety verdict is re-judged from its own recorded measurements.
+    check(!!m.safety === !!evaluation.safety, 'Pre-check safety evidence is incomplete.');
+    if (m.safety) {
+      const s = m.safety, nullable = (n: unknown): boolean => n === null || typeof n === 'number' && Number.isFinite(n);
+      check(Number.isFinite(s.samplePeak) && s.samplePeak >= 0 && nullable(s.truePeakDbtp) && nullable(s.lowRiseDb) &&
+        nullable(s.bassHoleDb) && s.bassHoleJudged === isSmoothRecipe(recipe) && (s.bassHoleJudged || s.bassHoleDb === null) &&
+        Number.isSafeInteger(s.declaredGapFrames) && s.declaredGapFrames >= 0, 'Pre-check safety measurements are invalid.');
+      check(JSON.stringify(evaluation.safety) === JSON.stringify(judgeSafety(s)), 'Pre-check safety judgment differs from transition-safety@1.');
+    }
   }
   return evaluation;
 }

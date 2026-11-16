@@ -1,6 +1,8 @@
-import {analyzeMixAudio, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate, type MixLevelEvidence} from './mix-analysis.js';
+import {analyzeMixAudio, evidenceSpan, MIX_LEVEL_VERSION, SONG_ANALYSIS_WINDOW, type MixAnalysis, type MixPcm, type MixPointCandidate, type MixLevelEvidence} from './mix-analysis.js';
 import {bassSwapAutomation, cleanCutAutomation, crossfadeAutomation, filterSweepAutomation, echoOutAutomation, type MixAutomation} from './mix-automation.js';
 import {nativeRateInputAt, type NativeRateRamp} from './time-pitch.js';
+import {choreographyPlan, type ChoreographyParams} from '../web/eq-choreography.js';
+import {ENTRY_POLICY, entrySkipCost} from '../web/transition-policy.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -14,8 +16,13 @@ export interface HarmonicCompatibility {
   readonly circleDistance: number | null; readonly score: number;
   readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
-export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake';
-export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend'].includes(recipe);
+export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake' | 'meet-in-middle';
+/** WSOLA-rendered B entries. S21 `meet-in-middle` also ramps A's native rate to the meeting tempo. */
+export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend', 'meet-in-middle'].includes(recipe);
+export const MIX_OVERLAP_BEATS = Object.freeze([4, 8, 16, 32, 64, 128] as const);
+export type MixOverlapBeats = typeof MIX_OVERLAP_BEATS[number];
+/** S21 meet-in-middle: each deck within about 8%; A reaches the meeting tempo over two native bars. */
+export const MEET_LIMITS = Object.freeze({maxDeckChange: 0.08, rampBars: 2, returnBars: Object.freeze([4, 8] as const)});
 export const isSmoothRecipe = (recipe: string): boolean => isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp';
 export const LEVEL_MATCH_LIMITS = Object.freeze({maxGain: 4, samplePeakCeiling: 10 ** (-1 / 20)});
 export interface LevelMatchPlan {
@@ -33,7 +40,24 @@ export interface MixPlannerOptions {
   readonly echoContentConfirmed?: boolean;
   /** Original A buffer frame. This bound includes the caller's preparation allowance. */
   readonly minimumFromFrame?: number;
-  readonly overlapBeats?: 4 | 8 | 16;
+  readonly overlapBeats?: MixOverlapBeats;
+  /** S21: EQ choreography for blend-family plans; its bar count sets the overlap. */
+  readonly choreography?: ChoreographyParams;
+  /** S21: `limited` lets a weak or distant key through with a short, mid-limited choreography. */
+  readonly harmonicMode?: 'strict' | 'limited';
+  /** S21: apply the entry skip cost and earlier-cue tie rule (default true). */
+  readonly entryPolicy?: boolean;
+  /** S21: a style that intentionally skips B content waives the skip cost. */
+  readonly styleAllowsSkip?: boolean;
+  /** S21 replay/explore: exact B entry frame, or the rank among eligible entries. */
+  readonly toEntryFrame?: number;
+  readonly entryRank?: number;
+  /** S21 meet-in-middle meeting tempo (default the geometric mean). */
+  readonly meetBpm?: number;
+  /** S21 tempo return of a stretched B: bars and curve (default 1 bar linear, the S18 behaviour). */
+  readonly tempoReturn?: {readonly bars: number; readonly curve: 'linear' | 'smoothstep'};
+  /** S21 Auto: allow echo-out on measured low density alone (labelled; content not confirmed). */
+  readonly echoHeuristic?: boolean;
   /** Pitch changes are disabled unless explicitly selected. */
   readonly allowPitchShift?: boolean;
   /** An explicit requested shift is still subject to range and harmonic checks. */
@@ -52,7 +76,7 @@ export interface AutomaticMixPlan {
   readonly sampleRate: number;
   readonly fromFrames: number; readonly toFrames: number;
   readonly fromExitFrame: number; readonly toEntryFrame: number;
-  readonly overlapFrames: number; readonly overlapBeats: 4 | 8 | 16;
+  readonly overlapFrames: number; readonly overlapBeats: MixOverlapBeats;
   readonly fromBpm: number; readonly toBpm: number;
   readonly tempoRatio: number; readonly pitchSemitones: number;
   readonly returnToOriginalTempo: boolean;
@@ -62,6 +86,16 @@ export interface AutomaticMixPlan {
   readonly outgoingEffectSourceFrame?: number;
   readonly nativeRate?: {readonly outgoing: NativeRateRamp; readonly incoming?: NativeRateRamp; readonly pitchMoves: true};
   readonly loopExtension?: {readonly bars: 4 | 8; readonly startFrame: number; readonly endFrame: number; readonly frames: number};
+  /** S21: the EQ choreography whose lanes are in `automation`. */
+  readonly choreography?: {readonly params: ChoreographyParams; readonly description: string; readonly bassOwnershipFrame: number; readonly harmonicLimited: boolean};
+  /** S21: entry selection evidence for the readout and plan record. */
+  readonly entry?: {readonly rank: number; readonly skippedFraction: number; readonly skipCost: number; readonly candidates: number};
+  /** S21: B tempo return ramp in output frames (absent = S18 one-bar linear). */
+  readonly tempoReturn?: {readonly rampFrames: number; readonly curve: 'linear' | 'smoothstep'};
+  /** S21 meet-in-middle: the shared meeting tempo. */
+  readonly meet?: {readonly bpm: number; readonly fromRate: number; readonly toRatio: number};
+  /** S21: echo allowed by measured low density only (content not confirmed). */
+  readonly echoHeuristic?: boolean;
   readonly confidence: number;
   readonly evidence: {readonly tempo: number; readonly beat: number; readonly key: number;
     readonly cue: number; readonly phrase: number};
@@ -118,8 +152,12 @@ export function withPreparedLevelGain(plan: AutomaticMixPlan, gain: number): Aut
 
 function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions): MixDecision {
   const plan = planBlend(from, to, options);
-  if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend') return plan;
-  if (options.recipe === 'filter-sweep') return {...plan, recipe: 'filter-sweep', automation: filterSweepAutomation(plan.overlapFrames, plan.sampleRate)};
+  if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend' || options.recipe === 'meet-in-middle') return plan;
+  if (options.recipe === 'filter-sweep') {
+    // S21: filter-sweep keeps its S19 shape; EQ choreography band lanes are not layered onto it.
+    const {choreography: _sweepChoreo, ...sweepBase} = plan; // the sweep keeps its own S19 lanes
+    return {...sweepBase, recipe: 'filter-sweep', automation: filterSweepAutomation(plan.overlapFrames, plan.sampleRate)};
+  }
   if (options.recipe === 'tempo-ramp') {
     if (!nativeMotionPeak(from, options.fromLevelGain ?? 1) || !nativeMotionPeak(to)) return fallback('Native rate motion needs finite full-source effective sample-peak evidence.');
     if (plan.pitchSemitones !== 0) return fallback('Native tempo ramp moves pitch; an independent pitch shift is unsupported.');
@@ -135,7 +173,7 @@ function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOpti
     const bars = options.loopBars ?? 4, grid = from.structure.downbeatFrames, index = grid.indexOf(plan.fromExitFrame);
     const startFrame = grid[index - bars], endFrame = plan.fromExitFrame;
     const barFrames = 4 * 60 * from.sampleRate / plan.fromBpm;
-    if (from.structure.downbeatConfidence < 0.65 || startFrame === undefined || startFrame < (from.analyzedWindow?.startFrame ?? 0) ||
+    if (from.structure.downbeatConfidence < 0.65 || startFrame === undefined || startFrame < evidenceSpan(from).start ||
       grid.slice(index - bars, index).some((f, i) => Math.abs(grid[index - bars + i + 1]! - f - barFrames) > barFrames * 0.02) ||
       (from.vocalSpans ?? []).some(s => s.startFrame < endFrame && s.endFrame > startFrame)) return fallback('Loop needs a measured 4/8-bar interval outside supplied vocal spans.');
     const frames = endFrame - startFrame, normal = crossfadeAutomation(plan.overlapFrames, plan.sampleRate);
@@ -144,7 +182,8 @@ function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOpti
       lowShelfDb: [{frame: 0, value: 0}, ...a.lowShelfDb.map(p => ({...p, frame: p.frame + frames}))],
       highPassHz: [{frame: 0, value: 0}, ...a.highPassHz.map(p => ({...p, frame: p.frame + frames}))],
       lowPassHz: [{frame: 0, value: plan.sampleRate / 2}, ...a.lowPassHz.map(p => ({...p, frame: p.frame + frames}))]});
-    return {...plan, recipe: 'loop-extend', entryDelayFrames: frames, outgoingEffectSourceFrame: endFrame,
+    const {choreography: _loopChoreo, ...loopBase} = plan; // the loop keeps its own crossfade lanes
+    return {...loopBase, recipe: 'loop-extend', entryDelayFrames: frames, outgoingEffectSourceFrame: endFrame,
       loopExtension: {bars, startFrame, endFrame, frames}, automation: {outgoing: shift(normal.outgoing), incoming: normal.incoming},
       reasons: [...plan.reasons, 'One finite measured loop buys added clock time before B. PCM periodicity, energy and seam validation still required; vocal-free content is not established.']};
   }
@@ -153,8 +192,8 @@ function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOpti
     Number.isSafeInteger(a.level.startFrame) && a.level.startFrame >= 0 && Number.isSafeInteger(a.level.frames) && a.level.frames > 0 &&
     a.level.startFrame + a.level.frames <= a.frames && a.level.lufs !== null && Number.isFinite(a.level.lufs) && a.level.lufs >= -70 && a.level.lufs <= 60 &&
     a.level.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && a.level.frames * a.level.channels <= 16_777_216 &&
-    (!a.analyzedWindow || a.level.startFrame >= a.analyzedWindow.startFrame &&
-      a.level.startFrame + a.level.frames <= a.analyzedWindow.startFrame + a.analyzedWindow.frames) &&
+    [...(a.analyzedWindow ? [a.analyzedWindow] : []), ...(a.analyzedWindows ?? [])].every((w, _i, all) => all.some(x =>
+      a.level!.startFrame >= x.startFrame && a.level!.startFrame + a.level!.frames <= x.startFrame + x.frames)) &&
     Number.isFinite(a.level.samplePeak) && a.level.samplePeak >= 0 && a.level.samplePeak <= 16 &&
     [1, 2].includes(a.level.channels) && !!a.nativePeak && a.nativePeak.version === 'native-sample-peak@1' && a.nativePeak.frames === a.frames &&
     Number.isFinite(a.nativePeak.value) && a.nativePeak.value > 0 && a.nativePeak.value <= 16 && a.nativePeak.value + 1e-7 >= a.level.samplePeak;
@@ -169,20 +208,24 @@ function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOpti
     rawDeltaLu: to.level!.lufs! - from.level!.lufs!, beforeDeltaLu: to.level!.lufs! - target,
     matchedDeltaLu: to.level!.lufs! + 20 * Math.log10(gain) - target,
     nativeSamplePeak: to.nativePeak!.value, fromNativeSamplePeak: from.nativePeak!.value, incomingPeakBudget, ...LEVEL_MATCH_LIMITS};
-  return {...plan, recipe: 'loudness-match', levelMatch, automation: crossfadeAutomation(plan.overlapFrames, plan.sampleRate),
+  const {choreography: _levelChoreo, ...levelBase} = plan; // level match keeps its own crossfade lanes
+  return {...levelBase, recipe: 'loudness-match', levelMatch, automation: crossfadeAutomation(plan.overlapFrames, plan.sampleRate),
     reasons: [...plan.reasons, 'K-weighted levels describe their bounded stereo/mono windows, not whole-song loudness. B gain is constant and bounded by native sample peak and +12 dB; residual mismatch is reported.']};
 }
 
 /** Validate derived data before it can become a native playback schedule. */
 function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
-  const window = a.analyzedWindow;
-  const evidenceEnd = window ? window.startFrame + window.frames : a.frames;
+  const window = a.analyzedWindow, merged = a.analyzedWindows;
+  const span = evidenceSpan(a), evidenceEnd = span.end;
+  const boundedWindow = (w: NonNullable<MixAnalysis['analyzedWindow']>): boolean => w.policy === SONG_ANALYSIS_WINDOW.policy &&
+    Number.isSafeInteger(w.startFrame) && w.startFrame >= 0 && Number.isSafeInteger(w.frames) && w.frames > 0 &&
+    w.startFrame + w.frames <= a.frames && w.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && w.frames <= 16_777_216;
   return Number.isSafeInteger(a.sampleRate) && a.sampleRate >= 8000 && a.sampleRate <= 192000 &&
     Number.isSafeInteger(a.frames) && a.frames > 0 &&
     (!a.level || Number.isFinite(a.level.samplePeak) && a.level.samplePeak >= 0 && a.level.samplePeak <= 16) &&
-    (window ? window.policy === SONG_ANALYSIS_WINDOW.policy && Number.isSafeInteger(window.startFrame) && window.startFrame >= 0 &&
-      Number.isSafeInteger(window.frames) && window.frames > 0 && evidenceEnd <= a.frames &&
-      window.frames <= a.sampleRate * SONG_ANALYSIS_WINDOW.seconds && window.frames <= 16_777_216 : a.frames <= a.sampleRate * 180) &&
+    (merged ? !window && merged.length >= 1 && merged.length <= 12 && merged.every(boundedWindow) &&
+      merged.every((w, i) => i === 0 || w.startFrame > merged[i - 1]!.startFrame && w.startFrame <= merged[i - 1]!.startFrame + merged[i - 1]!.frames)
+      : window ? boundedWindow(window) : a.frames <= a.sampleRate * 180) &&
     a.tempo.bpm !== null && Number.isFinite(a.tempo.bpm) && a.tempo.bpm >= 60 && a.tempo.bpm <= 180 &&
     [a.tempo.confidence, a.tempo.ambiguity, a.beatGrid.confidence, a.key.confidence,
       a.structure.phraseConfidence].every(unit) &&
@@ -190,7 +233,7 @@ function validAnalysis(a: MixAnalysis, unknownKey = false): boolean {
     (a.key.mode === 'major' || a.key.mode === 'minor')) ||
       unknownKey && a.key.tonic === null && a.key.mode === null) &&
     a.structure.assumed === true && a.structure.meter[0] === 4 && a.structure.meter[1] === 4 &&
-    [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= (window?.startFrame ?? 0) && c.frame < evidenceEnd &&
+    [...a.mixIn, ...a.mixOut].every(c => Number.isSafeInteger(c.frame) && c.frame >= span.start && c.frame < evidenceEnd &&
       unit(c.score) && unit(c.confidence) && (!c.evidence ||
         ['boundary', 'low-interference', 'track-start'].includes(c.evidence.kind) &&
         [c.evidence.boundary, c.evidence.period, c.evidence.salience, c.evidence.interference].every(unit) &&
@@ -213,15 +256,19 @@ function eligibleCues(cues: readonly MixPointCandidate[], low: number, high: num
  */
 function planBlend(from: MixAnalysis, to: MixAnalysis,
   options: MixPlannerOptions = {}): MixDecision {
-  const minimum = options.minimumFromFrame ?? 0, overlapBeats = options.overlapBeats ?? 8;
-  if (!Number.isSafeInteger(minimum) || minimum < 0 || ![4, 8, 16].includes(overlapBeats)) {
+  const minimum = options.minimumFromFrame ?? 0;
+  const overlapBeats: MixOverlapBeats = options.choreography
+    ? Math.min(128, Math.max(4, options.choreography.overlapBars * 4)) as MixOverlapBeats : options.overlapBeats ?? 8;
+  if (!Number.isSafeInteger(minimum) || minimum < 0 || !(MIX_OVERLAP_BEATS as readonly number[]).includes(overlapBeats) ||
+    options.choreography && !(MIX_OVERLAP_BEATS as readonly number[]).includes(options.choreography.overlapBars * 4)) {
     return fallback('Invalid mix window or overlap; retain the authored route.');
   }
   if (options.pitchSemitones !== undefined && (!Number.isInteger(options.pitchSemitones) ||
     Math.abs(options.pitchSemitones) > MIX_LIMITS.pitchSemitones)) {
     return fallback('Requested pitch shift is outside the engineering limit of +/-2 semitones.');
   }
-  if (!validAnalysis(from) || !validAnalysis(to) || from.sampleRate !== to.sampleRate) {
+  const limitedHarmony = options.harmonicMode === 'limited';
+  if (!validAnalysis(from, limitedHarmony) || !validAnalysis(to, limitedHarmony) || from.sampleRate !== to.sampleRate) {
     return fallback('Insufficient or unsupported tempo/key analysis, or unequal analysis sample rates.');
   }
   // A precise grid at the wrong metrical level can still have high beat confidence.
@@ -232,18 +279,29 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     beat: Math.min(from.beatGrid.confidence, to.beatGrid.confidence),
     key: Math.min(from.key.confidence, to.key.confidence),
     phrase: Math.min(from.structure.phraseConfidence, to.structure.phraseConfidence)};
+  // S21: rhythm recipes gate on the beat grid; a weak key only limits sustained harmonic overlap.
   if (evidence.tempo < MIX_LIMITS.tempoConfidence || evidence.beat < MIX_LIMITS.beatConfidence ||
-      evidence.key < MIX_LIMITS.keyConfidence || evidence.phrase < MIX_LIMITS.phraseConfidence) {
+      !limitedHarmony && evidence.key < MIX_LIMITS.keyConfidence || evidence.phrase < MIX_LIMITS.phraseConfidence) {
     return fallback('Audio analysis confidence is below the versioned mix thresholds.');
   }
-  const fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!, tempoRatio = fromBpm / toBpm;
-  if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
+  const fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!;
+  const meet = options.recipe === 'meet-in-middle';
+  const meetBpm = meet ? options.meetBpm ?? Math.sqrt(fromBpm * toBpm) : fromBpm;
+  if (meet && (!Number.isFinite(meetBpm) || meetBpm < Math.min(fromBpm, toBpm) || meetBpm > Math.max(fromBpm, toBpm) ||
+    Math.abs(meetBpm / fromBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9 || Math.abs(meetBpm / toBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9)) {
+    return fallback('Meet-in-the-middle needs each deck within 8% of the meeting tempo.');
+  }
+  if (meet && Math.abs(fromBpm / toBpm - 1) <= 0.08) return fallback('Meet-in-the-middle is for gaps beyond the 8% stretched blend.');
+  // B's output/original tempo: A's tempo for a normal blend, the meeting tempo for meet-in-middle.
+  const tempoRatio = meetBpm / toBpm;
+  if (meet) { /* range checked above */ } else if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
     tempoRatio > (options.recipe === 'tempo-ramp' ? 1.25 : MIX_LIMITS.tempoRatioMax)) {
     return fallback(options.recipe === 'tempo-ramp' ? 'Native ramp ratio must stay within 0.8..1.25.' : 'Tempo match is outside the engineering limit of +/-8%.');
   }
   if (options.recipe === 'tempo-ramp' && tempoRatio >= 0.92 && tempoRatio <= 1.08) return fallback('Native ramp is for changes beyond static comfort (0.92..1.08); use a pitch-preserving blend here.');
-  const a: TonalKey = {tonic: from.key.tonic!, mode: from.key.mode!};
-  const b: TonalKey = {tonic: to.key.tonic!, mode: to.key.mode!};
+  const keysKnown = from.key.tonic !== null && to.key.tonic !== null && evidence.key >= MIX_LIMITS.keyConfidence;
+  const a: TonalKey = {tonic: from.key.tonic ?? 0, mode: from.key.mode ?? 'major'};
+  const b: TonalKey = {tonic: to.key.tonic ?? 0, mode: to.key.mode ?? 'major'};
   let pitchSemitones = options.pitchSemitones ?? 0;
   const relativePitch = 12 * Math.log2(tempoRatio), nativeShift = Math.round(relativePitch);
   if (options.recipe === 'tempo-ramp' && (pitchSemitones !== 0 || Math.abs(relativePitch - nativeShift) > 0.2)) return fallback('Native ramp needs relative detune within 0.2 semitone of a supported shifted key; independent pitch shifts are unsupported.');
@@ -256,17 +314,31 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     const best = alternatives[0]!;
     if (best.harmonic.score > harmonic.score) { pitchSemitones = best.shift; harmonic = best.harmonic; }
   }
-  if (harmonic.score < 0.85) return fallback('No supported harmonic relation within the selected pitch-shift policy.');
-  const overlapFrames = Math.round(overlapBeats * 60 * from.sampleRate / fromBpm);
-  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames - 1, from.vocalSpans);
-  // A four-beat linear tempo return consumes the mean of its endpoint rates.
+  if (!keysKnown) harmonic = {fromCamelot: 'unknown', toCamelot: 'unknown', circleDistance: null, score: 0, relation: 'unknown'};
+  const harmonicLimited = !keysKnown || harmonic.score < 0.85;
+  if (harmonicLimited && !limitedHarmony) return fallback('No supported harmonic relation within the selected pitch-shift policy.');
+  if (harmonicLimited && options.choreography && !['mid-carve', 'bass-drop-handover'].includes(options.choreography.name)) {
+    return fallback('A weak or distant key allows only a mid-carve or bass-drop handover (no sustained harmonic overlap).');
+  }
+  if (harmonicLimited && !options.choreography) return fallback('A weak or distant key needs a mid-limited choreography.');
+  // Shared tempo during the overlap: A's own for a blend, the meeting tempo for meet-in-middle.
+  const sharedBpm = meet ? meetBpm : fromBpm;
+  const overlapFrames = Math.round(overlapBeats * 60 * from.sampleRate / sharedBpm);
+  const fromRate = meetBpm / fromBpm;
+  const rampFrames = meet ? Math.round(MEET_LIMITS.rampBars * 4 * 60 * from.sampleRate / fromBpm * 2 / (1 + fromRate)) : 0;
+  const aNeeds = meet ? Math.ceil(nativeRateInputAt({start: 1, end: fromRate, frames: rampFrames}, rampFrames + overlapFrames)) : overlapFrames;
+  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - aNeeds - 1, from.vocalSpans);
+  // A tempo return (linear or smoothstep) consumes the mean of its endpoint rates.
   // Reserve that actual source budget plus one native B beat before ranking cues.
-  const returnFrames = options.returnToOriginalTempo ? Math.round(4 * 60 * from.sampleRate / fromBpm) : 0;
+  const returnBars = options.tempoReturn?.bars ?? 1;
+  const returnFrames = options.returnToOriginalTempo ? Math.round(returnBars * 4 * 60 * from.sampleRate / sharedBpm) : 0;
   const tailSourceFrames = returnFrames * (tempoRatio + 1) / 2 + to.sampleRate * 60 / toBpm;
-  const incoming = eligibleCues(to.mixIn, 0,
+  let incoming = eligibleCues(to.mixIn, 0,
     to.frames - Math.ceil(overlapFrames * tempoRatio + tailSourceFrames) - 2, to.vocalSpans);
+  if (options.toEntryFrame !== undefined) incoming = incoming.filter(c => c.frame === options.toEntryFrame);
   if (!outgoing.length || !incoming.length) return fallback('No confident future mix points have enough audio for the overlap.');
-  const candidates = outgoing.flatMap(out => incoming.map(into => {
+  const entryPolicy = options.entryPolicy !== false;
+  const pairs = outgoing.flatMap(out => incoming.map(into => {
     const eo = from.energyCurve.find(e => out.frame >= e.startFrame && out.frame < e.endFrame)?.rms ?? 0;
     const ei = to.energyCurve.find(e => into.frame >= e.startFrame && into.frame < e.endFrame)?.rms ?? 0;
     const mismatch = Math.abs(eo - ei) / Math.max(1e-8, eo + ei);
@@ -276,20 +348,63 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     const tonalDistance = left && right ? left.chroma.reduce((sum, value, i) =>
       sum + Math.abs(value - right.chroma[(i - pitchSemitones + 12) % 12]!), 0) / 2 : 0;
     const alignedBoundaries = left && right ? Math.min(left.boundary, right.boundary) : 0;
-    return {out, into, score: out.score + into.score - 0.15 * mismatch -
-      0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries};
-  })).sort((x, y) => y.score - x.score || x.out.frame - y.out.frame || x.into.frame - y.into.frame);
-  const choice = candidates[0]!, cue = Math.min(choice.out.confidence, choice.into.confidence);
-  return {kind: 'mix', recipe: 'blend', preRollFrames: 0, version: MIX_PLANNER_VERSION, sampleRate: from.sampleRate,
+    const raw = out.score + into.score - 0.15 * mismatch - 0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries;
+    const skip = entryPolicy ? entrySkipCost(into.frame, to.frames, options.styleAllowsSkip) : 0;
+    return {out, into, raw, skip, score: raw - skip};
+  }));
+  const best = Math.max(...pairs.map(p => p.score));
+  // S21 tie rule: within about 10 points of the best, the earlier B entry wins.
+  const near = (p: typeof pairs[number]): boolean => entryPolicy && p.score >= best - ENTRY_POLICY.tieWindow;
+  const candidates = pairs.sort((x, y) => Number(near(y)) - Number(near(x)) ||
+    (near(x) && near(y) ? x.into.frame - y.into.frame : 0) || y.score - x.score || x.out.frame - y.out.frame || x.into.frame - y.into.frame);
+  const entries = [...new Set(candidates.map(c => c.into.frame))];
+  const rank = Math.max(0, Math.min(entries.length - 1, options.entryRank ?? 0));
+  const choice = candidates.find(c => c.into.frame === entries[rank])!, cue = Math.min(choice.out.confidence, choice.into.confidence);
+  let automation = bassSwapAutomation(overlapFrames, from.sampleRate);
+  let choreography: AutomaticMixPlan['choreography'];
+  if (options.choreography) {
+    const barFrames = 4 * 60 * from.sampleRate / sharedBpm;
+    const plan = choreographyPlan(options.choreography, barFrames, from.sampleRate);
+    if (plan.durationFrames !== overlapFrames) return fallback('Choreography length does not match the overlap.');
+    const neutral = (d: number) => ({durationFrames: d, lowShelfDb: [{frame: 0, value: 0}, {frame: d, value: 0}],
+      highPassHz: [{frame: 0, value: 0}, {frame: d, value: 0}], lowPassHz: [{frame: 0, value: from.sampleRate / 2}, {frame: d, value: from.sampleRate / 2}]});
+    automation = {outgoing: {...neutral(overlapFrames), gain: plan.outgoing.gain, bands: plan.outgoing.bands},
+      incoming: {...neutral(overlapFrames), gain: plan.incoming.gain, bands: plan.incoming.bands,
+        ...(plan.declaredGaps.length ? {declaredGaps: plan.declaredGaps} : {})}};
+    choreography = {params: plan.params, description: plan.description, bassOwnershipFrame: plan.bassOwnershipFrame, harmonicLimited};
+  }
+  const entryCount = entries.length;
+  let result: AutomaticMixPlan = {kind: 'mix', recipe: 'blend', preRollFrames: 0, version: MIX_PLANNER_VERSION, sampleRate: from.sampleRate,
     fromFrames: from.frames, toFrames: to.frames, fromExitFrame: choice.out.frame, toEntryFrame: choice.into.frame,
     overlapFrames, overlapBeats, fromBpm, toBpm, tempoRatio, pitchSemitones,
     returnToOriginalTempo: options.returnToOriginalTempo ?? false,
-    confidence: Math.min(evidence.tempo, evidence.beat, evidence.key, cue, evidence.phrase), evidence: {...evidence, cue},
-    harmonic, automation: bassSwapAutomation(overlapFrames, from.sampleRate),
+    confidence: Math.min(evidence.tempo, evidence.beat, harmonicLimited ? 1 : evidence.key, cue, evidence.phrase), evidence: {...evidence, cue},
+    harmonic, automation,
+    ...(choreography ? {choreography} : {}),
+    entry: {rank, skippedFraction: choice.into.frame / to.frames, skipCost: choice.skip, candidates: entryCount},
+    ...(options.returnToOriginalTempo && options.tempoReturn ? {tempoReturn: {rampFrames: returnFrames, curve: options.tempoReturn.curve}} : {}),
     reasons: ['Audio-derived cue and beat hypotheses; 4/4 and four-bar phrasing are assumed.',
-      `Harmonic candidate: ${harmonic.fromCamelot} -> ${harmonic.toCamelot} (${harmonic.relation}).`,
-      'Bass attenuation and complementary gain curves are scheduled on the existing clock.',
+      keysKnown ? `Harmonic candidate: ${harmonic.fromCamelot} -> ${harmonic.toCamelot} (${harmonic.relation}).` : 'Key evidence is weak; harmonic overlap is limited by the choreography.',
+      choreography ? `EQ choreography ${choreography.params.name} over ${choreography.params.overlapBars} bars.` : 'Bass attenuation and complementary gain curves are scheduled on the existing clock.',
+      `B enters at ${(choice.into.frame / to.sampleRate).toFixed(1)} s (${Math.round(100 * choice.into.frame / to.frames)}% into the song; skip cost ${choice.skip.toFixed(2)}).`,
       'Global key does not prove local chord/vocal compatibility. Listening is untested.']};
+  if (meet) {
+    // A ramps to the meeting tempo over two native bars, then B enters on A's next downbeat.
+    const ramp: NativeRateRamp = {start: 1, end: fromRate, frames: rampFrames};
+    const shift = (lanes: MixAutomation): MixAutomation => {
+      const move = (pts: MixAutomation['gain'], first: number) => [{frame: 0, value: first}, ...pts.map(p => ({...p, frame: p.frame + rampFrames}))];
+      return {...lanes, durationFrames: rampFrames + lanes.durationFrames, gain: move(lanes.gain, lanes.gain[0]!.value),
+        lowShelfDb: move(lanes.lowShelfDb, 0), highPassHz: move(lanes.highPassHz, 0), lowPassHz: move(lanes.lowPassHz, from.sampleRate / 2),
+        ...(lanes.bands ? {bands: {low: move(lanes.bands.low, lanes.bands.low[0]!.value), mid: move(lanes.bands.mid, lanes.bands.mid[0]!.value),
+          high: move(lanes.bands.high, lanes.bands.high[0]!.value)}} : {})};
+    };
+    result = {...result, recipe: 'meet-in-middle', entryDelayFrames: rampFrames, outgoingEffectSourceFrame: choice.out.frame,
+      nativeRate: {outgoing: ramp, pitchMoves: true},
+      meet: {bpm: meetBpm, fromRate, toRatio: tempoRatio},
+      automation: {outgoing: shift(automation.outgoing), incoming: automation.incoming},
+      reasons: [...result.reasons, `Both decks meet at ${meetBpm.toFixed(1)} BPM: A's native rate ramps ${((fromRate - 1) * 100).toFixed(1)}% over two bars (its pitch moves), B is time-stretched ${((tempoRatio - 1) * 100).toFixed(1)}% and returns to its own tempo afterwards.`]};
+  }
+  return result;
 }
 
 /** New recipes require explicit strong grid/cue evidence, independent of global harmony. */
@@ -302,7 +417,8 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
         !unit(a.structure.downbeatConfidence) || a.structure.downbeatConfidence < 0.65)) return [];
   // These recipes preserve B's native mapping. Never silently discard a requested transform.
   if (options.pitchSemitones && options.pitchSemitones !== 0 || options.returnToOriginalTempo) return [];
-  if (recipe === 'echo-out' && options.echoContentConfirmed !== true) return [];
+  const heuristicEcho = recipe === 'echo-out' && options.echoContentConfirmed !== true && options.echoHeuristic === true;
+  if (recipe === 'echo-out' && options.echoContentConfirmed !== true && !heuristicEcho) return [];
   const rate = from.sampleRate, fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!;
   const automation = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate);
   const preRollFrames = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate).preRollFrames : 0;
@@ -310,6 +426,10 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
   const minimum = (options.minimumFromFrame ?? 0) + preRollFrames;
   const strong = (a: MixAnalysis, c: MixPointCandidate, incoming: boolean): boolean => {
     const e = c.evidence;
+    // S21 heuristic echo: measured low density at A's exit and a phrase-aligned B downbeat suffice;
+    // the B entry need not be a strong boundary because A's echo, not an overlap, carries it.
+    if (heuristicEcho) return !!e && c.confidence >= MIX_LIMITS.cueConfidence && a.structure.downbeatFrames.includes(c.frame) &&
+      (incoming ? e.salience >= 0.4 && a.structure.phraseFrames.includes(c.frame) : e.interference <= 0.5);
     return !!e && c.confidence >= (recipe === 'brake' ? MIX_LIMITS.cueConfidence : 0.65) && a.structure.downbeatFrames.includes(c.frame) &&
       (incoming ? e.salience >= 0.65 && (e.boundary >= 0.6 || e.kind === 'track-start')
         : e.boundary >= 0.6) &&
@@ -318,15 +438,23 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
   const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames, from.vocalSpans)
     .filter(c => strong(from, c, false) && (recipe !== 'echo-out' ||
       !(from.vocalSpans ?? []).some(s => s.startFrame < c.frame && s.endFrame > c.frame - preRollFrames))).slice(0, 3);
-  const incoming = eligibleCues(to.mixIn, 0, to.frames - overlapFrames, to.vocalSpans)
+  const incomingAll = eligibleCues(to.mixIn, 0, to.frames - overlapFrames, to.vocalSpans)
     .filter(c => strong(to, c, true) && !(to.vocalSpans ?? []).some(s =>
-      s.startFrame < c.frame + overlapFrames && s.endFrame > c.frame)).slice(0, 3);
+      s.startFrame < c.frame + overlapFrames && s.endFrame > c.frame) &&
+      (options.toEntryFrame === undefined || c.frame === options.toEntryFrame));
+  // S21: skip cost and the earlier-entry tie rule also order native-entry recipes.
+  const adjusted = (c: MixPointCandidate): number => c.score - (options.entryPolicy === false ? 0 : entrySkipCost(c.frame, to.frames, options.styleAllowsSkip));
+  const topIn = incomingAll.length ? Math.max(...incomingAll.map(adjusted)) : 0;
+  const incoming = [...incomingAll].sort((x, y) => {
+    const nx = options.entryPolicy !== false && adjusted(x) >= topIn - ENTRY_POLICY.tieWindow, ny = options.entryPolicy !== false && adjusted(y) >= topIn - ENTRY_POLICY.tieWindow;
+    return Number(ny) - Number(nx) || (nx && ny ? x.frame - y.frame : adjusted(y) - adjusted(x)) || x.frame - y.frame;
+  }).slice(0, 3);
   const knownKey = [from, to].every(a => a.key.confidence >= MIX_LIMITS.keyConfidence && a.key.tonic !== null);
   const harmonic: HarmonicCompatibility = knownKey ? harmonicCompatibility(
     {tonic: from.key.tonic!, mode: from.key.mode!}, {tonic: to.key.tonic!, mode: to.key.mode!}) :
     {fromCamelot: 'unknown', toCamelot: 'unknown', circleDistance: null, score: 0, relation: 'unknown'};
-  return outgoing.flatMap(out => incoming.map(into => ({out, into})))
-    .sort((a, b) => (b.out.score + b.into.score) - (a.out.score + a.into.score) ||
+  return outgoing.flatMap(out => incoming.map((into, entryOrder) => ({out, into, entryOrder})))
+    .sort((a, b) => a.entryOrder - b.entryOrder || b.out.score - a.out.score ||
       a.out.frame - b.out.frame || a.into.frame - b.into.frame).slice(0, 2).map(({out, into}) => {
       const evidence = {tempo: Math.min(from.tempo.confidence, to.tempo.confidence),
         beat: Math.min(from.beatGrid.confidence, to.beatGrid.confidence),
@@ -334,28 +462,37 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
         phrase: Math.min(from.structure.phraseConfidence, to.structure.phraseConfidence),
         cue: Math.min(out.confidence, into.confidence)};
       return {kind: 'mix', version: MIX_PLANNER_VERSION, recipe, preRollFrames,
-        ...(recipe === 'echo-out' ? {echoContentConfirmed: true} : {}),
+        ...(recipe === 'echo-out' ? {echoContentConfirmed: !heuristicEcho} : {}),
+        ...(heuristicEcho ? {echoHeuristic: true} : {}),
+        entry: {rank: incoming.indexOf(into), skippedFraction: into.frame / to.frames,
+          skipCost: options.entryPolicy === false ? 0 : entrySkipCost(into.frame, to.frames, options.styleAllowsSkip), candidates: incoming.length},
         sampleRate: rate, fromFrames: from.frames, toFrames: to.frames,
         fromExitFrame: out.frame, toEntryFrame: into.frame, overlapFrames,
-        overlapBeats: options.overlapBeats ?? 8, fromBpm, toBpm, tempoRatio: 1, pitchSemitones: 0,
+        overlapBeats: Math.min(16, options.overlapBeats ?? 8) as MixOverlapBeats, fromBpm, toBpm, tempoRatio: 1, pitchSemitones: 0,
         returnToOriginalTempo: false, harmonic, evidence,
         confidence: Math.min(evidence.tempo, evidence.beat, evidence.phrase, evidence.cue),
         automation: recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate),
         reasons: ['Strong downbeat/cue evidence; native B entry, no key or tempo match required.',
-          recipe === 'echo-out' ? 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Content confirmation required; low density is not vocal detection.'
+          recipe === 'echo-out' ? (heuristicEcho ? 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Allowed by measured low density only: content is NOT confirmed and low density is not vocal detection.'
+            : 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Content confirmation required; low density is not vocal detection.')
             : 'Strong standalone B cue; complementary 10 ms cut.',
           'Finite deterministic proposals only; rendered-quality evaluation and listening are not established.']};
     });
 }
 function validOptions(options: MixPlannerOptions): boolean {
-  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match', 'tempo-ramp', 'loop-extend', 'brake'].includes(options.recipe)) &&
+  return (options.recipe === undefined || ['auto', 'blend', 'cut', 'echo-out', 'filter-sweep', 'loudness-match', 'tempo-ramp', 'loop-extend', 'brake', 'meet-in-middle'].includes(options.recipe)) &&
+    (options.toEntryFrame === undefined || Number.isSafeInteger(options.toEntryFrame) && options.toEntryFrame >= 0) &&
+    (options.entryRank === undefined || Number.isSafeInteger(options.entryRank) && options.entryRank >= 0 && options.entryRank < 8) &&
+    (options.tempoReturn === undefined || Number.isInteger(options.tempoReturn.bars) && options.tempoReturn.bars >= 1 && options.tempoReturn.bars <= 8 &&
+      ['linear', 'smoothstep'].includes(options.tempoReturn.curve)) &&
+    (options.harmonicMode === undefined || ['strict', 'limited'].includes(options.harmonicMode)) &&
     (options.loopBars === undefined || [4, 8].includes(options.loopBars)) &&
     (options.fromLevelGain === undefined || Number.isFinite(options.fromLevelGain) && options.fromLevelGain > 0 && options.fromLevelGain <= LEVEL_MATCH_LIMITS.maxGain) &&
     (options.echoContentConfirmed === undefined || typeof options.echoContentConfirmed === 'boolean') &&
     (options.allowPitchShift === undefined || typeof options.allowPitchShift === 'boolean') &&
     (options.returnToOriginalTempo === undefined || typeof options.returnToOriginalTempo === 'boolean') &&
     Number.isSafeInteger(options.minimumFromFrame ?? 0) && (options.minimumFromFrame ?? 0) >= 0 &&
-    [4, 8, 16].includes(options.overlapBeats ?? 8) &&
+    (MIX_OVERLAP_BEATS as readonly number[]).includes(options.overlapBeats ?? 8) &&
     (options.pitchSemitones === undefined || Number.isInteger(options.pitchSemitones) &&
       Math.abs(options.pitchSemitones) <= MIX_LIMITS.pitchSemitones);
 }
@@ -370,7 +507,8 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
       const bases = alternatePlans(from, to, {...options, returnToOriginalTempo: false}, 'brake');
       for (const base of bases) {
         if (!nativeMotionPeak(from, options.fromLevelGain ?? 1) || !nativeMotionPeak(to)) continue;
-        if (base.fromBpm / base.toBpm >= 0.8 && base.fromBpm / base.toBpm <= 1.25) continue;
+        // S21: brake is a reset for gaps of 16% and more (previously only beyond 0.8..1.25).
+        if (Math.max(base.fromBpm, base.toBpm) / Math.min(base.fromBpm, base.toBpm) < 1.16) continue;
         const frames = Math.round(Math.min(0.35, 30 / base.fromBpm) * base.sampleRate), handover = frames - Math.round(base.sampleRate * 0.02);
         const ramp = {start: 1, end: 0.05, frames};
         if (base.fromExitFrame + nativeRateInputAt(ramp, frames) >= from.frames) continue;
