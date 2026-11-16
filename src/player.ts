@@ -13,7 +13,7 @@ import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {setTransitionRecord} from './mix-transition.js';
 import type {TransitionPlanRecord} from '../web/transition-policy.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  replanPreparedMix, renderSetBlend, gridAlignedAnalysis, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -414,7 +414,7 @@ export class SmallPlayer {
       let plan = ready.plan;
       let at = this.clock.stamp(from.start.at.frame + plan.fromExitFrame - entry + (plan.entryDelayFrames ?? 0));
       if (at.frame - (plan.entryDelayFrames ?? 0) - plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
-        requireAudio(!plan.loopExtension, 'Finite loop missed its prepared native anchor; preserve A.');
+        requireAudio(!plan.loopExtension && !plan.outgoingStretch, 'Finite loop or outgoing tempo ramp missed its prepared native anchor; preserve A.');
         const later = replanPreparedMix(ready, Math.max(earliest,
           this.clock.currentFrame + this.leadFrames - from.start.at.frame + entry));
         requireAudio(later.kind === 'mix',
@@ -841,9 +841,18 @@ export class SmallPlayer {
         }
         loopBuffer = undefined;
         try {
-          if ('loopExtension' in prepared.plan) loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
+          // A finite loop or (Part B) the dual tempo ramp's WSOLA outgoing render replaces A at its effect frame.
+          if (prepared.plan.kind === 'mix') loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
         } catch (error) {
           if (!current()) throw error;
+          if (prepared.plan.kind === 'mix' && prepared.plan.outgoingStretch) {
+            // Part B: a refused outgoing ramp excludes that parameterisation; the next candidate is prepared.
+            const failed = transitionSignature(prepared.plan, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+            exclude.push(failed);
+            failedChecks.push({recipe: failed, reason: `outgoing tempo ramp unavailable: ${error instanceof Error ? error.message : String(error)}`});
+            choice = choose(true);
+            continue;
+          }
           choice = choose(false);
           requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
           prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
@@ -867,7 +876,7 @@ export class SmallPlayer {
         'The set transition does not have enough audio for its handover.');
         const report = await this.checkSelectedMix({plan: candidate, from: outgoing.nativeRecording, to: toRecording,
           incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
-          ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: analysisA, to: analysisB},
+          ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: gridAlignedAnalysis(analysisA, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).fromGrid), to: gridAlignedAnalysis(analysisB, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).toGrid)},
           fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
         controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS);
         if (!current()) return;
@@ -914,7 +923,8 @@ export class SmallPlayer {
       from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
         motion: {at: effect.frame, sourceFrame: plan.fromExitFrame - plan.preRollFrames,
           ...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}),
-          ...(loopBuffer ? {loopFrames: delayFor()} : {})}};
+          ...('outgoingStretch' in plan && plan.outgoingStretch ? {stretch: {tempoRatio: plan.outgoingStretch.tempoRatio, rampIn: plan.outgoingStretch.rampIn}} :
+            loopBuffer ? {loopFrames: delayFor()} : {})}};
       this.voices.push({source: incoming, start: {at, entryCueId: 'mix-entry'},
         set: {asset: toAsset, deck, bpm: plan.toBpm, grid: chosen.toGrid.source, offset: prepared.entryFrame, mapping: prepared.mapping,
           ...(prepared.sourceStartFrame !== undefined ? {sourceStartFrame: prepared.sourceStartFrame} : {}),

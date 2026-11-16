@@ -1,11 +1,13 @@
 /** Audio-clock display mapping only. It never chooses cues, recipes or playback times. */
-import {nativeRateInputAt, sourceFrameAtOutput, type NativeRateRamp, type TimePitchMapping} from '../src/time-pitch.js';
+import {nativeRateInputAt, rampInInputAt, sourceFrameAtOutput, type NativeRateRamp, type RampIn, type TimePitchMapping} from '../src/time-pitch.js';
 export interface DeckPositionInput {
   readonly frame: number; readonly start: number; readonly offset: number; readonly nativeFrames: number;
   readonly mapping: TimePitchMapping | null; readonly entryRate: NativeRateRamp | null;
   readonly sourceStartFrame?: number;
   readonly nativeJoin?: {readonly sourceFrame: number; readonly outputFrame: number};
-  readonly motion?: {readonly at: number; readonly sourceFrame: number; readonly rate?: NativeRateRamp; readonly loopFrames?: number};
+  readonly motion?: {readonly at: number; readonly sourceFrame: number; readonly rate?: NativeRateRamp; readonly loopFrames?: number;
+    /** Part B: A eases to the shared tempo through WSOLA (pitch kept). */
+    readonly stretch?: {readonly tempoRatio: number; readonly rampIn: RampIn}};
 }
 export interface DeckPosition {
   readonly sourceFrame: number; readonly speed: number; readonly pitchSemitones: number;
@@ -19,7 +21,12 @@ export function deckPositionAt(input: DeckPositionInput): DeckPosition {
   const motion = input.motion;
   if (motion && input.frame >= motion.at) {
     const time = input.frame - motion.at;
-    source = motion.sourceFrame - (motion.loopFrames ?? 0) + (motion.rate ? nativeRateInputAt(motion.rate, time) : time);
+    source = motion.sourceFrame - (motion.loopFrames ?? 0) + (motion.rate ? nativeRateInputAt(motion.rate, time) :
+      motion.stretch ? rampInInputAt(time, motion.stretch.tempoRatio, motion.stretch.rampIn) : time);
+    if (motion.stretch) {
+      const {tempoRatio: r, rampIn: ramp} = motion.stretch, u = Math.min(1, time / ramp.rampFrames);
+      speed = 1 + (r - 1) * (ramp.curve === 'smoothstep' ? u * u * (3 - 2 * u) : u); mode = 'independent';
+    }
     if (motion.rate) { speed = rateAt(motion.rate, time); pitch = 12 * Math.log2(speed); mode = 'rate-linked'; }
   } else if (input.entryRate) {
     source = input.offset + nativeRateInputAt(input.entryRate, elapsed);

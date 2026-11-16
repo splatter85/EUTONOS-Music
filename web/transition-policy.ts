@@ -10,15 +10,44 @@
  */
 import {bassDropMinOverlap, CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyName, type ChoreographyParams} from './eq-choreography.js';
 
-export const TRANSITION_POLICY_VERSION = 'transition-policy@1' as const;
+/**
+ * @2 (S21 Part B) keeps every @1 band edge and limit; it only adds the pitch-preserving dual tempo ramp
+ * to the band orders (first in the stretched and meet bands, second in the normal band, and first in
+ * the bridge band when both decks can stay within 8%).
+ */
+export const TRANSITION_POLICY_VERSION = 'transition-policy@2' as const;
 
 // ---------------------------------------------------------------------------------------------
 // Tempo-gap table
 // ---------------------------------------------------------------------------------------------
 export type TempoBand = 'normal' | 'stretched' | 'meet' | 'bridge' | 'reset';
 /** Recipes the set planner can try. `echo-reset` is the analysis-free bounded fallback. */
-export type SetRecipe = 'blend' | 'loudness-match' | 'filter-sweep' | 'loop-extend' | 'meet-in-middle' |
+export type SetRecipe = 'blend' | 'loudness-match' | 'filter-sweep' | 'loop-extend' | 'meet-in-middle' | 'dual-ramp' |
   'tempo-ramp' | 'echo-out' | 'brake' | 'echo-reset' | 'cut';
+/**
+ * Part B dual tempo ramp: both decks move to one tempo with pitch kept (WSOLA), A over `rampBars`
+ * of its own bars before B enters, B back to its own tempo after the overlap. Engineering values.
+ */
+export const DUAL_RAMP_LIMITS = Object.freeze({version: 'dual-ramp@1' as const,
+  /** Per-deck WSOLA bounds (the existing 0.92..1.08 time-stretch limits). */
+  minRatio: 0.92, maxRatio: 1.08,
+  /** Below this gap a plain blend already matches the tempos; the ramp adds nothing. */
+  minGap: 0.005,
+  rampBars: 4, returnBars: Object.freeze([4, 8] as const)});
+export interface DualRampTempo {readonly bpm: number; readonly fromRatio: number; readonly toRatio: number;}
+/**
+ * Meeting tempo with the least distortion: the geometric mean (equal stretch on both decks in log
+ * terms), clamped so that each deck stays within the WSOLA bounds. Null when no tempo fits.
+ */
+export function dualRampTempo(fromBpm: number, toBpm: number): DualRampTempo | null {
+  const gap = tempoGap(fromBpm, toBpm);
+  if (gap < DUAL_RAMP_LIMITS.minGap - 1e-12) return null;
+  const lo = Math.min(fromBpm, toBpm), hi = Math.max(fromBpm, toBpm);
+  const low = DUAL_RAMP_LIMITS.minRatio * hi, high = DUAL_RAMP_LIMITS.maxRatio * lo;
+  if (low > high + 1e-9) return null;
+  const bpm = Math.min(high, Math.max(low, Math.sqrt(fromBpm * toBpm)));
+  return {bpm, fromRatio: bpm / fromBpm, toRatio: bpm / toBpm};
+}
 export const TEMPO_GAP_BANDS: readonly {readonly band: TempoBand; readonly maxGap: number; readonly description: string}[] = Object.freeze([
   {band: 'normal', maxGap: 0.04, description: 'normal blend (B stretched up to 4%)'},
   {band: 'stretched', maxGap: 0.08, description: 'stretched blend (B stretched up to 8%)'},
@@ -27,11 +56,11 @@ export const TEMPO_GAP_BANDS: readonly {readonly band: TempoBand; readonly maxGa
   {band: 'reset', maxGap: Infinity, description: 'brake, echo reset or structural reset'},
 ] as const);
 /** Rhythm recipes need a confident beat grid; weak key only forbids sustained harmonic overlap. */
-export const RHYTHM_RECIPES: readonly SetRecipe[] = Object.freeze(['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle', 'tempo-ramp', 'brake']);
+export const RHYTHM_RECIPES: readonly SetRecipe[] = Object.freeze(['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle', 'dual-ramp', 'tempo-ramp', 'brake']);
 const BAND_ORDER: Readonly<Record<TempoBand, readonly SetRecipe[]>> = Object.freeze({
-  normal: ['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
-  stretched: ['blend', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
-  meet: ['meet-in-middle', 'echo-out', 'tempo-ramp', 'echo-reset', 'cut'],
+  normal: ['blend', 'dual-ramp', 'loudness-match', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
+  stretched: ['dual-ramp', 'blend', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
+  meet: ['dual-ramp', 'meet-in-middle', 'echo-out', 'tempo-ramp', 'echo-reset', 'cut'],
   bridge: ['echo-out', 'tempo-ramp', 'brake', 'echo-reset', 'cut'],
   reset: ['brake', 'echo-out', 'echo-reset', 'cut'],
 });
@@ -59,6 +88,10 @@ export function tempoGapPolicy(fromBpm: number, toBpm: number, evidence: {readon
   const meetBpm = Math.sqrt(fromBpm * toBpm), perDeckChange = Math.sqrt(1 + gap) - 1;
   const reasons = [`Tempo gap ${(gap * 100).toFixed(1)}% (${fromBpm.toFixed(1)} -> ${toBpm.toFixed(1)} BPM): ${TEMPO_GAP_BANDS.find(b => b.band === band)!.description}.`];
   let recipes = [...BAND_ORDER[band]];
+  const dual = dualRampTempo(fromBpm, toBpm);
+  if (!dual) recipes = recipes.filter(r => r !== 'dual-ramp');
+  else if (band === 'bridge') recipes = ['dual-ramp', ...recipes];
+  if (dual && band !== 'normal') reasons.push(`Dual tempo ramp: both decks move to ${dual.bpm.toFixed(1)} BPM (A ${((dual.fromRatio - 1) * 100).toFixed(1)}%, B ${((dual.toRatio - 1) * 100).toFixed(1)}%) with pitch kept.`);
   if (band === 'meet') reasons.push(`Meeting tempo ${meetBpm.toFixed(1)} BPM needs ${(perDeckChange * 100).toFixed(1)}% per deck.`);
   if (band === 'bridge') reasons.push(`Meeting would need ${(perDeckChange * 100).toFixed(1)}% per deck (>8%), so this is a bridge, not a long overlap.`);
   if (!evidence.beatConfident) {

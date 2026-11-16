@@ -1,8 +1,8 @@
-# EMF-S21 — slice handoff (Part A: transition planner)
+# EMF-S21 — slice handoff (Part A: transition planner; Part B: trusted grids and dual tempo ramp)
 
 **Campaign:** EMF / `campaign-emf-001`
-**Slice:** EMF-S21 Part A. Part B is not started.
-**Disposition:** Part A BUILT on its worker branch, pending coordinator review and merge. The slice stays IN PROGRESS until Part A is merged and Part B is done or rescoped.
+**Slice:** EMF-S21. Part A is merged into local `main` (campaign record `9010f27`). Part B is built on worker branch `worktree-agent-a129213a9af3c1cec` from `108cafd`; see [Part B](#part-b-trusted-tempo-grids-and-dual-tempo-ramp) at the end.
+**Disposition:** Part B BUILT on its worker branch, pending coordinator review and merge. The slice stays IN PROGRESS until Part B is merged. The Part A text below is kept as it was written at Part A's handoff.
 **Environment:** PC, Windows 11, Node 26, headless Chromium (Playwright).
 **Base / branch:** `work/emf-s21-transitions` from `6b88d25`. Tested source: `4dca83ae786b5b2ebe39817ad27964aeefff3464` (clean tree).
 **Publication:** a local commit on the worker branch only. No merge, no push, no native board change (coordinator-owned).
@@ -101,3 +101,68 @@ Seven review findings were fixed on this branch; tests are in `tests/s21-transit
 **Still not addressed:** the 64 ms direct-to-split crossfade is not modelled by the evaluator; the 6 s analysis deadline falls back to a start-of-song entry; `replayOverrides` has no consumer; Next availability after a blend is unmeasured.
 
 **Review-fix gate results (Windows, this working tree before commit):** `npm run check` PASS, exit 0, 601 tests, 601 pass, 0 fail, 0 cancelled, 0 skipped. `npm run check:browser` PASS, exit 0, all nine scripts (studio 15 checks, set 18 checks, mix pre-check 7 checks), Chromium 151. macOS and Linux NOT RUN. Listening NOT TESTED.
+
+## Part B: trusted tempo grids and dual tempo ramp
+
+**Assignment:** the automatic DJ must find an intentional transition between any two songs, including songs at different tempos. It must not refuse, and must not fall to a clean cut, because a tempo was misread. The live bug: Turbo Storm (128) → Midnight Orbit (128) failed with "DJ plan check FAIL: beatPhase fail", because Turbo Storm was read as 85.33 BPM (3:2).
+**Base / branch:** `worktree-agent-a129213a9af3c1cec` from `108cafd`. The tested source is the commit that adds this section; the coordinator report carries its SHA.
+**Publication:** a local commit on the worker branch only. No merge, no push, and no change to the campaign, Current Tasks or the native board.
+**Frozen and unchanged:** `scripts/serve.ts` and the values of `mix-evaluation-thresholds@1`. The safety pre-check was not weakened.
+
+**Delivered.** Detail is in [the planner doc](../S21_TRANSITION_PLANNER.md#part-b-trusted-tempo-grids-and-the-dual-tempo-ramp).
+1. **Analysis `mix-analysis-v5`:**
+   - ratio repair (`tempo-relation@1`: 1:2, 2:1, 2:3, 3:2, 3:4 and 4:3), applied only when a reference tempo and strong beat support agree;
+   - honest ambiguity when there is no reference;
+   - requested-origin downbeats (`requested-downbeat@1`), applied only when they agree with the audio;
+   - per-window tempo on the whole-song map.
+2. **One trusted grid** (`gridAlignedAnalysis`) for both the set chooser and the pre-check evaluator. Beat phase against a requested-only grid is reported unjudged, and the pre-check reports `warn`, never `pass`.
+3. **Dual tempo ramp** (`dual-ramp@1`, `transition-policy@2`):
+   - A stretches with pitch kept, over 4 bars on a smoothstep, to the geometric-mean meeting tempo, staying within 0.92–1.08;
+   - B enters 16 native A beats later at that tempo;
+   - B then returns to its own tempo over 4 or 8 bars;
+   - no pitch shift is left over;
+   - the evaluator models both ramps;
+   - it is reachable from Studio pair mode (Auto and the recipe list), the set page and phone Next.
+4. **Candidate order:**
+   - the dual ramp is a first-class Auto candidate;
+   - a failed pre-check, or a failed render of A's ramp, tries the next candidate;
+   - the cut is last and is reported as a fallback.
+
+**Before/after tempo (owner songs, analysed read-only in place):**
+
+| Song | Before | After |
+| --- | --- | --- |
+| Turbo Storm | 85.33 | 127.99–128.04 |
+| Midnight Orbit | not recorded | 127.96–128.10 |
+| Still Tide | 73.3 | 110.0 |
+| Hazy Harbor | 66.67 | 100.0 |
+| Thunder Storm | 90 | 90 (requested origin honestly rejected) |
+
+**Tests added:**
+- `tests/s21-partb.test.ts`, with 10 tests:
+  - octave and 2:3 repair;
+  - the 3:2 trap, end to end through the evaluator;
+  - planner/evaluator grid agreement;
+  - dual-ramp arithmetic;
+  - the ramp-in map and deck readout;
+  - the set chooser order;
+  - the outgoing stretch buffer.
+- One Part B set-mode case: Auto Next on a 4.9% gap schedules the dual ramp, and it can be cancelled.
+- Three earlier expectations were updated to the new Auto order.
+
+**Gate results (Windows, this working tree before commit):**
+
+| Gate | Result |
+| --- | --- |
+| `npm run check` | PASS, exit 0: 615 tests, 615 pass, 0 fail |
+| `npm run check:browser` | PASS, exit 0: all nine scripts (Studio 15 checks, set 18, mix pre-check 7), Chromium 151, no FAIL status |
+
+macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone is NOT TESTED.
+
+**Risks and limits:**
+- Repair needs a requested tempo. Without one, a 3:2 misread is gated as ambiguous but not corrected.
+- An `unavailable` pre-check, such as a window over 4M samples, still aborts the transition instead of trying the next candidate.
+- Studio pair mode has no pre-check.
+- The engineering values are not calibrated by listening.
+
+**Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening of Turbo Storm → Midnight Orbit and a 4–8% gap dual ramp, on real songs and a real device.

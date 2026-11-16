@@ -24,7 +24,7 @@ test('explicit motion styles enforce gap, transposed harmony and measured loop e
   assert.equal(loop.entryDelayFrames, loop.loopExtension.frames);
   assert.equal(planAutomaticMix({...a, structure: {...a.structure, downbeatConfidence: 0.1}}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
   assert.equal(planAutomaticMix({...a, vocalSpans: [{startFrame: 0, endFrame: a.frames}]}, matched, {recipe: 'loop-extend'}).kind, 'fallback');
-  assert.ok(automaticMixCandidates(a, matched).every(p => ['blend', 'echo-out', 'cut'].includes(p.recipe)));
+  assert.ok(automaticMixCandidates(a, matched).every(p => ['blend', 'dual-ramp', 'echo-out', 'cut'].includes(p.recipe)));
 });
 
 test('selectable filter sweep is a real smooth low-pass lane and auto retains its existing recipes', () => {

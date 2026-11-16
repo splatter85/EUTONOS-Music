@@ -226,7 +226,7 @@ $('mode-hybrid').addEventListener('click', () => setMode('hybrid'));
 $('mode-mix').addEventListener('click', () => setMode('mix'));
 $('mix-recipe').addEventListener('change', () => {
   const value = $<HTMLSelectElement>('mix-recipe').value;
-  if (!['auto', 'blend', 'filter-sweep', 'loudness-match', 'cut', 'tempo-ramp', 'loop-extend', 'brake'].includes(value)) return;
+  if (!['auto', 'blend', 'dual-ramp', 'filter-sweep', 'loudness-match', 'cut', 'tempo-ramp', 'loop-extend', 'brake'].includes(value)) return;
   mixRecipe = value as MixRecipe | 'auto';
   dj?.setMixOptions({recipe: mixRecipe});
   // A selector changes future requests only; committed sources and plan data keep ownership.

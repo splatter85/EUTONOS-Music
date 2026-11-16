@@ -36,8 +36,9 @@ const lane = (points: readonly {frame: number; value: number}[], frame: number):
 
 test('tempo-gap table: bands, order and the clean cut always last', () => {
   const cases: [number, number, string, string][] = [
-    [120, 123, 'normal', 'blend'], [120, 127, 'stretched', 'blend'], [120, 132, 'meet', 'meet-in-middle'],
-    [120, 144, 'bridge', 'echo-out'], [90, 128, 'reset', 'brake'], [128, 120, 'stretched', 'blend'],
+    // Part B (transition-policy@2): the dual tempo ramp leads the stretched and meet bands when both decks fit within 8%.
+    [120, 123, 'normal', 'blend'], [120, 127, 'stretched', 'dual-ramp'], [120, 132, 'meet', 'dual-ramp'],
+    [120, 144, 'bridge', 'echo-out'], [90, 128, 'reset', 'brake'], [128, 120, 'stretched', 'dual-ramp'],
   ];
   for (const [a, b, band, firstRecipe] of cases) {
     const p = tempoGapPolicy(a, b);

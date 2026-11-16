@@ -86,7 +86,7 @@ const RECIPE_LABEL: Readonly<Record<string, string>> = {
   'filter-sweep': 'Filter sweep', 'loudness-match': 'Loudness match',
   'tempo-ramp': 'Tempo ramp (pitch moves)', 'loop-extend': 'Loop extension', 'brake': 'Brake (pitch drops)',
   'fallback-crossfade': 'Plain crossfade (not beatmatched)', 'fallback-cut': 'Clean cut on the bar (last resort)',
-  'meet-in-middle': 'Meet in the middle (both tempos move)', 'echo-out': 'Echo out',
+  'meet-in-middle': 'Meet in the middle (both tempos move)', 'dual-ramp': 'Dual tempo ramp (pitch kept)', 'echo-out': 'Echo out',
   'fallback-echo-reset': 'Filtered echo reset (not beatmatched)',
 };
 export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? recipe; }
