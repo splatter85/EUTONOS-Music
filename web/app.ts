@@ -3,6 +3,8 @@ import {SmallPlayer} from '../src/player.js';
 import {DeterministicDj, type DjCommandResult, type DjHandoff} from '../src/dj.js';
 import {CONTROL_VERSION, type ControlRequest} from '../src/control.js';
 import type {MusicState} from '../src/pack-types.js';
+import {PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
+import type {PhoneCommand} from './phone-protocol.js';
 
 /** The DJ plays one pack per page load; switching navigates, so pagehide disposes the old player. */
 const PACKS = {
@@ -33,6 +35,7 @@ const queueList = element<HTMLUListElement>('queue');
 const errorBox = element('error');
 let loaded: LoadedBrowserPack | null = null;
 let dj: DeterministicDj | null = null;
+let player: SmallPlayer | null = null;
 let ownership: Promise<void> | null = null;
 let releaseLock: (() => void) | null = null;
 let leaseEpoch = 0;
@@ -82,7 +85,8 @@ function getDj(): DeterministicDj {
   if (!loaded) throw new Error('The pack is not loaded.');
   const route = loaded.pack.routes[0];
   if (!route) throw new Error('The pack has no A → B route.');
-  dj = new DeterministicDj(new SmallPlayer(new AudioContext(), loaded, route.id), loaded, 'explore',
+  player = new SmallPlayer(new AudioContext(), loaded, route.id);
+  dj = new DeterministicDj(player, loaded, 'explore',
     {handoff: handoffInput.value as DjHandoff,
       mix: {allowPitchShift: mixPitch.checked, returnToOriginalTempo: mixReturn.checked}});
   dj.setVolume(Number(volume.value));
@@ -196,15 +200,78 @@ function render(): void {
   // release old work without waiting for a cancelled decode or ownership promise.
   if (ownership && player && ['idle', 'ended', 'closed'].includes(state)) releaseOwnership();
 }
+// S17: phone commands go through the page's own controls, so FIFO, Hold, Stop and the
+// current disabled state apply exactly as for a click here. Nothing DJ-specific is duplicated.
+function runPhoneCommand(command: PhoneCommand): string {
+  render();
+  const press = (button: HTMLButtonElement, label: string): string => {
+    if (button.disabled) return `ignored: ${label} is not available now`;
+    button.click();
+    return `pressed ${label}`;
+  };
+  switch (command.command) {
+    case 'play': return press(buttons.play, 'Play');
+    case 'stop': return press(buttons.stop, 'Stop');
+    case 'next': return press(buttons['next-song'], 'Next Song');
+    case 'hold': {
+      const held = dj?.snapshot().control.requested.hold ?? false;
+      if (command.enabled !== undefined && command.enabled === held) return `Hold already ${held ? 'on' : 'off'}`;
+      return press(buttons.hold, 'Hold');
+    }
+    case 'handoff':
+      if (handoffInput.disabled) return 'ignored: handoff is not available now';
+      if (handoffInput.value === command.mode) return `handoff already ${command.mode}`;
+      handoffInput.value = command.mode;
+      handoffInput.dispatchEvent(new Event('change'));
+      return `handoff set to ${command.mode}`;
+  }
+}
+const phoneButton = element<HTMLButtonElement>('phone-stream');
+const phoneBackground = element<HTMLInputElement>('phone-background');
+const phoneRelay = relayFromLocation(location.search);
+const phoneStream = new PhoneStream({
+  tapSource: () => { getDj(); if (!player) throw new Error('The player is not ready.'); return player; },
+  run: runPhoneCommand,
+  status: () => {
+    render();
+    const state = dj?.snapshot().player.state ?? 'idle';
+    const text = (id: string): string => element(id).textContent ?? '';
+    return {state, now: text('now-title'), next: text('next-title'), detail: text('now-detail'), status: text('status'),
+      requested: text('requested-target'), execution: text('execution'), hold: dj?.snapshot().control.requested.hold ?? false,
+      handoff: handoffInput.value === 'direct' || handoffInput.value === 'hybrid' || handoffInput.value === 'mix' ? handoffInput.value : null,
+      canPlay: !buttons.play.disabled, canStop: !buttons.stop.disabled, canNext: !buttons['next-song'].disabled,
+      canHold: !buttons.hold.disabled, canHandoff: !handoffInput.disabled};
+  },
+}, phoneRelay, takeRelayToken(phoneRelay), () => { renderPhoneStream(); });
+function renderPhoneStream(): void {
+  const view = phoneStream.snapshot();
+  phoneButton.disabled = loaded === null;
+  phoneButton.setAttribute('aria-pressed', String(view.enabled));
+  phoneButton.textContent = view.enabled ? 'Stream to phone: on' : 'Stream to phone: off';
+  setText('phone-stream-state', view.enabled
+    ? `relay ${view.relay} · control ${view.control} · recorder ${view.recorder} · ${view.chunksSent} chunks sent (${Math.round(view.bytesSent / 1024)} KiB) · session ${view.sessions}${view.commands ? ` · ${view.commands} phone commands` : ''}`
+    : 'Off');
+  if (view.lastCommand) setText('phone-stream-detail', `Last phone command ${view.lastCommand}`);
+  setText('phone-stream-error', view.error);
+}
+phoneButton.addEventListener('click', () => {
+  if (phoneStream.enabled) phoneStream.stop(); else phoneStream.start();
+  renderPhoneStream();
+});
 document.addEventListener('visibilitychange', () => {
+  // S17 exception (opt-in): while streaming to the phone the listener is on the phone, so a
+  // hidden PC tab may keep playing. Background playback remains unqualified.
+  if (document.hidden && phoneStream.enabled && phoneBackground.checked) return;
   if (document.hidden && dj && ['loading', 'scheduled', 'playing'].includes(dj.snapshot().player.state)) {
     pauseReason = 'Paused because this tab became hidden. Press Resume to continue.';
     void request({type: 'transport', action: 'pause'});
   }
 });
 window.addEventListener('pagehide', () => {
+  phoneStream.stop();
   const previous = dj;
   dj = null;
+  player = null;
   lastResult = null;
   // dispose gates output synchronously, before its context-close promise settles.
   void previous?.dispose().catch(() => undefined);
@@ -237,6 +304,6 @@ async function initialize(): Promise<void> {
   }
   render();
 }
-function frame(): void { render(); requestAnimationFrame(frame); }
+function frame(): void { render(); renderPhoneStream(); requestAnimationFrame(frame); }
 void initialize();
 requestAnimationFrame(frame);

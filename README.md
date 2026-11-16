@@ -30,6 +30,8 @@ The linked **Sampler & palettes** page at **http://127.0.0.1:4173/procedural.htm
 
 On a Windows PC with FL Studio (closed), `npm run fl:produce` renders and imports the owner-local real-FL pack; then open **http://127.0.0.1:4173/?pack=fl** or choose it in the DJ's **Pack** selector. `npm run check:fl` checks it. [S09 guide](docs/S09_FL_IMPORT.md).
 
+**Phone listening (S17, in progress):** with `npm run demo` running, start `npm run phone` in a second terminal, switch on **Stream to phone** on the DJ page, run `tailscale serve --bg 4180` yourself and open `https://<pc-name>.<tailnet>.ts.net/` on the phone. The phone hears a lossy copy about 2–5 s late. [S17 guide](docs/S17_PHONE_LISTENING.md).
+
 See [the v0 format, APIs and setup guide](docs/S01_FOUNDATION.md), [fixture provenance](fixtures/s01/PROVENANCE.md), and [the fixture manifest](fixtures/s01/manifest.json). `npm run fixtures:generate` deliberately rebuilds the authored fixture pack; `npm run fixtures:check` verifies it without rewriting files.
 
 ## Three layers
@@ -55,6 +57,7 @@ A **tiny standalone app** exposes requests to the DJ. The current demo provides 
 - [S06 producer import and palette contract](docs/S06_IMPORT.md)
 - [S07 integrated demo](docs/S07_APP.md)
 - [EUTONOS Studio](docs/STUDIO_APP.md)
+- [S17 phone listening](docs/S17_PHONE_LISTENING.md)
 - [S09 real FL import](docs/S09_FL_IMPORT.md)
 - [S11 library and recipe studies](docs/S11_LIBRARY.md)
 - [S02 Web Audio player](docs/S02_PLAYER.md)

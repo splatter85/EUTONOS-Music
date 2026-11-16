@@ -213,3 +213,8 @@ button[aria-pressed="true"] { border-color: #eda58c; color: #eda58c; }
 .execution-row { margin-top: 18px; }
 #execution { color: #a8b2b1; font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .target-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; } .target-controls input, .target-controls select { width: 100%; min-width: 0; } .target-controls #hold { grid-column: 1 / -1; } .transport #next-song { flex-basis: auto; } .target-row { gap: 8px; } }
+/* S17 Stream to phone (opt-in). */
+.phone-panel { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; display: grid; gap: 8px; }
+.phone-row { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+.phone-option { color: var(--muted); font-size: 0.79rem; display: flex; gap: 8px; align-items: center; }
+#phone-stream-state { font-size: 0.8rem; overflow-wrap: anywhere; }
