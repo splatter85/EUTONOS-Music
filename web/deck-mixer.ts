@@ -26,6 +26,7 @@ class Lane {
     parameter.value = neutral;
   }
   get owner(): 'dj' | 'you' { return this.manual === null ? 'dj' : 'you'; }
+  manualValue(): number | null { return this.manual; }
   private autoValue(frame: number): number {
     return !this.automatic || frame < this.automatic.at ? this.neutral
       : mixCurveValue(this.automatic.points, frame - this.automatic.at);
@@ -164,16 +165,29 @@ export class DeckChannel implements MixAutomationOwner {
     check(['low', 'mid', 'high', 'filter'].includes(control), 'Unknown deck control.');
     if (control === 'filter') {
       const {highPassHz, lowPassHz} = filterCutoffs(value, this.context.sampleRate);
-      this.lanes.hp.take(highPassHz); this.lanes.lp.take(lowPassHz);
+      this.changeFilter(() => { this.lanes.hp.take(highPassHz); this.lanes.lp.take(lowPassHz); });
     } else {
       check(Number.isFinite(value) && value >= -24 && value <= 6, 'EQ must be between -24 and +6 dB.');
       this.lanes[control].take(value);
     }
   }
+  /** A filter gesture owns two native lanes; a partial refusal cannot silently split ownership. */
+  private changeFilter(change: () => void): void {
+    const lanes = [this.lanes.hp, this.lanes.lp];
+    const prior = lanes.map(lane => lane.manualValue());
+    try { change(); }
+    catch (error) {
+      for (const [i, lane] of lanes.entries()) {
+        try { if (prior[i] === null) lane.giveBack(); else lane.take(prior[i]!); }
+        catch { /* Preserve the original native failure. */ }
+      }
+      throw error;
+    }
+  }
   giveBack(control: DeckControl): void {
     check(!this.released, 'Deck mixer is closed.');
     check(['low', 'mid', 'high', 'filter'].includes(control), 'Unknown deck control.');
-    if (control === 'filter') { this.lanes.hp.giveBack(); this.lanes.lp.giveBack(); }
+    if (control === 'filter') this.changeFilter(() => { this.lanes.hp.giveBack(); this.lanes.lp.giveBack(); });
     else this.lanes[control].giveBack();
   }
   setFader(value: number | null): void {
@@ -212,15 +226,25 @@ export class DeckMixer {
   constructor(context: BaseAudioContext, output: AudioNode) {
     this.a = new DeckChannel(context, output); this.b = new DeckChannel(context, output);
   }
+  /** The two physical faders form one user control and must roll back together. */
+  private changeCrossfader(value: number | null): void {
+    const previous = this.manualCrossfader;
+    const apply = (position: number | null): void => {
+      this.a.setFader(position === null ? null : position === 1 ? 0 : Math.cos(position * Math.PI / 2));
+      this.b.setFader(position === null ? null : position === 0 ? 0 : Math.sin(position * Math.PI / 2));
+    };
+    try { apply(value); this.manualCrossfader = value; }
+    catch (error) {
+      try { apply(previous); } catch { /* Preserve the original native failure. */ }
+      this.manualCrossfader = previous;
+      throw error;
+    }
+  }
   setCrossfader(value: number): void {
     check(Number.isFinite(value) && value >= 0 && value <= 1, 'Crossfader must be between 0 and 1.');
-    this.manualCrossfader = value;
-    this.a.setFader(value === 1 ? 0 : Math.cos(value * Math.PI / 2));
-    this.b.setFader(value === 0 ? 0 : Math.sin(value * Math.PI / 2));
+    this.changeCrossfader(value);
   }
-  returnCrossfader(): void {
-    this.manualCrossfader = null; this.a.setFader(null); this.b.setFader(null);
-  }
+  returnCrossfader(): void { this.changeCrossfader(null); }
   snapshot(active: readonly DeckId[]): {a: ChannelControls; b: ChannelControls; crossfader: ControlValue} {
     const a = this.a.snapshot(), b = this.b.snapshot();
     const ga = active.includes('a') ? a.gain : 0, gb = active.includes('b') ? b.gain : 0;

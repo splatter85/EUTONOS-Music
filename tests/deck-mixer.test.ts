@@ -227,6 +227,62 @@ test('crossfader replaces both automatic gain lanes and hands each back to its c
   near(mixer.snapshot(['b']).crossfader.value, 1, 'an empty deck does not bias automatic display');
 });
 
+test('filter take and handback restore both lanes when the second native parameter refuses', () => {
+  const {context, channel, hp, lp} = setup();
+  const original = lp.setValueAtTime.bind(lp);
+  const refuseOnce = (): void => {
+    let armed = true;
+    lp.setValueAtTime = ((value: number, at: number) => {
+      if (armed) { armed = false; throw new Error('injected LP parameter failure'); }
+      return original(value, at);
+    }) as typeof lp.setValueAtTime;
+  };
+  refuseOnce();
+  assert.throws(() => channel.take('filter', 0.5), /injected LP parameter failure/);
+  time(context, 0.1);
+  assert.equal(channel.snapshot().filter.owner, 'dj');
+  near(hp.valueAt(0.1), 0); near(lp.valueAt(0.1), rate / 2);
+  channel.take('filter', -0.5);
+  time(context, 0.2);
+  const previous = channel.snapshot();
+  refuseOnce();
+  assert.throws(() => channel.giveBack('filter'), /injected LP parameter failure/);
+  time(context, 0.3);
+  assert.equal(channel.snapshot().filter.owner, 'you');
+  near(channel.snapshot().filter.value, previous.filter.value);
+  near(hp.valueAt(0.3), previous.highPassHz);
+  near(lp.valueAt(0.3), previous.lowPassHz);
+});
+
+test('crossfader take and handback preserve prior ownership after a partial native failure', () => {
+  const context = new DeckContext(rate), mixer = new DeckMixer(context.audio, context.destination);
+  const bFader = context.gains[4] as TimelineGain;
+  assert.ok(bFader, 'B fader is the second deck bus');
+  const original = bFader.gain.setValueAtTime.bind(bFader.gain);
+  const refuseOnce = (): void => {
+    let armed = true;
+    bFader.gain.setValueAtTime = ((value: number, at: number) => {
+      if (armed) { armed = false; throw new Error('injected B fader failure'); }
+      return original(value, at);
+    }) as typeof bFader.gain.setValueAtTime;
+  };
+  refuseOnce();
+  assert.throws(() => mixer.setCrossfader(0.75), /injected B fader failure/);
+  time(context, 0.1);
+  assert.equal(mixer.snapshot(['a', 'b']).crossfader.owner, 'dj');
+  near(mixer.snapshot(['a', 'b']).a.gain, 1);
+  near(mixer.snapshot(['a', 'b']).b.gain, 1);
+  mixer.setCrossfader(0.3);
+  time(context, 0.2);
+  refuseOnce();
+  assert.throws(() => mixer.returnCrossfader(), /injected B fader failure/);
+  time(context, 0.3);
+  const snap = mixer.snapshot(['a', 'b']);
+  assert.deepEqual(snap.crossfader, {owner: 'you', value: 0.3});
+  near(snap.a.gain, Math.cos(0.3 * Math.PI / 2));
+  near(snap.b.gain, Math.sin(0.3 * Math.PI / 2));
+});
+
 test('invalid manual inputs are rejected before they change AudioParam schedules', () => {
   const {context, channel, fader, low} = setup();
   for (const invalid of [NaN, Infinity, -Infinity, -1, 1.01]) {
