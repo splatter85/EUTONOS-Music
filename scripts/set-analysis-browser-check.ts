@@ -55,7 +55,7 @@ try {
   });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(origin + '/studio.html?pack=set');
+  await page.goto(origin + '/studio.html?pack=set&dossiers=off');
   await page.waitForFunction(() => document.getElementById('global-status')?.textContent?.includes('loaded · 2 songs'));
   assert.equal(fetched.filter(path => path.endsWith('.wav')).length, 0);
   await page.locator('#deck-a-low').focus(); await page.keyboard.press('ArrowLeft');

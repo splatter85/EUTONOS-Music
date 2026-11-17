@@ -275,7 +275,7 @@ function render(): void {
   setText('now', dj?.now || 'Nothing playing');
   const queue = dj?.queue ?? [];
   setText('next', dj?.next || queue[0]?.title || 'Nothing scheduled');
-  setText('next-status', dj?.nextStatus ?? '');
+  setText('next-status', [dj?.nextStatus, dj?.analysis].filter(Boolean).join(' · '));
   renderPicker(queue, dj?.canSetNext ?? false);
   const next = transitionLine(dj?.transitionNext), last = transitionLine(dj?.transitionLast);
   element('transition-card').hidden = !next && !last;

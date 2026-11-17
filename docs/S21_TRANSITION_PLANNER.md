@@ -329,3 +329,12 @@ The nine songs of the local rated pack were analysed read-only in place, with no
 - No exit waits beyond the second requested boundary (owner decision 2).
 - Thresholds `@2` were not needed: the recipe claims leave every `@1` value unchanged.
 - Windows only. macOS and Linux were not run. The real phone and audio devices were not tested.
+
+## Song dossier store (engine increment 2)
+
+Songs are analysed before play and the results are kept. This is engineering only; nothing here is listening evidence.
+
+- **Schema `em.song-dossier.v1`** (`web/song-dossier.ts`): a validated, capped record of numbers and hashes (tempo, beat/downbeat grid, key, sections, cues, loudness, quality flags, versions, analysis cost). No audio, path, title or personal text. Keyed by audio sha256 + analysis version (`song-dossier@1+mix-analysis-v5+mix-structure@1`) + requested-tempo/downbeat hint. Strict on write and on read.
+- **PC store**: relay `GET /api/dj/dossiers`, `GET /api/dj/dossiers/<id>`, `POST /api/dj/dossier` (token, origin and loopback guarded) write atomically to git-ignored `local/song-dossiers/` (`scripts/song-dossier-file.ts`: no symlink following, no paths in errors, caps 96 KiB per dossier, 512 files, 32 MiB). It survives throwaway browser profiles such as `npm run phone:host`.
+- **Browser** (`web/song-dossier-store.ts`, `web/studio-dossiers.ts`): memory, then IndexedDB, then relay. A scheduler analyses missing or stale songs one at a time (now playing, next, queue, rest), pauses during a handover or pending Next, backs off after failures, and re-analyses when the analysis version changes. The page shows "Analysed 7/9 · next ready" and the phone card carries it in `DjStatus.analysis`. `?dossiers=off` disables it (the older lazy-load browser checks use it).
+- **Limits**: a dossier cannot rebuild the planner's full `MixAnalysis`; "next ready" means a current dossier exists and the planner's analysis cache is warm, and the planner's 6 s deadline fallback is unchanged. Importers do not write dossiers yet. No Node CLI. Real phone, macOS/Linux and listening are NOT TESTED.

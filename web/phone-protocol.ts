@@ -101,6 +101,8 @@ export interface DjStatus {
   readonly queue?: readonly QueueItem[];
   readonly nextStatus?: string;
   readonly canSetNext?: boolean;
+  /** Song analysis progress in plain words, e.g. "Analysed 7/9 · next ready" (Studio set page only; empty when unknown). */
+  readonly analysis?: string;
   /** The upcoming handover and the last one played, in plain words (Studio set page only). */
   readonly transitionNext?: TransitionInfo | null;
   readonly transitionLast?: TransitionInfo | null;
@@ -127,7 +129,7 @@ export interface QueueItem { readonly id: string; readonly title: string }
 export const QUEUE_LIMIT = 16;
 
 export const STATUS_TEXT_LIMIT = 240;
-const textFields = ['state', 'now', 'next', 'detail', 'status', 'requested', 'execution', 'lastCommand', 'nextStatus'] as const;
+const textFields = ['state', 'now', 'next', 'detail', 'status', 'requested', 'execution', 'lastCommand', 'nextStatus', 'analysis'] as const;
 const flagFields = ['hold', 'canPlay', 'canStop', 'canNext', 'canHold', 'canHandoff', 'auto', 'canAuto', 'canSetNext'] as const;
 
 function text(value: unknown): string {
