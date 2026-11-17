@@ -26,6 +26,7 @@ import {PhoneAutoStart, PhoneStream, relayFromLocation, takeRelayToken} from './
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
 import {SetSongList} from './set-song-list.js';
+import {StudioDossiers} from './studio-dossiers.js';
 import {browserMixPrecheck} from './mix-precheck.js';
 import {precheckLabel} from './mix-precheck-data.js';
 import {QUEUE_LIMIT, type PhoneCommand, type TransitionInfo} from './phone-protocol.js';
@@ -203,6 +204,7 @@ async function send(action: Action): Promise<void> {
   try {
     const controller = getDj();
     const isPlay = action.type === 'transport' && action.action === 'play';
+    if (action.type === 'nextSong') dossiers?.promote(controller.snapshot().control.queue[0]?.trackId ?? null);
     if (isPlay) await takeOver('dj');
     if (djNeedsMute) { djNeedsMute = false; if (!(action.type === 'transport' && action.action === 'mute')) await controller.request(makeRequest(controller, {type: 'transport', action: 'mute'})); }
     const owner = isPlay ? acquireOwnership() : undefined;
@@ -416,6 +418,8 @@ let lastSetMix = '';
 interface CompletedTransition {readonly plan: TransitionPlanRecord; readonly measured: FeedbackMeasured | null; readonly info: TransitionInfo | null}
 let lastCompleted: CompletedTransition | null = null;
 let feedbackStore: FeedbackStore | null = null;
+/** Song dossiers: songs are analysed before play by a background scheduler (web/studio-dossiers.ts). */
+let dossiers: StudioDossiers | null = null;
 const setNextBars = $<HTMLSelectElement>('set-next-bars'), setAutoBars = $<HTMLSelectElement>('set-auto-bars');
 const setLoop = $<HTMLInputElement>('set-loop'), setAuto = $<HTMLButtonElement>('set-auto');
 setNextBars.addEventListener('change', () => {
@@ -626,6 +630,9 @@ if (isSet) {
   const store = feedbackStore;
   // The PC file is the source of truth: send anything queued, then read the file back; retry queued ratings every 15 s.
   void store.flush().then(() => store.sync());
+  dossiers = new StudioDossiers({loaded: () => loaded, player: () => djPlayer, dj: () => dj, cache: setAnalyses!, relay: phoneRelay, token: phoneToken,
+    onChange: () => { setText('set-analysis', dossiers?.text() ?? ''); }});
+  setInterval(() => { void dossiers?.store.flush(); }, 30_000);
   setInterval(() => { void store.tick(); }, 15_000);
 }
 function runPhoneCommand(command: PhoneCommand): string {
@@ -652,6 +659,7 @@ function runPhoneCommand(command: PhoneCommand): string {
       const at = queue.findIndex(entry => entry.trackId === command.songId);
       if (at < 0) return `refused: ${command.songId} is not in the queue`;
       if (at === 0) return `${titleOf(command.songId)} is already next`;
+      dossiers?.promote(command.songId);
       // The same reorder the Studio queue uses; an armed Next re-targets and re-prepares for the new head.
       void send({type: 'reorderQueue', queueCommandId: queue[at]!.commandId, toIndex: 0});
       return `moved ${titleOf(command.songId)} to the front of the queue`;
@@ -692,7 +700,7 @@ const phoneStream = isSet ? new PhoneStream({
       canNext: !$<HTMLButtonElement>('dj-next').disabled, canHold: !$<HTMLButtonElement>('dj-hold').disabled,
       canHandoff: false, auto: autoOn, canAuto: !!loaded,
       queue: queue.slice(0, QUEUE_LIMIT).map(entry => ({id: entry.trackId, title: titleOf(entry.trackId)})),
-      nextStatus, canSetNext: queue.length > 0,
+      nextStatus, canSetNext: queue.length > 0, analysis: dossiers?.text() ?? '',
       transitionNext: info && player?.transition !== 'complete' ? info : null, transitionLast: lastTransitionForPhone()};
   },
 }, phoneRelay, phoneToken, () => { renderPhoneStream(); }) : null;
@@ -1109,6 +1117,8 @@ async function initialize(): Promise<void> {
       setText('dj-next', 'Next ▸');
       getDj();
       await queueWholeSet(null);
+      // `?dossiers=off` keeps the older lazy behaviour (songs are fetched only when played); checks that assert it use it.
+      if (params.get('dossiers') !== 'off') dossiers?.start();
       renderTracks(); preparePlan(); renderPhoneStream();
       renderDj(); renderSampler(); renderGenerator(); void refreshLibrary();
       void pollHealth(); setInterval(() => { if (!document.hidden) void pollHealth(); }, 4000);

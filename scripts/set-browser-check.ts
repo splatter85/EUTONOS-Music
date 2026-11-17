@@ -84,7 +84,7 @@ try {
   });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(origin + '/studio.html?pack=set');
+  await page.goto(origin + '/studio.html?pack=set&dossiers=off');
   await waitText(page, 'global-status', /Rated set.*loaded · 4 songs/);
   assert.equal(await page.locator('#set-panel').isVisible(), true);
   assert.equal(await page.locator('#mode-mix').getAttribute('aria-checked'), 'true');

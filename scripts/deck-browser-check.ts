@@ -36,7 +36,7 @@ try {
     catch { return route.fulfill({status: 404}); }
   });
   const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message));
-  await page.goto(origin + '/studio.html?pack=set');
+  await page.goto(origin + '/studio.html?pack=set&dossiers=off');
   await page.waitForFunction(() => document.getElementById('global-status')?.textContent?.includes('loaded · 2 songs'));
   assert.equal(await page.locator('.deck-control').count(), 8);
   assert.equal(await page.locator('#set-crossfader').isVisible(), true);

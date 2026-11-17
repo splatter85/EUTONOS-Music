@@ -69,7 +69,7 @@ try {
 
   const direct = await isolated(set), probe = await direct.newPage();
   // A real served module origin without starting the Studio's live playback owner.
-  await probe.goto(origin + '/studio.html?pack=set');
+  await probe.goto(origin + '/studio.html?pack=set&dossiers=off');
   await probe.waitForFunction(() => document.getElementById('global-status')?.textContent?.includes('loaded · 2 songs'));
   const workerMetrics = await probe.evaluate(async assets => {
     const load = (path: string) => import(path);
@@ -281,7 +281,7 @@ try {
         globalThis.AudioContext = StudioAudioContext;
       }, {mode});
       const page = await context.newPage();
-      await page.goto(origin + '/studio.html?pack=set');
+      await page.goto(origin + '/studio.html?pack=set&dossiers=off');
       await page.waitForFunction(() => document.getElementById('global-status')?.textContent?.includes('loaded · 2 songs'));
       await page.locator('#set-next-bars').selectOption('8');
       await page.locator('#deck-a-low').focus(); await page.keyboard.press('ArrowLeft');

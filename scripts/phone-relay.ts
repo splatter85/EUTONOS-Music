@@ -18,6 +18,8 @@ import {join, resolve} from 'node:path';
 import type {Readable, Writable} from 'node:stream';
 import {fileURLToPath} from 'node:url';
 import {FeedbackFile, FeedbackFileError} from './transition-feedback-file.js';
+import {DossierFileError, SongDossierFile} from './song-dossier-file.js';
+import {isDossierId} from '../web/song-dossier.js';
 import {parseControlCommand, sanitizeDjStatus, type DjStatus, type RelayStatus,
   type RelayedCommand} from '../web/phone-protocol.js';
 
@@ -35,6 +37,8 @@ export const LIMITS = {
   controlBytes: 2048,
   /** One transition rating (plan record, tags, note). */
   ratingBytes: 24 * 1024,
+  /** One song dossier (the store refuses anything over 96 KiB serialized). */
+  dossierBytes: 128 * 1024,
   /** About two seconds of 256 kbit/s MP3, sent first to a new listener for fast start. */
   recentBytes: 64 * 1024,
   /** A listener whose unsent backlog exceeds this is dropped instead of buffered. */
@@ -73,6 +77,8 @@ export interface PhoneRelayOptions {
   readonly token?: string;
   /** Folder whose `local/transition-ratings/` holds the ratings file; defaults to the repository root. Tests pass a temp folder. */
   readonly feedbackRoot?: string;
+  /** Folder whose `local/song-dossiers/` holds the song dossiers; defaults to `feedbackRoot`, then the repository root. */
+  readonly dossierRoot?: string;
   /** Clock in ms; injectable so tests can age phone activity without waiting. */
   readonly now?: () => number;
 }
@@ -183,6 +189,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   const log = options.log ?? (() => undefined);
   const now = options.now ?? Date.now;
   const feedbackFile = new FeedbackFile(options.feedbackRoot);
+  const dossierFile = new SongDossierFile(options.dossierRoot ?? options.feedbackRoot);
   /** Time of the last phone-side request (status, live stream, control); DJ requests never set it. */
   let phoneSeenAt: number | null = null;
 
@@ -314,6 +321,21 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     }
   }
 
+  /** Same rule as the ratings store: codes the owner can act on, never a path. */
+  function dossierError(response: ServerResponse, error: unknown): void {
+    if (error instanceof DossierFileError) {
+      if (error.code === 'invalid') json(response, 400, {error: 'invalid-dossier', detail: error.message.slice(0, 160)});
+      else if (error.code === 'bad-id') json(response, 400, {error: 'invalid-dossier-key'});
+      else {
+        fail(`dossier store: ${error.message}`);
+        json(response, error.code === 'full' ? 507 : error.code === 'too-large' ? 413 : 409, {error: `dossier-${error.code}`});
+      }
+    } else {
+      fail(`dossier store failed: ${error instanceof Error ? error.message : String(error)}`);
+      json(response, 500, {error: 'dossier-store-failed'});
+    }
+  }
+
   async function handleDj(request: IncomingMessage, response: ServerResponse, path: string, url: URL): Promise<void> {
     const origin = djOrigin(request);
     if (!origin) { plain(response, 403, 'DJ endpoints accept only the local DJ page'); return; }
@@ -360,7 +382,32 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       } catch (error) { feedbackError(response, error); }
       return;
     }
+    if (path === '/api/dj/dossiers') {
+      if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      try {
+        const key = url.searchParams.get('key');
+        if (key === null) {
+          const {entries, files, bytes} = await dossierFile.list();
+          json(response, 200, {version: 'em.song-dossier-index.v1', entries, files, bytes});
+        } else if (!isDossierId(key)) json(response, 400, {error: 'invalid-dossier-key'});
+        else {
+          const dossier = await dossierFile.get(key);
+          if (dossier) json(response, 200, dossier); else json(response, 404, {error: 'dossier-not-found'});
+        }
+      } catch (error) { dossierError(response, error); }
+      return;
+    }
     if (request.method !== 'POST') { response.setHeader('Allow', 'POST, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+    if (path === '/api/dj/dossier') {
+      const body = await readBody(request, LIMITS.dossierBytes);
+      let parsed: unknown;
+      try { parsed = JSON.parse(body.toString('utf8')); } catch { json(response, 400, {error: 'invalid-json'}); return; }
+      try {
+        const result = await dossierFile.put(parsed);
+        json(response, 200, {ok: true, id: result.id, replaced: result.replaced, bytes: result.bytes, files: result.files});
+      } catch (error) { dossierError(response, error); }
+      return;
+    }
     if (path === '/api/dj/rating') {
       const body = await readBody(request, LIMITS.ratingBytes);
       let parsed: unknown;
@@ -505,7 +552,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === undefined) { plain(response, 404, 'Not found'); return; }
     const url = new URL(request.url ?? '/', 'http://relay.invalid');
     const handler = path.startsWith('/api/dj/')
-      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
+      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings', '/api/dj/dossier', '/api/dj/dossiers'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
       : isPhoneHost(request.headers.host, allowHosts)
         ? handlePhone(request, response, path)
         : Promise.resolve(plain(response, 400, 'Invalid host'));
