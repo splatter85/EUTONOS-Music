@@ -41,7 +41,10 @@ const suggestion = selectNextVibe(snapshot);
 console.log(JSON.stringify({directory, revision: snapshot.revision, restored,
   recency: suggestion ? {vibe: suggestion.vibe.id, reason: suggestion.reason} : null,
   transition_coverage: {
-    basis: coverage.basis, total_pairs: coverage.total_pairs,
+    basis: coverage.basis, complete: coverage.complete, node_limit: coverage.node_limit,
+    total_nodes: coverage.total_nodes, omitted_nodes: coverage.omitted_nodes,
+    total_pairs: coverage.total_pairs, possible_pairs: coverage.possible_pairs,
+    unevaluated_pairs: coverage.unevaluated_pairs,
     metadata_candidates: coverage.metadata_candidates, gaps: coverage.gaps,
     missing_pairs: coverage.edges.filter(edge => edge.verdict === 'gap').map(edge => ({
       from: edge.from.genre, to: edge.to.genre, reasons: edge.reasons})),

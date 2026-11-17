@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {FileLibraryStorage} from '../src/library-file.js';
 import test from 'node:test';
 import {planHybridHandoff} from '../src/hybrid-handoff.js';
 import {reportTransitionCoverage, selectNextVibe} from '../src/library-breadth.js';
@@ -76,8 +81,8 @@ test('EMF12 ignores endings and deduplicates starts, prefers unseen recipes, the
   const used = S11_ALL_RECIPE_FAMILIES.map(f => f.id);
   for (let i = 0; i < used.length; i++) {
     const id = used[i]!;
-    snapshot = await library.recordObservation(observation('start-' + i, replays.get(id)!, 'started', 'play-' + i),
-      snapshot.revision);
+    snapshot = await library.recordObservation({...observation('start-' + i, replays.get(id)!, 'started', 'play-' + i),
+      observed_at: new Date(Date.UTC(2026, 10, 16, 15, i)).toISOString()}, snapshot.revision);
     snapshot = await library.recordObservation(observation('end-' + i, replays.get(id)!, 'ended', 'play-' + i),
       snapshot.revision);
   }
@@ -166,4 +171,147 @@ test('all eight declarative performers preserve role windows, phrase bounds and 
       assert.equal(endings.size, 4);
     }
   }
+});
+
+// Review regressions use actual library writes, so manifests, digests and timestamps
+// satisfy the storage contract rather than relying on unchecked snapshot stubs.
+async function genreLibrary(count: number, storage = new MemoryStorage(), reverse = false) {
+  const library = new MusicLibrary(storage);
+  let snapshot = await library.read();
+  const indices = Array.from({length: Math.ceil(count / 12)}, (_, i) => i);
+  for (const index of reverse ? indices.reverse() : indices) {
+    const input = structuredClone(raw);
+    input.id = 'review-genres-' + index;
+    const genres = Array.from({length: Math.min(12, count - index * 12)}, (_, i) =>
+      'review-genre-' + String(index * 12 + i).padStart(2, '0'));
+    input.recipes[0].genres = reverse ? genres.reverse() : genres;
+    snapshot = await library.registerPack(input, snapshot.revision);
+  }
+  return snapshot;
+}
+async function recencyPair() {
+  const library = new MusicLibrary(new MemoryStorage());
+  let snapshot = await library.registerPack(pack, 0);
+  const replays = [];
+  for (const [index, recipe] of S11_ALL_RECIPE_FAMILIES.slice(0, 2).entries()) {
+    const replay = await captureRecipeReplay(pack, {recipe, seed: 42, state: 'explore', allowFixtures: true});
+    replays.push(replay);
+    snapshot = await library.saveVibe({id: index === 0 ? 'a-study' : 'b-study', label: recipe.title, replay},
+      snapshot.revision);
+  }
+  return {library, snapshot, a: replays[0]!, b: replays[1]!};
+}
+
+test('EMF13 review: 36 valid genre nodes produce bounded, explicitly partial coverage without mutation', async () => {
+  const snapshot = await genreLibrary(36), before = JSON.stringify(snapshot);
+  const report = reportTransitionCoverage(snapshot);
+  assert.equal(report.nodes.length, 32);
+  assert.equal(report.edges.length, 32 * 31);
+  assert.deepEqual(report, {...report, complete: false, node_limit: 32, total_nodes: 36, omitted_nodes: 4,
+    possible_pairs: 36 * 35, unevaluated_pairs: 36 * 35 - 32 * 31});
+  assert.equal(report.total_pairs, report.edges.length);
+  assert.equal(report.metadata_candidates + report.gaps, report.total_pairs);
+  assert.equal(report.gaps, 32 * 31, 'unprofiled evaluated pairs are gaps, not omitted pairs');
+  assert.deepEqual(report.nodes.map(n => n.genre), Array.from({length: 32}, (_, i) =>
+    'review-genre-' + String(i).padStart(2, '0')));
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.deepEqual(reportTransitionCoverage(await genreLibrary(36, new MemoryStorage(), true)), report,
+    'node selection and report are independent of catalogue and genre insertion order');
+});
+
+test('EMF13 review: empty, singleton and exactly 32 nodes have complete, reconciled counts', async () => {
+  for (const count of [0, 1, 32]) {
+    const report = reportTransitionCoverage(await genreLibrary(count));
+    const pairs = count * Math.max(0, count - 1);
+    assert.deepEqual(report, {...report, complete: true, node_limit: 32, total_nodes: count, omitted_nodes: 0,
+      possible_pairs: pairs, unevaluated_pairs: 0});
+    assert.equal(report.nodes.length, count);
+    assert.equal(report.total_pairs, pairs);
+    assert.equal(report.metadata_candidates + report.gaps, report.total_pairs);
+  }
+});
+
+test('EMF13 review: the 33rd node is omitted explicitly rather than throwing or inventing gaps', async () => {
+  const report = reportTransitionCoverage(await genreLibrary(33));
+  assert.deepEqual(report, {...report, complete: false, node_limit: 32, total_nodes: 33, omitted_nodes: 1,
+    possible_pairs: 33 * 32, unevaluated_pairs: 64});
+  assert.equal(report.total_pairs, 32 * 31);
+  assert.ok(report.edges.every(edge => edge.from.genre !== 'review-genre-32' && edge.to.genre !== 'review-genre-32'));
+});
+
+test('EMF12 review: delayed older starts do not displace the newest timestamp, including lookback one', async () => {
+  const {library, a, b, snapshot: initial} = await recencyPair();
+  let snapshot = await library.recordObservation({...observation('newer', b),
+    observed_at: '2026-11-16T14:00:00.000Z'}, initial.revision);
+  snapshot = await library.recordObservation({...observation('older-delayed', a),
+    observed_at: '2026-11-16T12:00:00.000Z'}, snapshot.revision);
+  snapshot = await library.recordObservation({...observation('latest-end', a, 'ended'),
+    observed_at: '2026-11-16T16:00:00.000Z'}, snapshot.revision);
+  snapshot = await library.recordObservation({...observation('latest-stop', a, 'stopped'),
+    observed_at: '2026-11-16T17:00:00.000Z'}, snapshot.revision);
+  const before = JSON.stringify(snapshot);
+  for (const lookback of [1, 2, 8]) {
+    const choice = selectNextVibe(snapshot, lookback)!;
+    assert.equal(choice.vibe.id, 'a-study', 'B really started most recently, regardless of write order');
+    assert.equal(choice.reason, lookback === 1 ? 'not-in-recent-starts' : 'least-recent-fallback');
+    assert.equal(choice.observed_starts_considered, Math.min(lookback, 2));
+  }
+  assert.equal(JSON.stringify(snapshot), before, 'sorting must not change persisted history');
+});
+
+test('EMF12 review: equal timestamps use stable observation IDs, independent of arrival order', async () => {
+  for (const reverse of [false, true]) {
+    const {library, a, b, snapshot: initial} = await recencyPair();
+    let snapshot = initial;
+    const starts = [observation('a-observation', a), observation('b-observation', b)];
+    for (const event of reverse ? starts.reverse() : starts) {
+      snapshot = await library.recordObservation(event, snapshot.revision);
+    }
+    assert.equal(selectNextVibe(snapshot, 1)?.vibe.id, 'b-study', 'ascending ID wins the timestamp tie');
+    assert.equal(selectNextVibe(snapshot, 2)?.vibe.id, 'b-study');
+    assert.deepEqual(selectNextVibe(snapshot), selectNextVibe(snapshot), 'repeatable on an unchanged snapshot');
+  }
+});
+
+test('EMF12 review: duplicate playback starts are deduplicated after time ordering and before lookback', async () => {
+  const {library, a, b, snapshot: initial} = await recencyPair();
+  let snapshot = initial;
+  const events = [
+    {...observation('newest-b', b, 'started', 'b-play'), observed_at: '2026-11-16T15:00:00.000Z'},
+    {...observation('older-a', a, 'started', 'a-play'), observed_at: '2026-11-16T12:00:00.000Z'},
+    {...observation('duplicate-b', b, 'started', 'b-play'), observed_at: '2026-11-16T14:00:00.000Z'},
+    {...observation('oldest-a-copy', a, 'started', 'a-play'), observed_at: '2026-11-16T11:00:00.000Z'},
+  ];
+  for (const event of events) snapshot = await library.recordObservation(event, snapshot.revision);
+  const choice = selectNextVibe(snapshot, 2)!;
+  assert.equal(choice.vibe.id, 'a-study');
+  assert.equal(choice.observed_starts_considered, 2);
+  assert.equal(choice.last_seen_index, 1);
+});
+
+test('EMF13 review: CLI retains partial-coverage diagnostics for a valid oversized library', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'emf-s11-review-'));
+  try {
+    const storage = await FileLibraryStorage.open(directory);
+    const library = new MusicLibrary(storage);
+    const initial = await genreLibrary(36);
+    let saved = await library.read();
+    for (const entry of initial.catalogue) saved = await library.registerPack(entry.pack, saved.revision);
+    const cli = spawnSync(process.execPath,
+      [fileURLToPath(new URL('../scripts/s11-library-demo.js', import.meta.url)), '--directory', directory],
+      {encoding: 'utf8', timeout: 30000});
+    assert.equal(cli.error, undefined);
+    assert.equal(cli.status, 0, cli.stderr);
+    const output = JSON.parse(cli.stdout).transition_coverage;
+    assert.equal(output.complete, false);
+    assert.equal(output.node_limit, 32);
+    assert.equal(output.total_nodes, 45, '36 existing genre nodes plus the nine-node demo pack');
+    assert.equal(output.omitted_nodes, 13);
+    assert.equal(output.possible_pairs, 45 * 44);
+    assert.equal(output.total_pairs, 32 * 31);
+    assert.equal(output.unevaluated_pairs, 45 * 44 - 32 * 31);
+    assert.equal(output.metadata_candidates + output.gaps, output.total_pairs);
+    assert.equal(output.missing_pairs.length, output.gaps);
+    assert.equal((await library.read()).catalogue.length, 4, 'original library packs are retained');
+  } finally { await rm(directory, {recursive: true, force: true}); }
 });

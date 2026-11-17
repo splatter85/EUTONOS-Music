@@ -8,6 +8,9 @@ import {S11_ALL_RECIPE_FAMILIES} from './phrase-plan.js';
 
 const identity = (ref: VersionRef): string => ref.id + '@' + ref.revision;
 const recipeIdentity = (vibe: SavedVibe): string => identity(vibe.replay.recipe);
+// Code-unit order is independent of host locale and input insertion order.
+const compareText = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
+const COVERAGE_NODE_LIMIT = 32;
 
 export interface RecencySelection {
   readonly vibe: SavedVibe;
@@ -18,7 +21,8 @@ export interface RecencySelection {
 }
 
 /**
- * Deterministic auto-selection advice from the newest distinct observed playbacks.
+ * Deterministic advice from retained starts, newest observed_at first. Equal times
+ * use ascending observation IDs; neither late arrival nor an end/stop reorders a play.
  * Count recipe identity, not seed/vibe label; ending/stopping a play does not count again.
  * Never excludes every candidate: if all appeared, choose the least recently started.
  * No randomness, storage writes, media access or implicit Play.
@@ -28,16 +32,20 @@ export function selectNextVibe(snapshot: MusicLibrarySnapshot, lookback = 8): Re
     throw new RangeError('recency lookback must be an integer from 1 to 32');
   }
   if (snapshot.vibes.length === 0) return null;
+  // Work on a filtered copy: history retains its storage order and remains immutable.
+  // MusicLibrary validates canonical UTC timestamps before producing a snapshot.
+  const starts = snapshot.history.filter(entry => entry.kind === 'started')
+    .sort((a, b) => Date.parse(b.observed_at) - Date.parse(a.observed_at) || compareText(a.id, b.id));
   const seenPlaybacks = new Set<string>(), recent: string[] = [];
-  for (let i = snapshot.history.length - 1; i >= 0 && recent.length < lookback; i--) {
-    const entry = snapshot.history[i]!;
-    if (entry.kind !== 'started' || seenPlaybacks.has(entry.playback_id)) continue;
+  for (const entry of starts) {
+    if (seenPlaybacks.has(entry.playback_id)) continue;
     seenPlaybacks.add(entry.playback_id);
     recent.push(identity(entry.replay.recipe));
+    if (recent.length === lookback) break;
   }
   const ranked = snapshot.vibes.map(vibe => ({vibe, index: recent.indexOf(recipeIdentity(vibe))}))
     .sort((a, b) => (b.index < 0 ? Infinity : b.index) - (a.index < 0 ? Infinity : a.index) ||
-      a.vibe.id.localeCompare(b.vibe.id, 'en'));
+      compareText(a.vibe.id, b.vibe.id));
   const chosen = ranked[0]!;
   return Object.freeze({
     vibe: chosen.vibe,
@@ -65,10 +73,19 @@ export interface CoverageEdge {
 export interface TransitionCoverage {
   readonly schema_version: 'em.transition-coverage.v1';
   readonly basis: 'declarative-only-not-listening-tested';
+  /** False means nodes/pairs were omitted, not that omitted transitions are gaps. */
+  readonly complete: boolean;
+  readonly node_limit: number;
+  readonly total_nodes: number;
+  readonly omitted_nodes: number;
+  /** First node_limit nodes in deterministic genre/style order. */
   readonly nodes: readonly CoverageNode[];
   /** Directed genre/style edges; no edge is a playback instruction. */
   readonly edges: readonly CoverageEdge[];
+  /** Counts below distinguish evaluated pairs from the full library's pair universe. */
   readonly total_pairs: number;
+  readonly possible_pairs: number;
+  readonly unevaluated_pairs: number;
   readonly metadata_candidates: number;
   readonly gaps: number;
 }
@@ -99,6 +116,7 @@ function classify(from: Item, to: Item): CoverageReason | null {
  * A candidate needs matching tempo/meter/key/harmony AND an explicit style exit.
  * It does not assert cue alignment, mix safety, media availability, or audible quality.
  * Unprofiled legacy recipes remain visible as gaps rather than implicit approvals.
+ * Large libraries return a bounded partial report; omitted pairs are never classified.
  */
 export function reportTransitionCoverage(snapshot: MusicLibrarySnapshot): TransitionCoverage {
   const grouped = new Map<string, Item[]>();
@@ -113,12 +131,13 @@ export function reportTransitionCoverage(snapshot: MusicLibrarySnapshot): Transi
       grouped.set(key, [...(grouped.get(key) ?? []), item]);
     }
   }
-  if (grouped.size > 32) throw new RangeError('coverage report supports at most 32 distinct genre/style nodes');
-  const nodes = [...grouped.entries()].map(([key, items]) => {
+  const allNodes = [...grouped.entries()].map(([key, items]) => {
     const [genre, style] = JSON.parse(key) as [string, string | null];
     return {genre, style, recipes: items.length} satisfies CoverageNode;
-  }).sort((a, b) => a.genre.localeCompare(b.genre, 'en') ||
-    (a.style ?? '').localeCompare(b.style ?? '', 'en'));
+  }).sort((a, b) => compareText(a.genre, b.genre) || compareText(a.style ?? '', b.style ?? ''));
+  const nodes = allNodes.slice(0, COVERAGE_NODE_LIMIT);
+  const omitted_nodes = allNodes.length - nodes.length;
+  const possible_pairs = allNodes.length * Math.max(0, allNodes.length - 1);
   const edges: CoverageEdge[] = [];
   for (const from of nodes) for (const to of nodes) {
     if (from.genre === to.genre && from.style === to.style) continue;
@@ -136,6 +155,8 @@ export function reportTransitionCoverage(snapshot: MusicLibrarySnapshot): Transi
   }
   const metadata_candidates = edges.filter(edge => edge.verdict === 'metadata-candidate').length;
   return Object.freeze({schema_version: 'em.transition-coverage.v1',
-    basis: 'declarative-only-not-listening-tested', nodes, edges,
-    total_pairs: edges.length, metadata_candidates, gaps: edges.length - metadata_candidates});
+    basis: 'declarative-only-not-listening-tested', complete: omitted_nodes === 0,
+    node_limit: COVERAGE_NODE_LIMIT, total_nodes: allNodes.length, omitted_nodes, nodes, edges,
+    total_pairs: edges.length, possible_pairs, unevaluated_pairs: possible_pairs - edges.length,
+    metadata_candidates, gaps: edges.length - metadata_candidates});
 }

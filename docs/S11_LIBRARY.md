@@ -70,18 +70,22 @@ The S05/S09 hybrid policy is bound to specific original recipe/performer/route i
 
 ## Item 4: EMF12 recency / avoid-repeat
 
-`selectNextVibe(snapshot, lookback = 8)` in `src/library-breadth.ts` returns **advice only** for automatic selection; it does not mutate a library, start playback or alter manual choices. It scans the newest distinct `started` renderer observations (bounded to 1–32) and compares **recipe id + revision**, irrespective of saved vibe name, seed or state. Ends/stops and duplicate playback IDs do not create extra plays.
+`selectNextVibe(snapshot, lookback = 8)` in `src/library-breadth.ts` returns **advice only** for automatic selection; it does not mutate a library, start playback or alter manual choices. It scans the newest distinct `started` renderer observations (bounded to 1–32) and compares **recipe id + revision**, irrespective of saved vibe name, seed or state. Ends/stops and duplicate playback IDs do not create extra plays. Retained starts are ordered by their canonical UTC `observed_at` timestamp, newest first, rather than by when a write arrived. Equal timestamps use ascending observation IDs as a deterministic tie-break, independent of arrival order; duplicate playback IDs are removed after sorting and before applying the lookback. The persisted history is never reordered. This cannot repair inaccurate source clocks or recover pruned observations.
 
 Unseen recipes within that window rank first. If every candidate recently started, it chooses the least recently started rather than refusing all music. Ties use a stable saved-vibe ID order. The result says whether it found no start history, a candidate outside the window or a least-recent fallback. Since pages are not yet capturing playback into S11 history, an empty history cannot supply useful personalization. This is not a three-day variety guarantee.
 
 ## Item 4: EMF13 directed transition-graph coverage
 
-`reportTransitionCoverage(snapshot)` scans registered library pack **recipe metadata**, grouping genre/style labels, with a 32-node diagnostic limit. It reports directed pairs as `metadata-candidate` or `gap`, the count of each and explicit missing-pair reasons. A candidate requires:
+`reportTransitionCoverage(snapshot)` scans registered library pack **recipe metadata**, grouping genre/style labels, evaluating at most the first 32 nodes in stable genre/style order. Larger valid libraries return a **partial report**, not an exception. It reports evaluated directed pairs as `metadata-candidate` or `gap`, the count of each and explicit missing-pair reasons. A candidate requires:
 
 - both source and destination to have a declared S11 style, with the source style's data-only `transitionTo` list naming the destination style;
 - equal declared tempo, meter, key and harmony pitch classes.
 
 Missing style declarations, incompatible tempo/meter, unasserted/mismatched harmony and omitted style handoffs become visible gaps. Unprofiled S01/producer recipes are **unknown**, never silently approved. Direction matters: a source-to-target candidate does not imply the reverse.
+
+The report and command-line demo expose `complete`, `node_limit`, `total_nodes`, `omitted_nodes`, `possible_pairs` and `unevaluated_pairs`. `total_pairs` still counts only evaluated pairs, and equals `metadata_candidates + gaps`. `possible_pairs` covers every directed non-self pair in the full library; `unevaluated_pairs = possible_pairs - total_pairs`. Omitted pairs are **unknown, not gaps or candidates**. For example, 36 nodes yield 32 evaluated nodes, 992 evaluated pairs and 268 unevaluated pairs out of 1,260, with `complete: false`. A library of 32 or fewer nodes is reported completely.
+
+The review regressions cover the 0/1/32/33/36-node boundaries, deterministic ordering, delayed starts, tied timestamps, duplicate playback observations and the actual command-line path on a larger saved library.
 
 **A candidate is NOT a validated DJ route.** This graph does not inspect cue placement, prepared audio, mix safety, actual source availability or audience acceptance. It supplies coverage diagnostics, not transition authorization or a score of musical quality. The demo prints the missing genre/style pairs; no scheduler or page consumes this report.
 
