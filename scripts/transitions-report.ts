@@ -62,6 +62,11 @@ const DIMENSIONS: readonly {readonly name: string; readonly of: (e: TransitionFe
   {name: 'skipped fraction (where B enters)', of: e => skippedBucket(e.plan.to.skippedFraction)},
   {name: 'fallback after failed pre-check', of: e => e.measured?.fallbackAfterFailedChecks != null ? 'yes: reached after failed pre-check(s)' : 'no'},
   {name: 'explore vs auto', of: e => e.plan.mode},
+  // Owner decisions 2026-11-16: layered-entry style and the explore-menu draw (both optional in older records).
+  {name: 'entry style', of: e => e.plan.entryStyle
+    ? `${e.plan.entryStyle.style}${e.plan.entryStyle.bars ? ` ${e.plan.entryStyle.bars} bars` : ''}${e.plan.entryStyle.lastRung ? ' (last rung)' : ''}`
+    : 'none recorded'},
+  {name: 'explore menu', of: e => e.plan.menu ? `drawn from ${e.plan.menu.alternatives.length} candidates` : 'no menu (deterministic or manual)'},
   {name: 'pre-check verdict at the time', of: e => e.measured?.status ?? 'not recorded'},
   {name: 'rated on', of: e => e.device},
 ];

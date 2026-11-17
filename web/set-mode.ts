@@ -5,6 +5,7 @@
  */
 import type {MixSnapshot} from '../src/player.js';
 import {handoverSentence} from './mix-structure.js';
+import {ENTRY_STYLE_LABELS, entryStyleSentence, layeredKeyLabel} from './layered-entry.js';
 
 /** Bars per automatic move. */
 export const AUTO_BARS = [16, 32, 64] as const;
@@ -90,8 +91,17 @@ const RECIPE_LABEL: Readonly<Record<string, string>> = {
   'meet-in-middle': 'Meet in the middle (both tempos move)', 'dual-ramp': 'Dual tempo ramp (pitch kept)', 'echo-out': 'Echo out',
   'fallback-echo-reset': 'Filtered echo reset (not beatmatched)',
   'fallback-filter-dissolve': 'Filter dissolve (not beatmatched)', 'fallback-tone-dissolve': 'Tone dissolve (not beatmatched)',
+  // Owner decisions 2026-11-16 (layered-entry@1): band-wise entries replace the automatic cut.
+  'fallback-layered-entry': 'Layered entry (not beatmatched)', 'layered-entry': 'Layered entry (shortest, not beatmatched)',
 };
-export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? recipe; }
+export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? layeredKeyLabel(recipe) ?? recipe; }
+/** Owner decisions 2026-11-16: the recorded entry style as a label and a plain sentence ('' when none). */
+export function entryStyleText(summary: NonNullable<MixSnapshot['summary']>, fromTitle?: string, toTitle?: string): {label: string; sentence: string} {
+  const entry = summary.set?.transition?.entryStyle;
+  if (!entry) return {label: '', sentence: ''};
+  const label = ENTRY_STYLE_LABELS[entry.style] + (entry.bars ? `, ${entry.bars} bars` : '') + (entry.lastRung ? ' (last rung)' : '');
+  return {label, sentence: entry.source === 'layered-entry@1' ? entryStyleSentence(entry, fromTitle, toTitle) : ''};
+}
 
 /** Tempo change in percent, signed, one decimal ("+4.9%", "0.0%"). */
 export function tempoPercent(ratio: number): string {
@@ -109,7 +119,8 @@ export function describeSetMix(summary: NonNullable<MixSnapshot['summary']>): st
   const signed = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
   const label = recipeLabel(summary.recipe) + (level ? ` · B level ${signed(20 * Math.log10(level.toGain))} dB · remaining difference ${signed(level.matchedDeltaLu)} LU (measured windows)` : '')
     + (summary.loopExtension ? ` · adds ${summary.loopExtension.bars} repeated A bars before B enters` : '')
-    + (summary.recipe === 'brake' ? ` · A slows before B enters` : '');
+    + (summary.recipe === 'brake' ? ` · A slows before B enters` : '')
+    + (() => { const e = entryStyleText(summary); return e.label ? ` · ${e.label}${e.sentence ? `: ${e.sentence}` : ''}` : ''; })();
   if (!set) return label;
   const step = set.anchor === 'entry' ? `Auto every ${set.boundaryBars} bars` : `${set.boundaryBars}-bar boundary`;
   const grids = set.fromGrid === 'measured' && set.toGrid === 'measured' ? 'measured beat grids'
@@ -154,7 +165,8 @@ export function transitionReadout(summary: NonNullable<MixSnapshot['summary']>):
     ? `B enters at ${clock(set.entry.seconds)} (${Math.round(set.entry.fraction * 100)}% in${set.entry.rank !== null ? `, candidate #${set.entry.rank + 1}` : ''})`
     : 'B entry: not recorded';
   return {recipe: recipeLabel(summary.recipe) + band,
-    choreography: set?.choreography ?? 'No EQ choreography (this recipe uses its own automation)',
+    choreography: set?.choreography ?? ((() => { const e = entryStyleText(summary); return e.label ? `${e.label}: ${e.sentence}` : ''; })()
+      || 'No EQ choreography (this recipe uses its own automation)'),
     entry, why: [...(set?.why ?? []), ...(record?.rejected ?? []).map(r => `${recipeLabel(r.recipe)} not used: ${r.reason}`)],
     planId: record?.id ?? null,
     structure: set?.structure ? handoverSentence(set.structure) : 'Structure: not analysed for this handover',

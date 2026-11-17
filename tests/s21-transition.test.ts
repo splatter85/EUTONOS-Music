@@ -34,30 +34,33 @@ const lane = (points: readonly {frame: number; value: number}[], frame: number):
   return points.at(-1)!.value;
 };
 
-test('tempo-gap table: bands, order and the clean cut always last', () => {
+// transition-policy@3 (owner decisions 2026-11-16): stretch limit 15% (bands re-derived) and no automatic cut.
+// Changed expectations: 120->132 (10%) is now 'stretched' (was 'meet'); 120->144 (20%) is now 'meet' with the dual
+// ramp first (was 'bridge'/echo-out); every list ends in the route-free echo reset and holds no 'cut'.
+test('tempo-gap table: bands, order and no automatic clean cut', () => {
   const cases: [number, number, string, string][] = [
-    // Part B (transition-policy@2): the dual tempo ramp leads the stretched and meet bands when both decks fit within 8%.
-    [120, 123, 'normal', 'blend'], [120, 127, 'stretched', 'dual-ramp'], [120, 132, 'meet', 'dual-ramp'],
-    [120, 144, 'bridge', 'echo-out'], [90, 128, 'reset', 'brake'], [128, 120, 'stretched', 'dual-ramp'],
+    [120, 123, 'normal', 'blend'], [120, 127, 'stretched', 'dual-ramp'], [120, 132, 'stretched', 'dual-ramp'],
+    [120, 144, 'meet', 'dual-ramp'], [90, 128, 'reset', 'brake'], [128, 120, 'stretched', 'dual-ramp'],
   ];
   for (const [a, b, band, firstRecipe] of cases) {
     const p = tempoGapPolicy(a, b);
     assert.equal(p.band, band, `${a}->${b}`); assert.equal(p.recipes[0], firstRecipe, `${a}->${b}`);
-    assert.equal(p.recipes.at(-1), 'cut', 'a clean cut is only the last resort');
-    assert.equal(p.recipes.filter(r => r === 'cut').length, 1);
+    assert.equal(p.recipes.at(-1), 'echo-reset', 'the route-free chain (ending in the shortest layered entry) is last');
+    assert.ok(!(p.recipes as readonly string[]).includes('cut'), 'no automatic clean cut');
   }
-  // Band edges: 4%, 8%, 16% and 25% belong to the lower band.
-  assert.equal(tempoGapPolicy(100, 104).band, 'normal'); assert.equal(tempoGapPolicy(100, 108).band, 'stretched');
-  assert.equal(tempoGapPolicy(100, 116).band, 'meet'); assert.equal(tempoGapPolicy(100, 125).band, 'bridge');
-  assert.equal(tempoGapPolicy(100, 125.1).band, 'reset');
-  // Meet in the middle keeps each deck within 8% across the whole meet band.
-  const meet = tempoGapPolicy(100, 116);
-  assert.ok(meet.perDeckChange <= 0.08, String(meet.perDeckChange));
-  assert.ok(Math.abs(meetTempo(100, 116) - meet.meetBpm) < 1e-9);
-  assert.ok(meetTempo(100, 116, 0.35) < meet.meetBpm && meetTempo(100, 116, 0.65) > meet.meetBpm);
-  // Rhythm recipes are gated on beat confidence only; echo/reset/cut survive.
+  // Band edges: 4%, 15%, 32.25% (both decks within 15%) and 40% belong to the lower band.
+  assert.equal(tempoGapPolicy(100, 104).band, 'normal'); assert.equal(tempoGapPolicy(100, 115).band, 'stretched');
+  assert.equal(tempoGapPolicy(100, 115.1).band, 'meet'); assert.equal(tempoGapPolicy(100, 132.25).band, 'meet');
+  assert.equal(tempoGapPolicy(100, 132.3).band, 'bridge'); assert.equal(tempoGapPolicy(100, 140).band, 'bridge');
+  assert.equal(tempoGapPolicy(100, 140.1).band, 'reset');
+  // Meet in the middle keeps each deck within 15% across the whole meet band.
+  const meet = tempoGapPolicy(100, 132.25);
+  assert.ok(meet.perDeckChange <= 0.15 + 1e-9, String(meet.perDeckChange));
+  assert.ok(Math.abs(meetTempo(100, 116) - tempoGapPolicy(100, 116).meetBpm) < 1e-9);
+  assert.ok(meetTempo(100, 116, 0.35) < tempoGapPolicy(100, 116).meetBpm && meetTempo(100, 116, 0.65) > tempoGapPolicy(100, 116).meetBpm);
+  // Rhythm recipes are gated on beat confidence only; echo/reset survive.
   const weak = tempoGapPolicy(120, 123, {beatConfident: false});
-  assert.deepEqual(weak.recipes, ['echo-out', 'echo-reset', 'cut']);
+  assert.deepEqual(weak.recipes, ['echo-out', 'echo-reset']);
 });
 
 test('entry choice: no early bias, a later phrase beyond 60 s wins, ties prefer the earlier cue, skip cost above 25%', () => {
@@ -166,7 +169,7 @@ test('choreography is chosen from pair features and style, not always the smooth
   assert.ok(short.params.overlapBars * 240 / 126 <= 20 && short.reasons.some(r => /shortened/.test(r)));
 });
 
-test('route-free safety net: echo reset ends on the downbeat; a clean cut only when no echo fits', () => {
+test('route-free safety net: echo reset ends on the downbeat; then dissolves and layered entries; a cut only when the owner allows it', () => {
   const rate = 16000, frames = 60 * rate, exit = 16 * 4 * 60 * rate / 90;
   const echo = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate);
   assert.ok(echo.kind === 'route-free' && echo.recipe === 'fallback-echo-reset');
@@ -178,9 +181,20 @@ test('route-free safety net: echo reset ends on the downbeat; a clean cut only w
   const dissolve = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
     {exclude: ['fallback-echo-reset'], allowCut: false});
   assert.ok(dissolve.kind === 'route-free' && dissolve.recipe === 'fallback-filter-dissolve', JSON.stringify(dissolve));
+  // Owner decisions 2026-11-16: with those gone the layered entries come next (changed: was 'unavailable').
+  const layered = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve']});
+  assert.ok(layered.kind === 'route-free' && layered.recipe === 'fallback-layered-entry' && layered.layered?.bars === 4, JSON.stringify(layered.kind));
   const noCut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
-    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve'], allowCut: false});
+    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry'], allowCut: false});
   assert.equal(noCut.kind, 'unavailable');
+  // A cut is planned only when explicitly allowed (an owner-selected cut); the default no longer allows it.
+  const ownerCut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry'], allowCut: true});
+  assert.ok(ownerCut.kind === 'route-free' && ownerCut.recipe === 'fallback-cut');
+  const defaultNoCut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry']});
+  assert.equal(defaultNoCut.kind, 'unavailable');
 });
 
 test('smoothstep tempo return keeps the linear frame total and maps monotonically', () => {
@@ -334,7 +348,7 @@ test('finding 3: explore never emits an overlap the planner refuses (a 4-bar gap
   }
 });
 
-test('finding 4: route-free tries a later bar before settling for a clean cut', () => {
+test('finding 4: route-free tries a later bar before settling for the shortest layered entry', () => {
   // 120 -> 160 BPM has no crossfade. The requested bar sits exactly on the earliest effect frame, so the echo
   // reset (which needs its pre-roll before the exit) fits only on a later bar.
   const grid = requestedGrid(120, SR), frames = 200 * SR;
@@ -345,9 +359,10 @@ test('finding 4: route-free tries a later bar before settling for a clean cut', 
   assert.ok(first.kind === 'route-free' && first.plan.recipe === 'fallback-filter-dissolve' && first.exitBar === 4, first.kind);
   const choice = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames},
     to: {asset: fakeAsset('b', 160, frames), analysis: null, frames, channels: 1}, sampleRate: SR, earliestFrame, boundary: {bars: 4, anchorBar: 0},
-    exclude: ['fallback-filter-dissolve', 'fallback-tone-dissolve']});
+    exclude: ['fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry']});
   if (choice.kind !== 'route-free') assert.fail(choice.kind);
-  assert.equal(choice.plan.recipe, 'fallback-echo-reset', 'not the clean cut');
+  // Owner decisions 2026-11-16: layered entries (no pre-roll) would also take bar 4, so they are excluded here too.
+  assert.equal(choice.plan.recipe, 'fallback-echo-reset', 'not a layered entry or cut');
   assert.ok(choice.exitBar > 4 && choice.exitBar <= 4 + ROUTE_FREE_LATER_BARS, String(choice.exitBar));
   assert.ok(choice.notes.some(n => /pre-roll/.test(n)));
 });

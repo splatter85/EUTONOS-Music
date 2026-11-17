@@ -156,16 +156,19 @@ for (const action of ['cancel', 'pause', 'stop'] as const) test(action + ' abort
   } finally { await player.dispose(); }
 });
 
-test('a PASS arriving after its original audio deadline refuses instead of choosing a different bar', async () => {
+// Changed expectation (S21, 2026-11-16): a late PASS used to refuse the whole request. With explore as the set
+// default, slower drawn candidates made that common (the Windows set and deck gates refused Next on some seeds),
+// so the late plan is now excluded and a LATER bar is chosen and pre-checked again. Still never unchecked.
+test('a PASS arriving after its original audio deadline re-chooses a later bar and pre-checks it again', async () => {
   const gate = controlled(), {context, player, ids} = await setup(gate.run);
   try {
-    const before = [...context.sources[0]!.stops], pending = player.scheduleMixTo(ids[1]!);
+    const pending = player.scheduleMixTo(ids[1]!);
     await gate.entered; const selected = structuredClone(gate.seen.plan);
     context.advance(12);
-    const late = assert.rejects(pending, /checked set transition missed its audio-clock deadline/);
-    gate.release(); await late;
-    assert.equal(context.sources.length, 1); assert.equal(gate.calls, 1); assert.deepEqual(gate.seen.plan, selected);
-    assert.deepEqual(context.sources[0]!.stops, before); assert.equal(player.snapshot().transition, 'none');
+    gate.release(); await pending;
+    assert.equal(gate.calls, 2, 'the re-chosen plan was pre-checked too');
+    assert.ok(gate.seen.plan.fromExitFrame > selected.fromExitFrame, 'a later bar of A');
+    assert.notEqual(player.snapshot().transition, 'none');
     assert.equal(player.snapshot().now[0], ids[0]); owners(player);
   } finally { await player.dispose(); }
 });
@@ -216,26 +219,29 @@ test('queue reorder cancels the old check and admits only the checked new head',
   } finally { first.release(); await dj.dispose(); }
 });
 
-test('S21 review: a clean cut reached after pre-check FAILs is flagged as a fallback, not a plain pass', async () => {
-  // Part B: every non-cut candidate fails (crossfade, echo reset, each dissolve length); only then the cut passes.
+// Owner decision (A), 2026-11-16: no automatic clean cut. Changed expectation: when every candidate fails its
+// pre-check, the final attempt is the ladder's last rung (the 2-bar layered entry), flagged as a fallback.
+test('S21 review: the last rung (shortest layered entry) reached after pre-check FAILs is flagged as a fallback, not a plain pass', async () => {
   let calls = 0; const tried: string[] = [];
   const gate: PrecheckRuntime = async request => {
     calls++; tried.push(request.plan.recipe);
-    return report(['cut', 'fallback-cut'].includes(request.plan.recipe) ? 'pass' : 'fail');
+    const last = !!(request.plan as {layered?: {lastRung?: boolean}}).layered?.lastRung;
+    return report(last ? 'pass' : 'fail');
   };
   const {player, ids} = await setup(gate);
   try {
     await player.scheduleMixTo(ids[1]!, {bars: 4, anchor: 'song'});
     const mix = player.snapshot().mix!;
     const failed = calls - 1;
-    assert.ok(['cut', 'fallback-cut'].includes(mix.summary!.recipe), mix.summary!.recipe);
+    assert.equal(mix.summary!.recipe, 'fallback-layered-entry', mix.summary!.recipe);
+    assert.ok(!tried.some(r => /cut/.test(r)), `no cut was ever planned: ${tried.join()}`);
     assert.ok(tried.includes('fallback-filter-dissolve') && tried.includes('fallback-tone-dissolve'), tried.join());
-    assert.ok(tried.indexOf('fallback-filter-dissolve') < tried.length - 1, 'each dissolve was checked before the cut');
-    assert.equal(mix.precheck!.status, 'pass', 'the cut itself measured PASS');
+    assert.equal(mix.precheck!.status, 'pass', 'the last rung itself measured PASS');
     assert.deepEqual(mix.fallbackAfterFailedPrecheck, {failedChecks: failed, last: 'DJ plan check FAIL: Synthetic gate fail'});
     assert.match(mix.reason, new RegExp(`Fallback after ${failed} failed pre-checks`));
     assert.ok(mix.summary!.set!.transition!.rejected.length >= failed, 'the failed checks are in the plan record');
-    assert.ok(mix.summary!.set!.why!.some(line => new RegExp(`Clean cut \\(last resort\\) reached after ${failed} failed pre-checks`).test(line)));
+    assert.equal(mix.summary!.set!.transition!.entryStyle?.lastRung, true);
+    assert.ok(mix.summary!.set!.why!.some(line => /Shortest layered entry \(last rung\) reached after/.test(line)));
   } finally { await player.dispose(); }
   // A first-try cut or any non-cut pass carries no flag.
   calls = 0; const clean = await setup(async () => report('pass'));

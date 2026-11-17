@@ -223,3 +223,70 @@ macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone is NOT TES
 - G6 and G7 remain the largest open causes of plain results.
 
 **Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening, on a real device, of the filter dissolve and the echo reset on a tempo-gap pair such as 100 → 122.
+
+## Owner decisions 2026-11-16: layered entries, no automatic cut, 15% stretch, explore menu
+
+**Assignment:** implement the owner's decisions of 2026-11-16:
+- (A) no automatic instantaneous cut, with layered, band-wise entries instead;
+- (B) a 15% pitch-preserving stretch;
+- (C) thresholds `@2` only if needed, and safety never weakened;
+- (D) Next may wait up to 8 bars for a better exit.
+
+A coordinator clarification added a seeded random mix of all passing styles, with explore as the default for set Auto and Next.
+
+**Base / branch:** `worktree-agent-ae145a20c74875d21` from `bffba00`. The tested source is the commit that adds this section; the coordinator report carries its SHA.
+**Publication:** a local commit on the worker branch only. No merge or push. No change to the campaign, Current Tasks, the native board, RAM or NAV.
+**Untouched:**
+- `scripts/serve.ts`, `scripts/phone-*` and `web/phone*`;
+- the analysis cache and store;
+- the values of `mix-evaluation-thresholds@1` and `transition-safety@1`;
+- `MIX_EVALUATOR_VERSION`.
+
+**Delivered.** Detail is in [the planner doc](../S21_TRANSITION_PLANNER.md#owner-decisions-2026-11-16-layered-entries-no-automatic-cut-15-stretch-and-the-explore-menu).
+1. **`layered-entry@1`** (`web/layered-entry.ts`):
+   - Styles: bass-first, mid-first, high-first and drums-first, on the LR4 split.
+   - Lengths: 2, 4 or 8 bars, with echo tails where A's highs leave last.
+   - Lane rules are checked before any audio.
+   - `entryStyle` is an optional field on the plan record. It is shown in `rejected[]`, `DjStatus`, "Why this handover" and the phone card wrapper.
+   - The style is chosen by section.
+2. **No automatic cut** (`transition-policy@3`):
+   - The ladder's last rung is the 2-bar layered entry, still pre-checked. The player's tenth attempt plans only that rung.
+   - The cut gate is removed. A cut is planned only when the owner selected it, and then it is planned first.
+   - Studio pair Auto ends in `layered-entry`.
+   - The 8-bar wait for a quiet A exit is in.
+3. **`recipe-claims@2`:**
+   - A layered entry is judged on B's lead bands (at least 6 dB first), a low-band masking proxy (−1.5 dB) and its lanes.
+   - Loudness is judged as a continuity envelope: at most 3 LU over the louder native song and at most 4 LU under the quieter one, per 400 ms window. The straight-line interpolation is logged only. This is a judgement call for review; no threshold value changed.
+   - Beat phase is not judged, because alignment is not claimed.
+   - Missing measurements fail.
+4. **15% stretch:**
+   - WSOLA and `MIX_LIMITS` accept ratios from 0.85 to 1.15.
+   - The tempo-gap bands were re-derived: 4% / 15% / 32.25% / 40%.
+   - The dual ramp reaches about 35.3%.
+5. **`explore-menu@1`:**
+   - It makes a seeded, floor-weighted draw among every planned candidate: beat-matched recipes, crossfade, echo reset, dissolves and each layered style.
+   - A pre-check FAIL excludes the pick and the next draw follows. After 5 failed draws the deterministic ladder takes the remaining attempts.
+   - Changed rule, for review: a PASS that arrives after its audio-clock deadline used to refuse the Next request. Now that plan is excluded and a later bar is chosen and pre-checked again. Explore made late passes common enough to break the set and deck gates on some seeds.
+   - The draw is recorded as `menu` in the plan record.
+   - The Studio set page has Explore on by default, with a fresh, visible seed per load. The player API stays deterministic by default.
+6. **Feedback and report.**
+   - Two tags were appended, for 17 in total.
+   - `transitions:report` groups by entry style and explore menu.
+
+**Owner songs (72 pairs):** see the planner doc. Every run planned zero cuts. Each run refused one pair (122→110), the same pair the baseline refused: every layered candidate there fails the frozen true-peak safety ceiling. The baseline cut is now a layered entry. Explore spread its picks across all four layered styles, both dissolves, the echo reset and the crossfade.
+
+**15% stretch artefacts:**
+- These are synthetic proxies only. 10–15% showed no measurable step from 8%.
+- Pitch was within 1 cent, with no doubled onsets.
+- The THD+N proxy was −34 to −65 dB at every non-unity ratio, worst at 880 Hz.
+- Polyphonic phasiness, real drums and listening were NOT TESTED.
+
+**Gate results (Windows):** recorded in the coordinator report for this commit. macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone is NOT TESTED.
+
+**Risks and limits:**
+- The layered lanes, the lead margin, the masking proxy and the 4 LU dip are uncalibrated engineering values.
+- Layered entries do not align beats.
+- The menu's alternatives are planned, not pre-checked.
+- This branch touches `web/studio.ts` and `web/studio.html`, so expect a merge with the song-dossier branch once it lands in `main`.
+
+**Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening, with explore on, to rate the mix of styles, including the layered entries and the last rung.

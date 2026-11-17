@@ -16,7 +16,7 @@ import {MusicLibrary, type MusicLibrarySnapshot} from '../src/library.js';
 import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
-import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, recipeLabel, SongEntries, transitionReadout, triedFirst, type AutoBars, type NextBars} from './set-mode.js';
+import {AUTO_BARS, autoDecision, describeSetMix, entryStyleText, moveTarget, NEXT_BARS, recipeLabel, SongEntries, transitionReadout, triedFirst, type AutoBars, type NextBars} from './set-mode.js';
 import {handoverSentence} from './mix-structure.js';
 import type {TransitionPlanRecord} from './transition-policy.js';
 import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
@@ -40,8 +40,12 @@ function phoneTransition(summary: Parameters<typeof basePhoneTransition>[0], fal
   const info = basePhoneTransition(summary, fallback), set = summary.set;
   const dissolve = summary.recipe === 'fallback-filter-dissolve' || summary.recipe === 'fallback-tone-dissolve';
   const tried = triedFirst(summary, 200);
+  // Owner decisions 2026-11-16: the layered entry style and its plain sentence ride the existing text fields.
+  const style = entryStyleText(summary, set ? titleOf(set.fromId) : undefined, set ? titleOf(set.toId) : undefined);
+  const layered = summary.recipe === 'fallback-layered-entry' || summary.recipe === 'layered-entry';
   return {...info,
     ...(dissolve ? {recipe: recipeLabel(summary.recipe)} : {}),
+    ...(layered || style.label ? {recipe: `${layered ? recipeLabel(summary.recipe) : info.recipe} · ${style.label || 'layered'}${style.sentence ? `: ${style.sentence}` : ''}`.slice(0, 240)} : {}),
     // The card's "enters at m:ss" stays first (existing field shape); the structure sentence follows it.
     ...(set?.structure ? {entry: `${info.entry ? `${info.entry} · ` : ''}${handoverSentence(set.structure, titleOf(set.toId))}`.slice(0, 240)} : {}),
     ...(tried ? {fallback: `${info.fallback ? `${info.fallback}. ` : ''}${tried}`.slice(0, 240)} : {})};
@@ -194,6 +198,8 @@ function getDj(): DeterministicDj {
   dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
+  // Owner clarification 2026-11-16: explore (seeded, logged random styles) is the default for set Auto/Next.
+  if (isSet) queueMicrotask(applyExplore);
   return dj;
 }
 const makeRequest = (c: DeterministicDj, action: Action): ControlRequest =>
@@ -553,6 +559,8 @@ function applyExplore(): void {
   catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
 }
 exploreBox?.addEventListener('change', applyExplore); exploreSeed?.addEventListener('change', applyExplore);
+// Explore is on by default (studio.html); a fresh seed per page load gives a new but logged and replayable sequence.
+if (exploreSeed && exploreSeed.dataset.fresh === 'true') exploreSeed.value = String(Math.floor(Date.now() / 1000) % 2 ** 31);
 const selectedTags = new Set<FeedbackTag>();
 const rateNote = isSet ? $<HTMLInputElement>('set-rate-note') : null;
 if (isSet) {

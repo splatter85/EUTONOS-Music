@@ -14,6 +14,7 @@ import {MIX_FILTER_Q_DB, MIX_SHELF_HZ, validateMixAutomation, type MixAutomation
   type MixAutomationPoint} from '../src/mix-automation.js';
 import {automaticMixCandidates, type AutomaticMixPlan, type MixPlannerOptions,
   isSmoothRecipe, type LevelMatchPlan, type MixRecipe} from '../src/mix-planner.js';
+import {checkLayeredLanes, leadBands, LAYERED_ENTRY_LIMITS, type EntryStyle, type LayeredEntryInfo} from './layered-entry.js';
 
 export const MIX_EVALUATOR_VERSION = 'transition-evaluator@1' as const;
 
@@ -65,17 +66,26 @@ export const MIX_EVALUATION_THRESHOLDS = Object.freeze({
  *   The upward deviation is judged against thresholds@1; the downward one is judged only against the
  *   recipe's declared dip bound (RECIPE_CLAIM_LIMITS.echoMaxDipLu) and its thresholds@1 flag is logged
  *   in `unclaimed`. A real dropout is still caught by the silence-gap rule.
+ *
+ * recipe-claims@2 (owner decisions 2026-11-16) adds one recipe and changes no existing judgement: `layered-entry`
+ * (B native, brought in band by band, layered-entry@1) claims no beat lock (entry beat only), a loudness dip of
+ * at most LAYERED_ENTRY_LIMITS.maxDipLu, and `layered: true`, which judges what it promises: per-band order
+ * (B's lead band(s) measurably first), the low-band masking proxy (never both songs' bass near full) and its
+ * own lane rules. thresholds@1 and transition-safety@1 are unchanged and still apply in full.
  */
-export const RECIPE_CLAIMS_VERSION = 'recipe-claims@1' as const;
+export const RECIPE_CLAIMS_VERSION = 'recipe-claims@2' as const;
 export interface RecipeClaims {
   readonly beatLocked: boolean; readonly loudness: 'crossfade' | 'dip';
   /** For a 'dip': the deepest drop below the interpolation the recipe declares; deeper still fails (a hole, not a dip). */
   readonly maxDipLu?: number;
+  /** recipe-claims@2: a layered entry is judged on per-band order and the low-band masking proxy. */
+  readonly layered?: true;
 }
 /** recipe-claims@1 declared dip bound for echo-type recipes (an engineering starting point, not calibrated). */
 export const RECIPE_CLAIM_LIMITS = Object.freeze({echoMaxDipLu: 6});
 export function recipeClaims(recipe: MixRecipe): RecipeClaims {
   if (recipe === 'echo-out') return {beatLocked: false, loudness: 'dip', maxDipLu: RECIPE_CLAIM_LIMITS.echoMaxDipLu};
+  if (recipe === 'layered-entry') return {beatLocked: false, loudness: 'dip', maxDipLu: LAYERED_ENTRY_LIMITS.maxDipLu, layered: true};
   if (recipe === 'cut') return {beatLocked: false, loudness: 'crossfade'};
   return {beatLocked: true, loudness: 'crossfade'};
 }
@@ -137,6 +147,8 @@ export interface TransitionSpec {
   readonly loopExtension?: AutomaticMixPlan['loopExtension'];
   /** Part B dual tempo ramp: A plays a pitch-kept WSOLA ramp from `fromStartFrame`. */
   readonly outgoingStretch?: AutomaticMixPlan['outgoingStretch'];
+  /** recipe-claims@2: the layered entry's style and lead phase (what its per-band claim is judged on). */
+  readonly layered?: LayeredEntryInfo;
 }
 
 export interface TransitionRender {
@@ -153,7 +165,7 @@ export interface TransitionRender {
 }
 
 export type EvaluationMetric = 'automation' | 'truePeak' | 'loudness' | 'lowBuildUp' | 'beatPhase' |
-  'boundaryFlux' | 'sampleJump' | 'silenceGap' | 'stereoCorrelation';
+  'boundaryFlux' | 'sampleJump' | 'silenceGap' | 'stereoCorrelation' | 'layeredLead' | 'lowMasking' | 'layeredLanes';
 export interface EvaluationFlag {
   readonly metric: EvaluationMetric; readonly level: 'warn' | 'fail';
   readonly value: number | null; readonly threshold: number | null; readonly note?: string;
@@ -176,6 +188,29 @@ export interface TransitionMeasurements {
     readonly fromGain: number; readonly toGain: number; readonly target: 'gain-adjusted measured windows'};
   /** S21 transition-safety@1 inputs (absent on evaluations made before S21). */
   readonly safety?: SafetyMeasurements;
+  /** recipe-claims@2: layered-entry measurements (present only when the spec carries a layered entry). */
+  readonly layered?: LayeredMeasurements;
+}
+export interface LayeredMeasurements {
+  readonly style: EntryStyle;
+  /** Lead phase: lowest lead band of B minus its loudest other band, each relative to B native (null = unjudged). */
+  readonly leadDb: number | null;
+  /** Highest 500 ms min(A low, B low), each relative to its own native low band (null = unjudged). */
+  readonly maskingDb: number | null;
+  /**
+   * Largest momentary (400 ms) rise of the mix over the LOUDER of the two native songs in the same window
+   * (null = unjudged). A layered entry claims loudness continuity between A and B, not the straight-line
+   * A-to-B energy interpolation: B's bands arriving early is the recipe, exceeding both songs is not.
+   */
+  readonly riseOverLouderLu?: number | null;
+  /**
+   * Deepest momentary (400 ms) drop of the mix below the QUIETER of the two native songs in the same window
+   * (only the audible song when the other is silent; null = unjudged). The other half of the continuity claim:
+   * the mix stays inside the two songs' envelope; a drop below both is a hole.
+   */
+  readonly dipUnderQuieterLu?: number | null;
+  /** Lane rules read from the plan itself (layered-entry@1). */
+  readonly lowOverlapDb: number; readonly lowSumMinDb: number; readonly leadFirst: boolean; readonly lanesOk: boolean;
 }
 export interface TransitionEvaluation {
   readonly version: typeof MIX_EVALUATOR_VERSION;
@@ -635,7 +670,8 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
   }
 
   const safety = measureSafety(render, spec, peak === null ? null : finite(peak));
-  return {truePeakDbtp: peak === null ? null : finite(peak), safety,
+  const layered = spec.layered ? measureLayered(render, spec, spec.layered) : undefined;
+  return {truePeakDbtp: peak === null ? null : finite(peak), safety, ...(layered ? {layered} : {}),
     loudness: {momentaryMaxUpLu: momentary.up, momentaryMaxDownLu: momentary.down,
       shortTermMaxUpLu: shortTerm.up, shortTermMaxDownLu: shortTerm.down},
     lowBuildUp: {maxDb: lowMax, band: lowBand},
@@ -646,6 +682,69 @@ export function measureTransition(render: TransitionRender, spec: TransitionSpec
     ...(spec.levelMatch ? {levelMatch: {rawDeltaLu: spec.levelMatch.rawDeltaLu, beforeDeltaLu: spec.levelMatch.beforeDeltaLu,
       matchedDeltaLu: spec.levelMatch.matchedDeltaLu, fromGain: spec.levelMatch.fromGain, toGain: spec.levelMatch.toGain,
       target: 'gain-adjusted measured windows' as const}} : {})};
+}
+
+/**
+ * recipe-claims@2 layered-entry measurements. Band levels are relative to each song's own native signal in the
+ * same measuring band, so the claim is about what the automation did to each song, not which song is louder.
+ * A band whose native level is near silent is left unjudged (null), never turned into a pass of the lead rule.
+ */
+function measureLayered(render: TransitionRender, spec: TransitionSpec, info: LayeredEntryInfo): LayeredMeasurements {
+  const rate = render.sampleRate, length = render.mix[0]!.length, {S, T, E} = render;
+  const top = Math.min(rate / 2 - 1, 16000);
+  const edges = {low: [20, EQ_SPLIT.lowMidHz], mid: [EQ_SPLIT.lowMidHz, EQ_SPLIT.midHighHz], high: [EQ_SPLIT.midHighHz, top]} as const;
+  const bFromT = render.bNative.map(c => Float64Array.from(c, (v, n) => n >= T ? v : 0));
+  const sums = (channels: readonly Float64Array[]) => ({
+    low: prefix(bandEnergy(channels, rate, edges.low[0], edges.low[1])),
+    mid: prefix(bandEnergy(channels, rate, edges.mid[0], edges.mid[1])),
+    high: prefix(bandEnergy(channels, rate, edges.high[0], edges.high[1]))});
+  const bOut = sums(render.bOut), bNat = sums(bFromT);
+  // Lead phase: the second to fourth quarters of the lead window (the first quarter is the lead band still rising).
+  const leadEnd = Math.min(length, T + info.leadEndFrame);
+  const leadStart = Math.min(leadEnd - 1, T + Math.round(info.leadEndFrame / 4));
+  const whole = (band: 'low' | 'mid' | 'high') => windowMean(bNat[band], T, Math.min(length, Math.max(E, T + 1)));
+  const loudest = Math.max(1e-30, whole('low'), whole('mid'), whole('high'));
+  const rel = (band: 'low' | 'mid' | 'high'): number | null => {
+    const native = windowMean(bNat[band], leadStart, leadEnd), out = windowMean(bOut[band], leadStart, leadEnd);
+    return native > 1e-4 * loudest ? db(Math.max(1e-12 * native, out) / native) : null;
+  };
+  const lead = leadBands(info.style), others = (['low', 'mid', 'high'] as const).filter(b => !lead.includes(b));
+  const leadLevels = lead.map(rel), otherLevels = others.map(rel).filter((v): v is number => v !== null);
+  const leadDb = leadLevels.every(v => v !== null) && otherLevels.length
+    ? Math.min(...leadLevels as number[]) - Math.max(...otherLevels) : null;
+  // Masking proxy: 500 ms windows (100 ms hop) where both natives carry real low end.
+  const aOutLow = prefix(bandEnergy(render.aOut, rate, edges.low[0], edges.low[1]));
+  const aNatLow = prefix(bandEnergy(render.aNative, rate, edges.low[0], edges.low[1]));
+  const from = Math.max(S, T), to = Math.max(from + 1, E);
+  const refA = Math.max(1e-30, windowMean(aNatLow, from, to)), refB = Math.max(1e-30, windowMean(bNat.low, from, to));
+  let masking: number | null = null;
+  for (const [s, e] of windows(length, Math.round(0.5 * rate), Math.round(0.1 * rate), from, to)) {
+    if (s < from || e > to) continue;
+    const an = windowMean(aNatLow, s, e), bn = windowMean(bNat.low, s, e);
+    if (an < 0.05 * refA || bn < 0.05 * refB) continue;
+    const value = Math.min(db(Math.max(1e-30, windowMean(aOutLow, s, e)) / an), db(Math.max(1e-30, windowMean(bOut.low, s, e)) / bn));
+    if (masking === null || value > masking) masking = value;
+  }
+  // Loudness continuity: the mix against the louder native song, K-weighted, 400 ms windows (100 ms hop).
+  const eMix = prefix(weightedEnergy(render.mix, rate)), eA = prefix(weightedEnergy(render.aNative, rate));
+  const eB = prefix(weightedEnergy(bFromT, rate));
+  let rise: number | null = null, under: number | null = null;
+  const audible = (energy: number) => -0.691 + db(Math.max(1e-30, energy)) >= -70;
+  for (const [s, e] of windows(length, Math.round(0.4 * rate), Math.round(0.1 * rate), S, E)) {
+    const a = windowMean(eA, s, e), b = windowMean(eB, s, e), louder = Math.max(a, b);
+    if (!audible(louder)) continue;
+    const mix = Math.max(1e-30, windowMean(eMix, s, e));
+    const value = db(mix / louder);
+    if (rise === null || value > rise) rise = value;
+    const quieter = audible(a) && audible(b) ? Math.min(a, b) : louder;
+    const drop = Math.min(60, db(quieter / mix));
+    if (under === null || drop > under) under = drop;
+  }
+  const lanes = checkLayeredLanes(spec.automation.outgoing, spec.automation.incoming, info);
+  return {style: info.style, leadDb: leadDb === null ? null : finite(leadDb), maskingDb: masking === null ? null : finite(masking),
+    riseOverLouderLu: rise === null ? null : finite(rise), dipUnderQuieterLu: under === null ? null : finite(under),
+    lowOverlapDb: Number.isFinite(lanes.lowOverlapDb) ? Math.max(-120, lanes.lowOverlapDb) : -120, lowSumMinDb: Number.isFinite(lanes.lowSumMinDb) ? Math.max(-120, lanes.lowSumMinDb) : -120,
+    leadFirst: lanes.leadFirst, lanesOk: lanes.ok};
 }
 
 /** Declared EQ gaps in render indices (incoming gaps start at T, outgoing gaps at S). */
@@ -715,20 +814,45 @@ export function judgeTransition(recipe: MixRecipe, m: TransitionMeasurements): O
   const claims = recipeClaims(recipe);
   const ups = [m.loudness.momentaryMaxUpLu, m.loudness.shortTermMaxUpLu].filter((v): v is number => v !== null);
   const downs = [m.loudness.momentaryMaxDownLu, m.loudness.shortTermMaxDownLu].filter((v): v is number => v !== null).map(v => -v);
-  const loud = claims.loudness === 'dip' ? ups : [...ups, ...downs];
-  check('loudness', loud.length ? Math.max(...loud) : null, t.loudnessLu, claims.loudness === 'dip'
+  // recipe-claims@2: a layered entry's rise is judged against the louder native song (its continuity claim);
+  // the rise over the straight-line interpolation is logged in `unclaimed`. Same thresholds@1 values.
+  const layeredRise = claims.layered && m.layered?.riseOverLouderLu !== undefined ? m.layered.riseOverLouderLu : undefined;
+  const loud = layeredRise !== undefined ? (layeredRise === null ? [] : [layeredRise]) : claims.loudness === 'dip' ? ups : [...ups, ...downs];
+  if (layeredRise !== undefined) check('loudness', ups.length ? Math.max(...ups) : null, t.loudnessLu,
+    'rise over the A-to-B interpolation; logged only (a layered entry claims continuity against the louder song)', unclaimed);
+  check('loudness', loud.length ? Math.max(...loud) : null, t.loudnessLu, layeredRise !== undefined
+    ? 'largest rise over the louder native song (layered-entry continuity claim, recipe-claims@2)'
+    : claims.loudness === 'dip'
     ? 'largest rise over the A-to-B interpolation (a dip is this recipe\'s claim)' : 'largest deviation from the A-to-B interpolation, either direction');
   if (claims.loudness === 'dip') {
-    const dip = downs.length ? Math.max(...downs) : null;
-    check('loudness', dip, t.loudnessLu, 'dip below the A-to-B interpolation; thresholds@1 flag logged only (the recipe declares a dip)', unclaimed);
+    const interpolationDip = downs.length ? Math.max(...downs) : null;
+    check('loudness', interpolationDip, t.loudnessLu, 'dip below the A-to-B interpolation; thresholds@1 flag logged only (the recipe declares a dip)', unclaimed);
+    // recipe-claims@2: a layered entry's dip is measured below the quieter native song (continuity envelope).
+    const layeredDip = claims.layered && m.layered?.dipUnderQuieterLu !== undefined ? m.layered.dipUnderQuieterLu : undefined;
+    const dip = layeredDip !== undefined ? layeredDip : interpolationDip;
     if (dip !== null && claims.maxDipLu !== undefined && dip > claims.maxDipLu) flags.push({metric: 'loudness', level: 'fail', value: dip,
-      threshold: claims.maxDipLu, note: `dip deeper than the recipe's declared ${claims.maxDipLu} LU (recipe-claims@1)`});
+      threshold: claims.maxDipLu, note: layeredDip !== undefined
+        ? `drop below the quieter native song deeper than the declared ${claims.maxDipLu} LU (recipe-claims@2)`
+        : `dip deeper than the recipe's declared ${claims.maxDipLu} LU (recipe-claims@1)`});
   }
   check('lowBuildUp', m.lowBuildUp.maxDb, t.lowBuildUpDb, m.lowBuildUp.band ?? undefined);
   if (m.beatPhase.judged) check('beatPhase', m.beatPhase.maxError, t.beatPhase);
   if (m.boundaryFlux.judged) check('boundaryFlux', m.boundaryFlux.excessDb, t.boundaryFluxDb);
   check('sampleJump', m.sampleJumpRatio, t.sampleJumpRatio);
   check('silenceGap', m.silenceGapMs, t.silenceGapMs);
+  if (claims.layered) {
+    // recipe-claims@2: a layered entry is judged on what it claims; missing evidence fails, it never passes.
+    const L = LAYERED_ENTRY_LIMITS, lm = m.layered;
+    if (!lm) flags.push({metric: 'layeredLanes', level: 'fail', value: null, threshold: null, note: 'layered-entry measurements are missing'});
+    else {
+      if (!lm.lanesOk) flags.push({metric: 'layeredLanes', level: 'fail', value: lm.lowOverlapDb, threshold: L.lowOverlapMaxDb,
+        note: 'the plan\'s band lanes break the layered-entry rules (low overlap, low continuity or lead order)'});
+      if (lm.leadDb !== null && lm.leadDb < L.leadMarginDb) flags.push({metric: 'layeredLead', level: 'fail', value: lm.leadDb,
+        threshold: L.leadMarginDb, note: `B's ${lm.style} lead band(s) are not measurably first`});
+      if (lm.maskingDb !== null && lm.maskingDb > L.maskingMaxDb) flags.push({metric: 'lowMasking', level: 'fail', value: lm.maskingDb,
+        threshold: L.maskingMaxDb, note: 'both songs\' low bands near full level at the same time'});
+    }
+  }
   if (m.stereoCorrelation !== null && m.stereoCorrelation < t.stereoCorrelation.warn) {
     flags.push({metric: 'stereoCorrelation', level: 'warn', value: m.stereoCorrelation, threshold: t.stereoCorrelation.warn});
   }
@@ -766,7 +890,8 @@ export function planTransitionSpec(plan: AutomaticMixPlan): TransitionSpec {
     tempoRatio: plan.tempoRatio, automation: plan.automation, ...(plan.levelMatch ? {levelMatch: plan.levelMatch} : {}),
     ...(plan.entryDelayFrames ? {entryDelayFrames: plan.entryDelayFrames} : {}),
     ...(plan.nativeRate ? {nativeRate: plan.nativeRate} : {}), ...(plan.loopExtension ? {loopExtension: plan.loopExtension} : {}),
-    ...(plan.outgoingStretch ? {outgoingStretch: plan.outgoingStretch} : {})};
+    ...(plan.outgoingStretch ? {outgoingStretch: plan.outgoingStretch} : {}),
+    ...(plan.layered ? {layered: plan.layered} : {})};
 }
 
 export type EvaluatedMixDecision =

@@ -132,16 +132,18 @@ test('3:2 trap end to end: repaired analyses give measured 128 grids and a judge
   assert.ok(!judged.flags.some(f => f.metric === 'beatPhase'), 'an unjudged phase is never a beatPhase FAIL');
 });
 
-test('dual-ramp target: geometric mean clamped so each deck moves at most 8%', () => {
+// Owner decision (B), 2026-11-16: per-deck bound 15% (was 8%); the clamp and reach examples move with it.
+test('dual-ramp target: geometric mean clamped so each deck moves at most 15%', () => {
   const t = dualRampTempo(120, 127)!;
   assert.ok(Math.abs(t.bpm - Math.sqrt(120 * 127)) < 1e-9);
   assert.ok(Math.abs(t.fromRatio * 120 - t.bpm) < 1e-9 && Math.abs(t.toRatio * 127 - t.bpm) < 1e-9);
-  const clamped = dualRampTempo(100, 117)!;
-  assert.ok(Math.abs(clamped.bpm - 108) < 1e-9 && clamped.fromRatio <= DUAL_RAMP_LIMITS.maxRatio + 1e-12 && clamped.toRatio >= DUAL_RAMP_LIMITS.minRatio - 1e-12);
+  const clamped = dualRampTempo(100, 134)!;
+  assert.ok(Math.abs(clamped.bpm - 115) < 1e-9 && clamped.fromRatio <= DUAL_RAMP_LIMITS.maxRatio + 1e-12 && clamped.toRatio >= DUAL_RAMP_LIMITS.minRatio - 1e-12);
   assert.equal(dualRampTempo(100, 100.4), null, 'below 0.5% there is nothing to ramp');
-  assert.equal(dualRampTempo(100, 118), null, 'beyond about 17.4% one deck would move more than 8%');
+  assert.equal(dualRampTempo(100, 136), null, 'beyond about 35.3% one deck would move more than 15%');
   assert.deepEqual(tempoGapPolicy(120, 127).recipes.slice(0, 2), ['dual-ramp', 'blend']);
-  assert.ok(!tempoGapPolicy(120, 144).recipes.includes('dual-ramp'));
+  assert.ok(tempoGapPolicy(120, 144).recipes.includes('dual-ramp'), 'a 20% gap is within the 15% per-deck reach');
+  assert.ok(!tempoGapPolicy(120, 170).recipes.includes('dual-ramp'));
   assert.ok(!tempoGapPolicy(120, 127, {beatConfident: false}).recipes.includes('dual-ramp'));
 });
 

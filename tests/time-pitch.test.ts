@@ -206,7 +206,8 @@ test('pitch-up resampling attenuates energy that would otherwise alias across Ny
 
 test('ranges, malformed audio and impossible returns are refused before rendering', () => {
   const input = tone(8000, 1);
-  for (const tempoRatio of [0.919, 1.081, 0, -1, NaN, Infinity]) {
+  // Owner decision (B), 2026-11-16: the engineering bound is 0.85..1.15 (was 0.92..1.08).
+  for (const tempoRatio of [0.849, 1.151, 0, -1, NaN, Infinity]) {
     assert.throws(() => renderTimePitch(input, {tempoRatio}), /Tempo ratio/);
   }
   for (const pitchSemitones of [-2.001, 2.001, NaN, Infinity]) {

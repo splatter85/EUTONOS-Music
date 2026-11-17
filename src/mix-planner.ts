@@ -4,10 +4,11 @@ import {nativeRateInputAt, rampInInputAt, type NativeRateRamp, type RampIn} from
 import {choreographyPlan, type ChoreographyParams} from '../web/eq-choreography.js';
 import {DUAL_RAMP_LIMITS, dualRampTempo, ENTRY_POLICY, entrySkipCost} from '../web/transition-policy.js';
 import {structurePairTerm, type SongStructure, type StructurePairTerm} from '../web/mix-structure.js';
+import {layeredEntryAutomation, layeredSentence, type LayeredEntryInfo} from '../web/layered-entry.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
-export const MIX_LIMITS = Object.freeze({tempoRatioMin: 0.92, tempoRatioMax: 1.08,
+export const MIX_LIMITS = Object.freeze({tempoRatioMin: 0.85, tempoRatioMax: 1.15,
   pitchSemitones: 2, tempoConfidence: 0.65, beatConfidence: 0.6, tempoAmbiguity: 0.5,
   keyConfidence: 0.55, cueConfidence: 0.35, phraseConfidence: 0.2});
 
@@ -17,7 +18,9 @@ export interface HarmonicCompatibility {
   readonly circleDistance: number | null; readonly score: number;
   readonly relation: 'same-key' | 'relative' | 'adjacent-fifth' | 'distant' | 'unknown';
 }
-export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake' | 'meet-in-middle' | 'dual-ramp';
+/** `layered-entry` (owner decisions 2026-11-16): B native, brought in band by band (layered-entry@1); replaces the automatic cut. */
+export type MixRecipe = 'blend' | 'cut' | 'echo-out' | 'filter-sweep' | 'loudness-match' | 'tempo-ramp' | 'loop-extend' | 'brake' | 'meet-in-middle' | 'dual-ramp' |
+  'layered-entry';
 /** WSOLA-rendered B entries. S21 `meet-in-middle` also ramps A's native rate to the meeting tempo. */
 export const isBeatmatchedRecipe = (recipe: string): boolean => ['blend', 'filter-sweep', 'loudness-match', 'loop-extend', 'meet-in-middle', 'dual-ramp'].includes(recipe);
 export const MIX_OVERLAP_BEATS = Object.freeze([4, 8, 16, 32, 64, 128] as const);
@@ -110,6 +113,8 @@ export interface AutomaticMixPlan {
   readonly outgoingStretch?: {readonly sourceStartFrame: number; readonly inputFrames: number; readonly tempoRatio: number; readonly rampIn: RampIn};
   /** S21: echo allowed by measured low density only (content not confirmed). */
   readonly echoHeuristic?: boolean;
+  /** layered-entry@1 parameters (style, bars, lead phase) for a `layered-entry` plan. */
+  readonly layered?: LayeredEntryInfo;
   readonly confidence: number;
   readonly evidence: {readonly tempo: number; readonly beat: number; readonly key: number;
     readonly cue: number; readonly phrase: number};
@@ -305,24 +310,24 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   const meet = options.recipe === 'meet-in-middle';
   const dual = options.recipe === 'dual-ramp';
   const dualTempo = dual ? dualRampTempo(fromBpm, toBpm) : null;
-  if (dual && !dualTempo) return fallback('Dual tempo ramp needs a tempo gap above 0.5% that both decks can meet within 8% each.');
+  if (dual && !dualTempo) return fallback('Dual tempo ramp needs a tempo gap above 0.5% that both decks can meet within 15% each.');
   if (dual && options.meetBpm !== undefined && !(Number.isFinite(options.meetBpm) &&
     [options.meetBpm / fromBpm, options.meetBpm / toBpm].every(r => r >= DUAL_RAMP_LIMITS.minRatio - 1e-9 && r <= DUAL_RAMP_LIMITS.maxRatio + 1e-9))) {
-    return fallback('Dual tempo ramp target must keep each deck within 8%.');
+    return fallback('Dual tempo ramp target must keep each deck within 15%.');
   }
   const meetBpm = meet ? options.meetBpm ?? Math.sqrt(fromBpm * toBpm) : dual ? options.meetBpm ?? dualTempo!.bpm : fromBpm;
   if (meet && (!Number.isFinite(meetBpm) || meetBpm < Math.min(fromBpm, toBpm) || meetBpm > Math.max(fromBpm, toBpm) ||
     Math.abs(meetBpm / fromBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9 || Math.abs(meetBpm / toBpm - 1) > MEET_LIMITS.maxDeckChange + 1e-9)) {
     return fallback('Meet-in-the-middle needs each deck within 8% of the meeting tempo.');
   }
-  if (meet && Math.abs(fromBpm / toBpm - 1) <= 0.08) return fallback('Meet-in-the-middle is for gaps beyond the 8% stretched blend.');
+  if (meet && Math.abs(fromBpm / toBpm - 1) <= 0.08) return fallback('Meet-in-the-middle is for gaps beyond 8% (its native-rate deck stays within 8%).');
   // B's output/original tempo: A's tempo for a normal blend, the meeting tempo for meet-in-middle.
   const tempoRatio = meetBpm / toBpm;
   if (meet || dual) { /* range checked above */ } else if (tempoRatio < (options.recipe === 'tempo-ramp' ? 0.8 : MIX_LIMITS.tempoRatioMin) ||
     tempoRatio > (options.recipe === 'tempo-ramp' ? 1.25 : MIX_LIMITS.tempoRatioMax)) {
-    return fallback(options.recipe === 'tempo-ramp' ? 'Native ramp ratio must stay within 0.8..1.25.' : 'Tempo match is outside the engineering limit of +/-8%.');
+    return fallback(options.recipe === 'tempo-ramp' ? 'Native ramp ratio must stay within 0.8..1.25.' : 'Tempo match is outside the engineering limit of +/-15%.');
   }
-  if (options.recipe === 'tempo-ramp' && tempoRatio >= 0.92 && tempoRatio <= 1.08) return fallback('Native ramp is for changes beyond static comfort (0.92..1.08); use a pitch-preserving blend here.');
+  if (options.recipe === 'tempo-ramp' && tempoRatio >= MIX_LIMITS.tempoRatioMin && tempoRatio <= MIX_LIMITS.tempoRatioMax) return fallback(`Native ramp is for changes beyond the pitch-preserving stretch limit (${MIX_LIMITS.tempoRatioMin}..${MIX_LIMITS.tempoRatioMax}); use a pitch-preserving blend here.`);
   const keysKnown = from.key.tonic !== null && to.key.tonic !== null && evidence.key >= MIX_LIMITS.keyConfidence;
   // Meet in the middle ramps A's native rate, so A's pitch moves by 12*log2(rate) semitones for the whole overlap.
   // The key check uses A's nearest whole-semitone shift; a residual detune above 0.4 semitone cannot claim a relation.
@@ -468,7 +473,7 @@ function shiftLanes(lanes: MixAutomation, frames: number, sampleRate: number): M
 
 /** New recipes require explicit strong grid/cue evidence, independent of global harmony. */
 function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions,
-  recipe: 'cut' | 'echo-out' | 'brake'): AutomaticMixPlan[] {
+  recipe: 'cut' | 'echo-out' | 'brake' | 'layered-entry'): AutomaticMixPlan[] {
   if (!validAnalysis(from, true) || !validAnalysis(to, true) || from.sampleRate !== to.sampleRate ||
       [from, to].some(a => a.tempo.confidence < MIX_LIMITS.tempoConfidence ||
         a.tempo.ambiguity > MIX_LIMITS.tempoAmbiguity || a.beatGrid.confidence < MIX_LIMITS.beatConfidence ||
@@ -479,9 +484,12 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
   const heuristicEcho = recipe === 'echo-out' && options.echoContentConfirmed !== true && options.echoHeuristic === true;
   if (recipe === 'echo-out' && options.echoContentConfirmed !== true && !heuristicEcho) return [];
   const rate = from.sampleRate, fromBpm = from.tempo.bpm!, toBpm = to.tempo.bpm!;
-  const automation = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate);
+  // Owner decisions 2026-11-16: the automatic pair path's last native-entry candidate is the shortest layered
+  // entry (2 of A's bars, highs first: B's bass arrives after A's has gone), never a 10 ms cut.
+  const layered = recipe === 'layered-entry' ? layeredEntryAutomation('high-first', 2, 4 * 60 * rate / fromBpm, fromBpm, rate, {lastRung: true}) : null;
+  const automation = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : layered ?? cleanCutAutomation(rate);
   const preRollFrames = recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate).preRollFrames : 0;
-  const overlapFrames = automation.incoming.durationFrames;
+  const overlapFrames = automation.incoming.durationFrames, outgoingFrames = automation.outgoing.durationFrames - preRollFrames;
   const minimum = (options.minimumFromFrame ?? 0) + preRollFrames;
   const strong = (a: MixAnalysis, c: MixPointCandidate, incoming: boolean): boolean => {
     const e = c.evidence;
@@ -494,7 +502,7 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
         : e.boundary >= 0.6) &&
       (recipe !== 'echo-out' || incoming || e.interference <= 0.35);
   };
-  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - overlapFrames, from.vocalSpans)
+  const outgoing = eligibleCues(from.mixOut, minimum, from.frames - Math.max(overlapFrames, outgoingFrames), from.vocalSpans)
     .filter(c => strong(from, c, false) && (recipe !== 'echo-out' ||
       !(from.vocalSpans ?? []).some(s => s.startFrame < c.frame && s.endFrame > c.frame - preRollFrames))).slice(0, 3);
   const incomingAll = eligibleCues(to.mixIn, 0, to.frames - overlapFrames, to.vocalSpans)
@@ -530,11 +538,13 @@ function alternatePlans(from: MixAnalysis, to: MixAnalysis, options: MixPlannerO
         overlapBeats: Math.min(16, options.overlapBeats ?? 8) as MixOverlapBeats, fromBpm, toBpm, tempoRatio: 1, pitchSemitones: 0,
         returnToOriginalTempo: false, harmonic, evidence,
         confidence: Math.min(evidence.tempo, evidence.beat, evidence.phrase, evidence.cue),
-        automation: recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : cleanCutAutomation(rate),
+        automation: recipe === 'echo-out' ? echoOutAutomation(fromBpm, rate) : layered ? {outgoing: layered.outgoing, incoming: layered.incoming} : cleanCutAutomation(rate),
+        ...(layered ? {layered: layered.info} : {}),
         reasons: ['Strong downbeat/cue evidence; native B entry, no key or tempo match required.',
           recipe === 'echo-out' ? (heuristicEcho ? 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Allowed by measured low density only: content is NOT confirmed and low density is not vocal detection.'
             : 'Two-beat prelude; dry A and send close at T; two-bar owned tail. Content confirmation required; low density is not vocal detection.')
-            : 'Strong standalone B cue; complementary 10 ms cut.',
+            : layered ? `Layered entry (${layered.info.version}, shortest rung): ${layeredSentence(layered.info, 'A', 'B')}. No beat alignment is claimed.`
+              : 'Strong standalone B cue; complementary 10 ms cut.',
           'Finite deterministic proposals only; rendered-quality evaluation and listening are not established.']};
     });
 }
@@ -555,14 +565,15 @@ function validOptions(options: MixPlannerOptions): boolean {
     (options.pitchSemitones === undefined || Number.isInteger(options.pitchSemitones) &&
       Math.abs(options.pitchSemitones) <= MIX_LIMITS.pitchSemitones);
 }
-/** At most five proposals (one blend, two echoes, two cuts); no evaluated-quality claim. */
+/** At most six proposals (blend, dual ramp, two echoes, two layered entries); no evaluated-quality claim. */
 export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
   options: MixPlannerOptions = {}): readonly AutomaticMixPlan[] {
   if (!validOptions(options)) return [];
   // Part B: the dual tempo ramp is a first-class Auto candidate, ahead of the blend for a stretched gap (above 4%).
   const gap = from.tempo.bpm && to.tempo.bpm ? Math.max(from.tempo.bpm, to.tempo.bpm) / Math.min(from.tempo.bpm, to.tempo.bpm) - 1 : 0;
   const recipes = options.recipe && options.recipe !== 'auto' ? [options.recipe] :
-    gap > 0.04 ? ['dual-ramp', 'blend', 'echo-out', 'cut'] as const : ['blend', 'dual-ramp', 'echo-out', 'cut'] as const;
+    // Owner decisions 2026-11-16: no automatic cut; the shortest layered entry is the last native-entry candidate.
+    gap > 0.04 ? ['dual-ramp', 'blend', 'echo-out', 'layered-entry'] as const : ['blend', 'dual-ramp', 'echo-out', 'layered-entry'] as const;
   const plans: AutomaticMixPlan[] = [];
   for (const recipe of recipes) {
     if (recipe === 'brake') {
@@ -592,7 +603,7 @@ export function automaticMixCandidates(from: MixAnalysis, to: MixAnalysis,
     } else if (isBeatmatchedRecipe(recipe) || recipe === 'tempo-ramp') {
       const blend = styledBlend(from, to, options);
       if (blend.kind === 'mix') plans.push(blend);
-    } else if (recipe === 'cut' || recipe === 'echo-out') plans.push(...alternatePlans(from, to, options, recipe));
+    } else if (recipe === 'cut' || recipe === 'echo-out' || recipe === 'layered-entry') plans.push(...alternatePlans(from, to, options, recipe));
   }
   return plans.slice(0, MIX_CANDIDATE_LIMIT);
 }

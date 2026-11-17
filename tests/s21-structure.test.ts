@@ -7,7 +7,7 @@ import test from 'node:test';
 import {analyzeMixAudio, type MixAnalysis, type MixPcm} from '../src/mix-analysis.js';
 import {cleanCutAutomation} from '../src/mix-automation.js';
 import {chooseSetTransition, downbeatAt, gridAlignedAnalysis, planRouteFreeTransition, routeFreeSignature, ROUTE_FREE_RETRY, setTransitionRecord,
-  transitionSignature, type SetBarGrid, type SetTransitionChoice} from '../src/mix-transition.js';
+  transitionSignature, SET_WAIT_LIMIT_BARS, type SetBarGrid, type SetTransitionChoice} from '../src/mix-transition.js';
 import type {AudioAsset} from '../src/pack-types.js';
 import type {DecodedRecording} from '../src/web-audio.js';
 import {evaluateTransition, judgeTransition, recipeClaims, MIX_EVALUATION_THRESHOLDS, RECIPE_CLAIM_LIMITS, RECIPE_CLAIMS_VERSION,
@@ -109,34 +109,38 @@ test('Part B exits: the end of a quiet A section between the requested boundarie
   assert.ok(plain.kind === 'route-free' && plain.exitBar === 4, plain.kind);
 });
 
-test('+22% gap on a requested A grid: echo reset, then every dissolve length, then the gated cut, each listed in rejected[]', () => {
+// Owner decision (A), 2026-11-16: no automatic clean cut. Changed expectation: the chain no longer ends in
+// 'fallback-cut'; when every ordinary candidate has failed, the final attempt is the ladder's last rung
+// (a 2-bar layered entry, still pre-checked). Layered entries now also sit between the dissolves and the last rung.
+test('+22% gap on a requested A grid: echo reset, dissolves and layered entries, then the last rung (never a cut), each listed in rejected[]', () => {
   // The live case: A on its requested grid at about 81.8 BPM, B measured at 100 BPM (+22.3%).
   const b = structuredSong(100), bAnalysis = analyzeMixAudio(b), aFrames = 180 * SR, bFrames = b.channels[0]!.length;
-  const input = (exclude: string[]) => ({from: {asset: fakeAsset('a', 81.77, aFrames), analysis: null, frames: aFrames},
+  const input = (exclude: string[], lastRung = false) => ({from: {asset: fakeAsset('a', 81.77, aFrames), analysis: null, frames: aFrames},
     to: {asset: fakeAsset('hazy', 100, bFrames), analysis: bAnalysis, frames: bFrames, channels: 1}, sampleRate: SR,
-    earliestFrame: Math.round(downbeatAt(requestedGrid(81.77), 7)), boundary: {bars: 4, anchorBar: 0}, exclude});
+    earliestFrame: Math.round(downbeatAt(requestedGrid(81.77), 7)), boundary: {bars: 4, anchorBar: 0}, exclude, ...(lastRung ? {lastRung} : {})});
   const exclude: string[] = [], tried: string[] = [];
   let choice: SetTransitionChoice = chooseSetTransition(input(exclude));
-  // Emulates the player: every candidate fails its pre-check until only the cut is left.
-  for (let i = 0; i < 12 && choice.kind !== 'unavailable' && !/cut/.test(choice.plan.recipe); i++) {
+  // Emulates the player: every candidate fails its pre-check; attempt 10 plans only the last rung.
+  for (let attempt = 1; attempt < 10 && choice.kind !== 'unavailable'; attempt++) {
+    assert.ok(!/cut/.test(choice.plan.recipe), `no automatic cut (${choice.plan.recipe})`);
     tried.push(choice.plan.recipe);
     exclude.push(transitionSignature(choice.plan, choice.exitBar));
-    choice = chooseSetTransition(input(exclude));
+    choice = chooseSetTransition(input(exclude, attempt + 1 >= 10));
   }
-  assert.ok(choice.kind === 'route-free' && choice.plan.recipe === 'fallback-cut', choice.kind);
-  assert.equal(tried[0], 'fallback-echo-reset');
+  assert.ok(choice.kind === 'route-free' && choice.plan.recipe === 'fallback-layered-entry', choice.kind);
+  assert.ok(choice.plan.layered?.lastRung && choice.plan.layered.bars === 2, 'the last rung is the 2-bar layered entry');
+  // B's structure names a section-led layered entry first (one attempt only), then the echo reset. The proven
+  // candidates are tried at every bar (the echo's later-bar retry included) before the general layered entries.
+  assert.deepEqual(tried.slice(0, 2), ['fallback-layered-entry', 'fallback-echo-reset'], tried.join());
+  assert.equal(tried.filter(r => r === 'fallback-echo-reset').length, ROUTE_FREE_RETRY.echoBars, 'the echo reset is retried at one more bar');
   assert.equal(tried.filter(r => r === 'fallback-filter-dissolve').length, 2, tried.join());
   assert.equal(tried.filter(r => r === 'fallback-tone-dissolve').length, 2, tried.join());
-  assert.equal(tried.filter(r => r === 'fallback-echo-reset').length, ROUTE_FREE_RETRY.echoBars, 'the echo reset is retried at one more bar');
-  assert.ok(tried.length + 1 <= 10, 'the chain fits the player attempt budget (SET_CANDIDATE_ATTEMPTS = 10)');
-  // The cut sits on a four-bar phrase boundary.
-  assert.equal(choice.exitBar % 4, 0);
-  // Every route-free candidate passed over is in the plan record with its reason.
+  assert.equal(tried.length + 1, 10, 'the chain uses exactly the player attempt budget (SET_CANDIDATE_ATTEMPTS = 10)');
+  // Every route-free candidate passed over is in the plan record with its reason; the entry style is recorded.
   const record = validateTransitionPlanRecord(setTransitionRecord(choice, {id: 'a', sha256: 'a'.repeat(64)},
     {id: 'hazy', sha256: 'b'.repeat(64), frames: bFrames}, SR, 'explore', 7));
-  for (const recipe of ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve']) {
-    assert.ok(record.rejected.some(r => r.recipe === recipe && r.reason.length > 0), recipe);
-  }
+  assert.equal(record.recipe, 'fallback-layered-entry');
+  assert.equal(record.entryStyle?.lastRung, true); assert.equal(record.entryStyle?.bars, 2);
   assert.ok(record.why.some(line => /mix-structure@1/.test(line)), 'the readout names the structure heuristic');
 });
 
@@ -159,17 +163,27 @@ test('route-free exclusion is per parameter: one FAIL never removes the echo res
   assert.ok(shorter.kind === 'route-free' && shorter.recipe === 'fallback-filter-dissolve' && shorter.bars < filter.bars);
 });
 
-test('the cut gate: a clean cut only on a phrase boundary at a low-energy A exit', () => {
+// Owner decisions (A) and (D), 2026-11-16: the cut gate is gone (no automatic cut). Changed expectation: with the
+// echo reset and dissolves excluded the chooser plans a layered entry, and a quiet A section ending within
+// 8 bars of the requested exit is used for it (the old test expected a cut at the end of that breakdown).
+test('no automatic cut: a layered entry at the end of a quiet A section up to 8 bars later; only an owner cut plans a cut', () => {
   const bf = 4 * 60 * SR / 120, frames = 200 * SR, all = ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve'];
-  // A is loud until bar 12, then a breakdown to bar 16: the cut moves to bar 16 (end of the breakdown), not bar 8 or 12.
+  // A is loud until bar 12, then a breakdown to bar 16; the requested exit is bar 8.
   const structure = structureOf([section(0, 12, 'drop', 0.9, bf), section(12, 4, 'breakdown', 0.3, bf), section(16, 16, 'drop', 0.9, bf)], 0.6);
-  const choice = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames, structure},
+  const input = {from: {asset: fakeAsset('a', 120, frames), analysis: null, frames, structure},
     to: {asset: fakeAsset('b', 150, frames), analysis: null, frames, channels: 1}, sampleRate: SR,
-    earliestFrame: Math.round(downbeatAt(requestedGrid(120), 7)), boundary: {bars: 4, anchorBar: 0}, exclude: all});
-  assert.ok(choice.kind === 'route-free' && choice.plan.recipe === 'fallback-cut', choice.kind);
+    earliestFrame: Math.round(downbeatAt(requestedGrid(120), 7)), boundary: {bars: 4, anchorBar: 0}, exclude: all};
+  const choice = chooseSetTransition(input);
+  assert.ok(choice.kind === 'route-free' && choice.plan.recipe === 'fallback-layered-entry', choice.kind);
   assert.equal(choice.exitBar, 16, JSON.stringify(choice.notes));
-  assert.ok(choice.notes.some(n => /phrase boundary after A's breakdown/.test(n)), JSON.stringify(choice.notes));
-  for (const recipe of all) assert.ok(choice.rejected?.some(r => r.recipe === recipe), recipe);
+  assert.ok(choice.exitBar - 8 <= SET_WAIT_LIMIT_BARS, 'within the 8-bar wait');
+  assert.ok(choice.notes.some(n => /ends a quiet A section/.test(n)), JSON.stringify(choice.notes));
+  // Excluding every layered entry and the crossfade still never plans a cut automatically.
+  const none = chooseSetTransition({...input, exclude: [...all, 'fallback-layered-entry', 'fallback-crossfade']});
+  assert.ok(none.kind === 'unavailable' || !/cut/.test(none.plan.recipe), none.kind);
+  // A cut is planned only when the owner selected it.
+  const owned = chooseSetTransition({...input, options: {recipe: 'cut'}});
+  assert.ok(owned.kind !== 'unavailable' && /cut/.test(owned.plan.recipe), owned.kind);
 });
 
 test('recipe claims: native entries judge only B\'s entry beat; an echo\'s dip is logged, not failed; limits unchanged', () => {
@@ -258,8 +272,10 @@ test('+22.3% on a requested A grid: the echo reset now passes its own pre-check 
     timing: {bpm, first_downbeat_frame: 0, meter: [4, 4]}}) as unknown as AudioAsset;
   const recA: DecodedRecording = {asset: asset('a', 81.77, fa), buffer: buffer(a.channels as Float32Array[])};
   const recB: DecodedRecording = {asset: asset('b', 100, fb), buffer: buffer(b.channels as Float32Array[])};
+  // Owner decisions 2026-11-16: a section-led layered entry is now planned first here; it is excluded so this
+  // test keeps judging the echo reset's own pre-check (changed input, same assertion).
   const choice = chooseSetTransition({from: {asset: recA.asset, analysis: null, frames: fa}, to: {asset: recB.asset, analysis: bAnalysis, frames: fb, channels: 1},
-    sampleRate: SR, earliestFrame: Math.round(downbeatAt(requestedGrid(81.77), 15)), boundary: {bars: 4, anchorBar: 0}});
+    sampleRate: SR, earliestFrame: Math.round(downbeatAt(requestedGrid(81.77), 15)), boundary: {bars: 4, anchorBar: 0}, exclude: ['fallback-layered-entry']});
   assert.ok(choice.kind === 'route-free' && choice.plan.recipe === 'fallback-echo-reset', choice.kind);
   const window = makePrecheckWindow({plan: choice.plan, from: recA, to: recB, incoming: recB, entryFrame: choice.plan.toEntryFrame, fromGain: 1,
     analysis: {from: null, to: gridAlignedAnalysis(bAnalysis, choice.toGrid)}});

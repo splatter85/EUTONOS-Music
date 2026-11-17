@@ -3,7 +3,9 @@
  * Runs during preparation only: never call it from an audio callback.
  */
 export const TIME_PITCH_PROCESSOR = 'eutonos-wsola@1' as const;
-export const TIME_PITCH_LIMITS = Object.freeze({minTempoRatio: 0.92, maxTempoRatio: 1.08,
+/** Owner decision 2026-11-16: pitch-preserving stretch up to 15% (was 8%). Artefacts at 10-15% are measured in
+ * tests/s21-layered.test.ts and docs/S21_TRANSITION_PLANNER.md; listening is NOT TESTED. */
+export const TIME_PITCH_LIMITS = Object.freeze({minTempoRatio: 0.85, maxTempoRatio: 1.15,
   maxPitchSemitones: 2, maxSeconds: 180, maxSamples: 12_000_000, peakCeiling: 10 ** (-1 / 20)});
 export interface TimePitchPcm {
   readonly sampleRate: number;
@@ -192,7 +194,7 @@ function validatedMapping(audio: TimePitchPcm, options: TimePitchOptions): TimeP
     length * audio.channels.length <= TIME_PITCH_LIMITS.maxSamples, 'Prepare input exceeds the bounded PCM budget.');
   const ratio = options.tempoRatio, pitch = options.pitchSemitones ?? 0;
   check(finite(ratio) && ratio >= TIME_PITCH_LIMITS.minTempoRatio && ratio <= TIME_PITCH_LIMITS.maxTempoRatio,
-    'Tempo ratio must be between 0.92 and 1.08 (engineering bounds).');
+    'Tempo ratio must be between 0.85 and 1.15 (engineering bounds).');
   check(finite(pitch) && Math.abs(pitch) <= TIME_PITCH_LIMITS.maxPitchSemitones,
     'Pitch shift must be within +/-2 semitones (engineering bounds).');
   const back = options.returnToOriginal ? {...options.returnToOriginal} : null;

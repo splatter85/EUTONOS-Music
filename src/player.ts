@@ -811,15 +811,21 @@ export class SmallPlayer {
       const explore = this.explore ? {seed: this.explore.next} : null;
       // Part B: A's whole-song structure when its merged analysis already settled (A was the previous B).
       const structureA = this.analyses.settledSong(fromSet.asset, rate)?.songStructure ?? null;
-      const choose = (allowBlend: boolean): SetTransitionChoice => chooseSetTransition({
+      // Owner decision (A), 2026-11-16: the final attempt plans only the ladder's last rung (shortest layered entry).
+      const choose = (allowBlend: boolean, lastRung = false): SetTransitionChoice => chooseSetTransition({
         from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames, structure: structureA},
         to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
           channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
         sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
-        options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {})});
+        options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {}), ...(lastRung ? {lastRung} : {})});
+      // When every ordinary candidate is used up, the last rung is still tried before giving up.
+      const chooseOrLastRung = (allowBlend: boolean, lastRung = false): SetTransitionChoice => {
+        const picked = choose(allowBlend, lastRung);
+        return picked.kind === 'unavailable' && !lastRung ? choose(allowBlend, true) : picked;
+      };
       if (!analysisB && !b.ok) this.mix = {phase: 'preparing', summary: null, reason: b.reason};
       type Prepared = Awaited<ReturnType<SmallPlayer['prepareSetIncoming']>>;
-      let choice: SetTransitionChoice = choose(true);
+      let choice: SetTransitionChoice = chooseOrLastRung(true);
       let prepared!: Prepared, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
       let lastRejected: PrecheckReport | null = null, unavailableRetried = false;
       const failedChecks: {recipe: string; reason: string}[] = [];
@@ -891,14 +897,25 @@ export class SmallPlayer {
           fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
         controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS, !unavailableRetried);
         if (!current()) return;
-        if (report !== false) { precheck = report; break; }
+        if (report !== false) {
+          if (effectFrame >= this.clock.currentFrame + this.leadFrames) { precheck = report; break; }
+          // S21 (2026-11-16): the check passed but outlasted the plan's audio-clock deadline (explore draws
+          // often plan the earliest bar with a longer recipe). That exact parameterisation is excluded and a
+          // later bar is chosen AND pre-checked again; nothing unchecked is scheduled. Recorded in rejected[].
+          requireAudio(attempt < SET_CANDIDATE_ATTEMPTS, 'The checked set transition missed its audio-clock deadline. Request Next again.');
+          const late = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+          exclude.push(late);
+          failedChecks.push({recipe: late, reason: 'pre-check passed after the audio-clock deadline; re-chosen at a later bar'});
+          choice = chooseOrLastRung(true, attempt + 1 >= SET_CANDIDATE_ATTEMPTS);
+          continue;
+        }
         lastRejected = this.mix?.precheck ?? null;
         if (lastRejected?.status === 'unavailable') unavailableRetried = true;
         // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
         const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
         exclude.push(failedSignature);
         if (lastRejected) failedChecks.push({recipe: failedSignature, reason: precheckLabel(lastRejected)});
-        choice = choose(true);
+        choice = chooseOrLastRung(true, attempt + 1 >= SET_CANDIDATE_ATTEMPTS);
       }
       const plan = prepared.plan;
       const effect = this.clock.stamp(at.frame - delayFor() - plan.preRollFrames);
@@ -925,10 +942,12 @@ export class SmallPlayer {
       const end = this.clock.stamp(Math.max(effect.frame + plan.automation.outgoing.durationFrames,
         at.frame + plan.automation.incoming.durationFrames));
       const picked = choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
-      // A clean cut reached only after measured pre-check FAILs is a fallback, never a plain pass.
-      const cutAfterFail = failedChecks.length > 0 && (picked.plan.recipe === 'cut' || picked.plan.recipe === 'fallback-cut');
+      // A clean cut or the last-rung layered entry reached only after measured pre-check FAILs is a fallback, never a plain pass.
+      const lastRungAfterFail = failedChecks.length > 0 && 'layered' in picked.plan && !!picked.plan.layered?.lastRung;
+      const cutAfterFail = failedChecks.length > 0 && (picked.plan.recipe === 'cut' || picked.plan.recipe === 'fallback-cut') || lastRungAfterFail;
+      const fallbackName = lastRungAfterFail ? 'Shortest layered entry (last rung)' : 'Clean cut (last resort)';
       const chosen: typeof picked = failedChecks.length ? {...picked,
-        why: [...(picked.why ?? []), ...(cutAfterFail ? [`Clean cut (last resort) reached after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''}; the check on the cut itself is not a plain pass.`] : [])],
+        why: [...(picked.why ?? []), ...(cutAfterFail ? [`${fallbackName} reached after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''}; its own check is not a plain pass.`] : [])],
         rejected: [...(picked.rejected ?? []), ...failedChecks]} : picked;
       const record = setTransitionRecord(chosen, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
         {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null);
@@ -946,7 +965,7 @@ export class SmallPlayer {
       this.mix = {phase: 'scheduled', earliestEffect: effect, ...(precheck ? {precheck} : {}),
         ...(cutAfterFail ? {fallbackAfterFailedPrecheck: {failedChecks: failedChecks.length, last: failedChecks.at(-1)!.reason}} : {}),
         reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? (cutAfterFail
-          ? `Fallback after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''} (last: ${failedChecks.at(-1)!.reason}); the cut itself: ${precheckLabel(precheck)}`
+          ? `Fallback after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''} (last: ${failedChecks.at(-1)!.reason}); ${lastRungAfterFail ? 'the shortest layered entry itself' : 'the cut itself'}: ${precheckLabel(precheck)}`
           : precheckLabel(precheck)) + '. ' : ''}Listening is untested.`,
         summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
           pitchSemitones: 'pitchSemitones' in plan ? plan.pitchSemitones : 0,

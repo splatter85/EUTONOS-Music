@@ -8,14 +8,21 @@
  * - Versioned, replayable transition plan records and a transition rating log.
  * Every number here is an engineering starting point, not a listening-qualified preference.
  */
+import type {EntryStyle, LayeredEntryInfo} from './layered-entry.js';
 import {bassDropMinOverlap, CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyName, type ChoreographyParams} from './eq-choreography.js';
 
 /**
- * @2 (S21 Part B) keeps every @1 band edge and limit; it only adds the pitch-preserving dual tempo ramp
+ * @2 (S21 Part B) kept every @1 band edge and limit; it only added the pitch-preserving dual tempo ramp
  * to the band orders (first in the stretched and meet bands, second in the normal band, and first in
  * the bridge band when both decks can stay within 8%).
+ *
+ * @3 (owner decisions 2026-11-16): the pitch-preserving stretch limit is 15% per deck (was 8%), so the
+ * band edges are re-derived from it: stretched up to 15% (one deck), meet up to 32.25% (both decks within
+ * 15% at the geometric mean), bridge up to 40%. No band lists the clean cut any more: an automatic plan
+ * never ends in an instantaneous cut; the route-free chain ends in the shortest layered entry instead.
+ * The owner-chosen manual cut is unchanged and bypasses this table.
  */
-export const TRANSITION_POLICY_VERSION = 'transition-policy@2' as const;
+export const TRANSITION_POLICY_VERSION = 'transition-policy@3' as const;
 
 // ---------------------------------------------------------------------------------------------
 // Tempo-gap table
@@ -29,8 +36,8 @@ export type SetRecipe = 'blend' | 'loudness-match' | 'filter-sweep' | 'loop-exte
  * of its own bars before B enters, B back to its own tempo after the overlap. Engineering values.
  */
 export const DUAL_RAMP_LIMITS = Object.freeze({version: 'dual-ramp@1' as const,
-  /** Per-deck WSOLA bounds (the existing 0.92..1.08 time-stretch limits). */
-  minRatio: 0.92, maxRatio: 1.08,
+  /** Per-deck WSOLA bounds (the 0.85..1.15 time-stretch limits, owner decision 2026-11-16; was 0.92..1.08). */
+  minRatio: 0.85, maxRatio: 1.15,
   /** Below this gap a plain blend already matches the tempos; the ramp adds nothing. */
   minGap: 0.005,
   rampBars: 4, returnBars: Object.freeze([4, 8] as const)});
@@ -50,19 +57,19 @@ export function dualRampTempo(fromBpm: number, toBpm: number): DualRampTempo | n
 }
 export const TEMPO_GAP_BANDS: readonly {readonly band: TempoBand; readonly maxGap: number; readonly description: string}[] = Object.freeze([
   {band: 'normal', maxGap: 0.04, description: 'normal blend (B stretched up to 4%)'},
-  {band: 'stretched', maxGap: 0.08, description: 'stretched blend (B stretched up to 8%)'},
-  {band: 'meet', maxGap: 0.16, description: 'meet in the middle (both decks within about 8%) or a short FX handover'},
-  {band: 'bridge', maxGap: 0.25, description: 'echo bridge or native ramp; no long beatmatched overlap'},
+  {band: 'stretched', maxGap: 0.15, description: 'stretched blend (B stretched up to 15%, pitch kept)'},
+  {band: 'meet', maxGap: 0.3225, description: 'dual tempo ramp (both decks within 15%, pitch kept) or a short FX handover'},
+  {band: 'bridge', maxGap: 0.40, description: 'echo bridge or native ramp; no long beatmatched overlap'},
   {band: 'reset', maxGap: Infinity, description: 'brake, echo reset or structural reset'},
 ] as const);
 /** Rhythm recipes need a confident beat grid; weak key only forbids sustained harmonic overlap. */
 export const RHYTHM_RECIPES: readonly SetRecipe[] = Object.freeze(['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle', 'dual-ramp', 'tempo-ramp', 'brake']);
 const BAND_ORDER: Readonly<Record<TempoBand, readonly SetRecipe[]>> = Object.freeze({
-  normal: ['blend', 'dual-ramp', 'loudness-match', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
-  stretched: ['dual-ramp', 'blend', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset', 'cut'],
-  meet: ['dual-ramp', 'meet-in-middle', 'echo-out', 'tempo-ramp', 'echo-reset', 'cut'],
-  bridge: ['echo-out', 'tempo-ramp', 'brake', 'echo-reset', 'cut'],
-  reset: ['brake', 'echo-out', 'echo-reset', 'cut'],
+  normal: ['blend', 'dual-ramp', 'loudness-match', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset'],
+  stretched: ['dual-ramp', 'blend', 'filter-sweep', 'loop-extend', 'echo-out', 'echo-reset'],
+  meet: ['dual-ramp', 'meet-in-middle', 'echo-out', 'tempo-ramp', 'echo-reset'],
+  bridge: ['echo-out', 'tempo-ramp', 'brake', 'echo-reset'],
+  reset: ['brake', 'echo-out', 'echo-reset'],
 });
 /** Symmetric gap: 100 -> 122 BPM is 22%. */
 export function tempoGap(fromBpm: number, toBpm: number): number {
@@ -78,8 +85,8 @@ export interface TempoGapDecision {
   readonly reasons: readonly string[];
 }
 /**
- * Ordered Auto recipe list for a tempo pair. A clean cut is always last: used only when every
- * other candidate is rejected (or chosen by the owner, which bypasses this list).
+ * Ordered Auto recipe list for a tempo pair. @3: no clean cut. After these the route-free chain (crossfade,
+ * layered entries, echo reset, dissolves) ends in the shortest layered entry. An owner-chosen cut bypasses this list.
  */
 export function tempoGapPolicy(fromBpm: number, toBpm: number, evidence: {readonly beatConfident: boolean} = {beatConfident: true}): TempoGapDecision {
   const gap = tempoGap(fromBpm, toBpm);
@@ -93,7 +100,7 @@ export function tempoGapPolicy(fromBpm: number, toBpm: number, evidence: {readon
   else if (band === 'bridge') recipes = ['dual-ramp', ...recipes];
   if (dual && band !== 'normal') reasons.push(`Dual tempo ramp: both decks move to ${dual.bpm.toFixed(1)} BPM (A ${((dual.fromRatio - 1) * 100).toFixed(1)}%, B ${((dual.toRatio - 1) * 100).toFixed(1)}%) with pitch kept.`);
   if (band === 'meet') reasons.push(`Meeting tempo ${meetBpm.toFixed(1)} BPM needs ${(perDeckChange * 100).toFixed(1)}% per deck.`);
-  if (band === 'bridge') reasons.push(`Meeting would need ${(perDeckChange * 100).toFixed(1)}% per deck (>8%), so this is a bridge, not a long overlap.`);
+  if (band === 'bridge') reasons.push(`Meeting would need ${(perDeckChange * 100).toFixed(1)}% per deck (>15%), so this is a bridge, not a long overlap.`);
   if (!evidence.beatConfident) {
     recipes = recipes.filter(r => !RHYTHM_RECIPES.includes(r));
     reasons.push('Beat grid confidence is weak: rhythm-locked recipes are skipped.');
@@ -279,12 +286,72 @@ export interface TransitionPlanRecord {
     readonly entrySeconds: number; readonly skippedFraction: number; readonly entryRank: number | null};
   readonly sampleRate: number;
   readonly tempo: {readonly gap: number; readonly band: TempoBand; readonly meetBpm: number | null};
-  readonly recipe: SetRecipe | 'fallback-crossfade' | 'fallback-cut' | 'fallback-echo-reset' | 'fallback-filter-dissolve' | 'fallback-tone-dissolve';
+  readonly recipe: SetRecipe | 'fallback-crossfade' | 'fallback-cut' | 'fallback-echo-reset' | 'fallback-filter-dissolve' | 'fallback-tone-dissolve' |
+    'fallback-layered-entry';
   readonly choreography: ChoreographyParams | null;
+  /**
+   * Owner decisions 2026-11-16: how B comes in by band. Optional and added compatibly: records made before
+   * it have no field and keep their ids (the canonical form drops undefined fields). `source` says whether a
+   * route-free layered entry (layered-entry@1) or an analyzed EQ choreography named the style.
+   */
+  readonly entryStyle?: EntryStyleRecord;
   readonly overlapBars: number | null;
+  /**
+   * Owner clarification 2026-11-16: in explore mode the style is drawn at random (seeded) from every planned
+   * candidate. Optional and compatible like `entryStyle`; absent on deterministic Auto and manual plans.
+   */
+  readonly menu?: ExploreMenuRecord;
   readonly why: readonly string[];
   readonly rejected: readonly {readonly recipe: string; readonly reason: string}[];
 }
+/**
+ * explore-menu@1: one seeded weighted draw among the candidates the planner could build at this request
+ * (beat-matched recipes, crossfade, echo reset, dissolves, each layered-entry style). A candidate that
+ * then fails the pre-check is excluded and the next draw is made among the rest, so the style finally
+ * scheduled is a weighted random pick among the candidates that pass. `alternatives` are planned
+ * candidates, NOT pre-checked ones; the failed draws are listed in `rejected`.
+ */
+export const EXPLORE_MENU_POLICY = Object.freeze({version: 'explore-menu@1' as const,
+  /** Every candidate gets at least this share of an even split (floor weight), so no style is starved. */
+  floorShare: 0.5,
+  /** Base weight per candidate: equal (no learned preference yet; ratings are collected first). */
+  baseWeight: 1,
+  maxAlternatives: 16,
+  /**
+   * Seeded draws per handover. After this many failed draws the deterministic ladder takes the remaining
+   * attempts (other exit bars, the echo reset's later retry, then the last rung), so explore never refuses
+   * a pair the deterministic path would schedule just because the draws spent the attempt budget.
+   */
+  maxDraws: 5});
+export interface ExploreMenuRecord {
+  readonly policy: typeof EXPLORE_MENU_POLICY.version;
+  readonly seed: number;
+  /** Draw number within this request (failed pre-checks before it). */
+  readonly attempt: number;
+  readonly chosen: string;
+  readonly alternatives: readonly {readonly key: string; readonly weight: number}[];
+}
+/** Seeded weighted draw with floor weights; deterministic for (seed, attempt, keys, weights). */
+export function exploreMenuDraw(seed: number, attempt: number, keys: readonly string[], weights?: readonly number[]):
+  {readonly index: number; readonly weights: readonly number[]} {
+  if (!keys.length) throw new Error('explore menu is empty');
+  const raw = keys.map((_, i) => Math.max(0, weights?.[i] ?? EXPLORE_MENU_POLICY.baseWeight));
+  const total = raw.reduce((a, b) => a + b, 0) || keys.length;
+  const floor = EXPLORE_MENU_POLICY.floorShare * total / keys.length;
+  const w = raw.map(x => Math.round(Math.max(floor, x) * 1e6) / 1e6), sum = w.reduce((a, b) => a + b, 0);
+  const random = seededRandom((Math.imul(seed >>> 0 ^ 0x5bd1e995, 0x01000193) + Math.imul(attempt + 1, 0x9e3779b1)) >>> 0);
+  let at = random() * sum;
+  for (let i = 0; i < w.length; i++) { at -= w[i]!; if (at < 0) return {index: i, weights: w}; }
+  return {index: w.length - 1, weights: w};
+}
+export interface EntryStyleRecord {
+  readonly style: EntryStyle; readonly source: 'layered-entry@1' | 'eq-choreography@1';
+  readonly bars: number | null; readonly echoTail: boolean; readonly lastRung: boolean;
+}
+export function entryStyleRecord(info: LayeredEntryInfo): EntryStyleRecord {
+  return {style: info.style, source: info.version, bars: info.bars, echoTail: info.echoTail, lastRung: !!info.lastRung};
+}
+const ENTRY_STYLE_NAMES: readonly string[] = ['bass-first', 'mid-first', 'high-first', 'drums-first'];
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -306,7 +373,14 @@ export function validateTransitionPlanRecord(value: unknown): TransitionPlanReco
     ['auto', 'explore', 'manual'].includes(r.mode) && (r.seed === null || Number.isSafeInteger(r.seed)) &&
     !!r.from && !!r.to && typeof r.from.sha256 === 'string' && typeof r.to.sha256 === 'string' &&
     Number.isSafeInteger(r.to.entryFrame) && r.to.entryFrame >= 0 && Number.isSafeInteger(r.from.exitFrame) &&
-    Number.isInteger(r.sampleRate) && Array.isArray(r.why) && Array.isArray(r.rejected) && typeof r.recipe === 'string';
+    Number.isInteger(r.sampleRate) && Array.isArray(r.why) && Array.isArray(r.rejected) && typeof r.recipe === 'string' &&
+    (r.entryStyle === undefined || !!r.entryStyle && typeof r.entryStyle === 'object' && ENTRY_STYLE_NAMES.includes(r.entryStyle.style) &&
+      ['layered-entry@1', 'eq-choreography@1'].includes(r.entryStyle.source) && (r.entryStyle.bars === null || Number.isInteger(r.entryStyle.bars)) &&
+      typeof r.entryStyle.echoTail === 'boolean' && typeof r.entryStyle.lastRung === 'boolean') &&
+    (r.menu === undefined || !!r.menu && r.menu.policy === EXPLORE_MENU_POLICY.version && Number.isSafeInteger(r.menu.seed) &&
+      Number.isSafeInteger(r.menu.attempt) && r.menu.attempt >= 0 && typeof r.menu.chosen === 'string' && Array.isArray(r.menu.alternatives) &&
+      r.menu.alternatives.length <= EXPLORE_MENU_POLICY.maxAlternatives && r.menu.alternatives.some(a => a.key === r.menu!.chosen) &&
+      r.menu.alternatives.every(a => typeof a.key === 'string' && a.key.length <= 64 && Number.isFinite(a.weight) && a.weight > 0));
   if (!ok) throw new Error('Invalid transition plan record.');
   const {id, ...rest} = r;
   if (`tp-${fnv1a(canonical(rest))}` !== id) throw new Error('Transition plan record id does not match its content.');
