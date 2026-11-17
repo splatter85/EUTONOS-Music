@@ -279,7 +279,7 @@ export interface TransitionPlanRecord {
     readonly entrySeconds: number; readonly skippedFraction: number; readonly entryRank: number | null};
   readonly sampleRate: number;
   readonly tempo: {readonly gap: number; readonly band: TempoBand; readonly meetBpm: number | null};
-  readonly recipe: SetRecipe | 'fallback-crossfade' | 'fallback-cut' | 'fallback-echo-reset';
+  readonly recipe: SetRecipe | 'fallback-crossfade' | 'fallback-cut' | 'fallback-echo-reset' | 'fallback-filter-dissolve' | 'fallback-tone-dissolve';
   readonly choreography: ChoreographyParams | null;
   readonly overlapBars: number | null;
   readonly why: readonly string[];

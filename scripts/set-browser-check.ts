@@ -146,7 +146,8 @@ try {
       const planned = relay.status().dj.status!;
       assert.ok(planned.transitionNext!.recipe.length > 3 && !/^[a-z]+-[a-z-]+$/.test(planned.transitionNext!.recipe), `plain recipe words: ${planned.transitionNext!.recipe}`);
       assert.match(planned.transitionNext!.tempo, /^[+-]?\d+\.\d%$/);
-      assert.match(planned.transitionNext!.entry, /^enters at \d+:\d\d$/);
+      // Part B: the mix-structure@1 sentence may follow the entry time.
+      assert.match(planned.transitionNext!.entry, /^enters at \d+:\d\d( · .+)?$/);
       assert.match(planned.nextStatus ?? '', /Ready/);
       await phonePage.locator('#dj-stop').click();
       await phonePage.locator('#phone-stream').click();

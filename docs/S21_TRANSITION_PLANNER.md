@@ -224,7 +224,108 @@ Results on the synthetic 3:2 trap (128 BPM with a dotted layer):
 ### Known limits (Part B)
 
 - Ratio repair needs a reference tempo. With no requested tempo, a 3:2 misread is still detected as ambiguous and gated, but it is not corrected. A second analysis pass with a tempo prior was not built. The window consensus merge covered the owner songs that were measured.
-- A pre-check that is `unavailable` (for example a window over 4M samples) still aborts the transition instead of trying the next candidate. The dual-ramp overlap is shortened by the ramp length to make this less likely.
+- A pre-check that is `unavailable` (for example a window over 4M samples) aborted the transition. The song structure and cut avoidance section below changes this: an `unavailable` report now tries one more candidate per request (design review G11).
 - Studio pair mode has no pre-check. Its dual ramp is planned and rendered, but not judged before it plays.
 - The engineering values (`dual-ramp@1`, `tempo-relation@1`, `requested-downbeat@1`) are not calibrated by listening.
 - Not tested: listening, the real phone, audio devices, macOS and Linux.
+
+## Part B: song structure and cut avoidance (`mix-structure@1`)
+
+This pass answers the live clean-cut report on `e54f3a2` and folds in findings G1–G5 and G11 of the transition engine design review (`docs/TRANSITION_ENGINE_DESIGN.md`, merged on main after this branch was cut). The thresholds `mix-evaluation-thresholds@1` and `transition-safety@1` keep their values; `MIX_EVALUATOR_VERSION` stays `transition-evaluator@1`.
+
+### Whole-song structure (`web/mix-structure.ts`)
+
+- `labelSongStructure` runs over the merged whole-song analysis (`song-window-merge@1`) in O(bars), with no audio pass. The result is cached on the merged analysis as `songStructure`.
+- Sections start on four-bar phrases and last at least 8 bars (ends excepted). A boundary needs phrase novelty of at least 0.08. A song with less than 0.1 energy spread between sections gets no labels.
+- Labels are `intro`, `build`, `drop` (meaning "drop or high-energy section"), `breakdown` and `outro`. They come from relative energy, position and the slope into the next section. A label under confidence 0.35 is withheld; the heuristic guess is kept for display only. The labels are **engineering heuristics, not musical judgement**.
+- A's structure is read from the settled whole-song analysis when A was analysed as the previous B. Otherwise the bounded window around the exit gives a structure marked `partial`.
+- **Deadline behaviour.** When B's whole-song analysis misses the 6 s deadline (`SET_SONG_ANALYSIS_DEADLINE_MS`), B has no structure. The route-free entry then falls back to the first downbeat of B's requested grid (the song start), as before.
+
+How structure is used:
+
+- **Pair scoring** (`structurePairTerm`): low-energy exits and section ends score higher, mid-build exits are penalised, entries at a section start get a bonus, and entering B in its outro is penalised (`entryOutro` 0.3). B's outro is never offered as an entry.
+- **More exits (G5, partial).** The ends of A's outro and breakdown sections that lie strictly between the two requested boundaries are added as exit bars. The chooser does not wait past the second boundary; that is owner decision 2 in the design review.
+- **Readouts.** The plan record carries a `structure` field (`HandoverStructure`). Studio's "Why this handover" and the phone handover card show one sentence, for example "leaves at the end of the breakdown (bar 33), enters B at its first drop (bar 17)". On the phone card it follows the existing "enters at m:ss" text.
+
+### Tempo-agnostic styles before any cut
+
+The route-free chain is now: crossfade (gaps up to 8%), echo reset, **filter dissolve**, **tone dissolve**, and only then the gated clean cut.
+
+| Recipe | What it does | Judged as |
+| --- | --- | --- |
+| `fallback-filter-dissolve` | A high-passes 0 → 120 Hz by 40% → 400 Hz at the end while B enters with its low shelf at −9 dB until 40%, back to 0 dB by 80%. Needs no pre-roll. | `echo-out` |
+| `fallback-tone-dissolve` | A crossfade where A's low-pass closes from open to 2 kHz at 50% and 300 Hz at the end, while B's high-pass opens from 300 Hz to 0 by 60%. | `echo-out` |
+| `fallback-echo-reset` | Unchanged recipe. | `echo-out` |
+| `fallback-cut` | Unchanged recipe. Allowed only when every other candidate failed. | `cut` |
+
+- Each dissolve has two lengths. The first draft dipped 8–12 LU on synthetic songs; the softened curve above measured 3.9–5.1 LU.
+- **The cut gate.** A cut is planned only after every other route-free candidate was planned and failed, or could not be planned. `rejected[]` names each candidate with its reason. `DjStatus`, "Why this handover" and the phone card name what was tried first (`triedFirst`).
+- **Attempts.** `SET_CANDIDATE_ATTEMPTS` is now 10 (it was 5), so the longer chain can be exhausted.
+
+### Recipe claims (`recipe-claims@1`, G1 and G2)
+
+Each recipe is judged on what it promises. The evaluation records `claims: 'recipe-claims@1'`.
+
+- **Beat lock.** `cut` and `echo-out` (and everything judged as them) make no beat-match claim. Beat phase judges only B's first beat after the entry, not B's second beat against A's grid. On 100 → 122.3 a cut was judged on 2 beats with error 0.182 (FAIL); it is now judged on 1 beat with error 0.000.
+- **Loudness dip.** An `echo-out` deliberately dips under the straight A-to-B interpolation. The downward deviation is not judged by `@1`; it is logged in `unclaimed[]` with its value, so it stays visible. It is bounded by `RECIPE_CLAIM_LIMITS.echoMaxDipLu` = 6 LU: a deeper dip still fails. The upward deviation, silence gap, clicks, true peak, low build-up and the whole safety check are judged as before.
+- No `@1` threshold value changed. Blends and the other beat-matched recipes are judged exactly as before.
+
+### Per-parameter exclusion (`route-free-retry@1`, G3)
+
+- A failed route-free candidate excludes `recipe:bBARS:atEXITFRAME`, not the whole recipe. The echo reset is retried at most once more, at a later bar (`ROUTE_FREE_RETRY.echoBars` = 2). A failed dissolve length is excluded at every bar. A bare recipe name still excludes the whole family; the cut stays bare.
+
+### Soft recipes under a weak key (G4)
+
+- Under a weak or distant key with no choreography, `filter-sweep`, `loudness-match`, `loop-extend` and `tempo-ramp` are now allowed when the overlap is at most 8 beats (`SHORT_STYLE_MAX_BEATS`). Longer overlaps still need a choreography.
+
+### `unavailable` pre-checks (G11)
+
+- An `unavailable` report (worker timeout, window too large) tries one more candidate per request, which may be shorter. A thrown gate error is not a candidate defect and still stops at once. Nothing unchecked is ever scheduled.
+
+### Why the live +22.3% case cut (coordinator question d)
+
+From code inspection and a synthetic 100 → 122.3 reproduction, before this pass:
+
+1. **Filter sweep** was never a candidate: it is not in the bridge band's policy order, the ±8% stretch limit excludes it, and the G4 key gate also refused it.
+2. **Analysed echo-out** was refused at planning. With A's analysis missing or weak the analysed path is skipped, or the rhythm-evidence gate in `alternatePlans` (G7) refuses it. On a requested grid the beat is not confident.
+3. The one failed pre-check was the **route-free echo reset**: `@1` loudness FAIL on a 3.29 LU dip (limit 3 LU, G1). Beat phase was unjudged on the requested grid.
+4. G3 then excluded the echo reset at every bar, so the cut came next.
+
+After this pass, on the same reproduction, the echo reset passes its pre-check with the 3.29 LU dip logged in `unclaimed`; with it excluded, the filter dissolve and the tone dissolve plan and pass (dips 3.9–5.1 LU), and the cut is reached only after all of them are excluded.
+
+### Owner songs: before and after
+
+The nine songs of the local rated pack were analysed read-only in place, with nothing copied (tempos 128, 128, 90, 110, 100, 122, 122, 128, 128). A scratch script ran the set chooser and the pre-check evaluator (the same window and verdict logic as the browser pre-check) for all 72 ordered pairs, asking for a handover at bar 16 (bar 13 for the 27-bar song) with a 4-bar boundary. Beat-matched and stretched plans need a render and were not simulated; they are counted separately.
+
+| Outcome (72 pairs) | Before (`e54f3a2`) | After |
+| --- | --- | --- |
+| Clean cut | 15 | **0** |
+| Refused ("No future bar…") | 6 | **0** |
+| Crossfade | 23 | 23 |
+| Echo reset | 24 | 13 |
+| Filter dissolve | — | 32 |
+| Beat-matched or stretched (not simulated) | 4 | 4 |
+
+- Before, every cut followed one failed echo reset (loudness, sometimes with a true-peak safety fail). All six refusals were into faster songs, where the cut itself failed beat phase (G2).
+- After, the filter dissolve was the most common result. One song's pairs went through the whole chain (the crossfade and every dissolve length failing `@1` loudness) before the echo reset passed one bar later. No pair needed the cut.
+- Structure found sections in all nine songs. Seven have a labelled drop by bar 26; three have outros and three have breakdowns. Some labels are doubtful: two songs show an `intro` label in a quiet section after an unlabelled one, and one labels its first 33 bars as three intros. These are heuristic artefacts, not verified song sections.
+- Entries moved from requested-grid bars to section starts. For example, the 110 BPM song into the 128 BPM songs now enters at B's first drop (bar 25 or 26); before, those pairs were refused, cut, or entered at bar 10.
+- Exits stayed at bars 17–18. None of these songs has an outro or breakdown end between bars 16 and 24, so the extra structural exits did not apply.
+
+### Tests (this pass)
+
+- New `tests/s21-structure.test.ts` (12 tests): labelling and determinism, flat and short songs, pair scoring, the quiet-exit bar, the full +22% chain down to the cut with `rejected[]`, per-parameter exclusion, the cut gate, recipe claims and the 100 → 122.3 beat phase, readout text, the dissolve pre-check window, the declared dip bound, and the +22.3% echo reset passing with its dip logged.
+- Updated expectations:
+  - `tests/mix-precheck-player.test.ts`: an `unavailable` report now makes 2 gate calls; the clean-cut test fails every non-cut recipe and checks that the dissolves were tried first.
+  - `tests/s21-transition.test.ts` and `tests/set-mode.test.ts`: the filter dissolve comes after the echo reset (or first, when the echo reset has no room for its pre-roll), and the cut only once the dissolves are excluded. The recipe allow-lists include both dissolves.
+  - `scripts/set-browser-check.ts`: the phone card's entry text may carry the structure sentence after "enters at m:ss".
+  - `scripts/mix-precheck-browser-check.ts`: the Studio Next attempt bound is `SET_CANDIDATE_ATTEMPTS` (10) instead of a literal 5, and an injected unavailable worker is checked twice instead of once. In the injected level-mismatch case, 7 candidates fail before the cut passes.
+
+### Known limits (this pass)
+
+- The section labels are heuristics. They were not checked against a listener's markup, and some are doubtful.
+- The 6 LU dip bound and the dissolve curves are engineering values, not calibrated by listening. Nothing here was heard.
+- The brake and loop extend have no route-free form. G6 (first acceptable, not best), G7 (rhythm evidence on both songs), G8 (tempo ramp ranges), G9, G10, G12–G14 are unchanged.
+- No exit waits beyond the second requested boundary (owner decision 2).
+- Thresholds `@2` were not needed: the recipe claims leave every `@1` value unchanged.
+- Windows only. macOS and Linux were not run. The real phone and audio devices were not tested.

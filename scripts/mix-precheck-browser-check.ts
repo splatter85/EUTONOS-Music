@@ -16,6 +16,7 @@ import type {DecodedRecording} from '../src/web-audio.js';
 import type {AutomaticMixPlan} from '../src/mix-planner.js';
 import type {MixPcm} from '../src/mix-analysis.js';
 import type {RouteFreePlan} from '../src/mix-transition.js';
+import {SET_CANDIDATE_ATTEMPTS} from '../src/player.js';
 import type {PrecheckRequest, PrecheckJob} from '../web/mix-precheck-data.js';
 import type {TransitionEvaluation} from '../web/mix-evaluator.js';
 
@@ -296,9 +297,10 @@ try {
       }, undefined, {timeout: 40000});
       const detail = await page.locator('#set-mix').innerText();
       const trace = await page.evaluate(() => (globalThis as TraceWindow).__mixGateTrace);
-      // S21: a FAIL excludes that recipe and checks the next candidate, at most five per Next;
-      // an unavailable check stops at once. Each check is still one bounded worker.
-      const maxAttempts = mode === 'unavailable' ? 1 : 5;
+      // S21: a FAIL excludes that candidate and checks the next, at most SET_CANDIDATE_ATTEMPTS per Next
+      // (Part B: 10, for the longer tempo-agnostic chain). Part B (G11): an unavailable check tries one more
+      // candidate, then stops. Each check is still one bounded worker.
+      const maxAttempts = mode === 'unavailable' ? 2 : SET_CANDIDATE_ATTEMPTS;
       assert.ok(trace.attempts >= 1 && trace.attempts <= maxAttempts, 'A Studio Next checked ' + trace.attempts + ' candidates (bound ' + maxAttempts + ').');
       assert.equal(trace.contexts, 1, 'The gate must not create a second live audio owner.');
       assert.equal(trace.prematureStarts, 0, 'Incoming audio was scheduled before the check completed.');
