@@ -166,3 +166,60 @@ macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone is NOT TES
 - The engineering values are not calibrated by listening.
 
 **Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening of Turbo Storm → Midnight Orbit and a 4–8% gap dual ramp, on real songs and a real device.
+
+## Part B: song structure and cut avoidance
+
+**Assignment:**
+- Add whole-song structure analysis, better exits and entries, fewer clean cuts, and readouts in Studio and on the phone handover card.
+- Fold in the design review findings that cause the live clean cut on `e54f3a2`.
+- Stop cutting first, and keep the `@1` thresholds and transition safety unchanged.
+
+**Base / branch:** `worktree-agent-ace7e21229ac83e67` from `e54f3a2`. The tested source is the commit that adds this section; the coordinator report carries its SHA.
+**Publication:** a local commit on the worker branch only. No merge or push. No change to the campaign, Current Tasks, the native board, RAM or NAV.
+**Frozen and unchanged:**
+- `scripts/serve.ts`, the phone files and the transition-feedback files;
+- the values of `mix-evaluation-thresholds@1` and `transition-safety@1`;
+- `MIX_EVALUATOR_VERSION`.
+
+**Delivered.** Detail is in [the planner doc](../S21_TRANSITION_PLANNER.md#part-b-song-structure-and-cut-avoidance-mix-structure1).
+1. **`mix-structure@1`** (`web/mix-structure.ts`): heuristic section labels from the merged whole-song analysis, cached as `songStructure`. They are used for:
+   - pair scoring;
+   - structural exit bars at outro and breakdown ends inside the window;
+   - entries at section starts, never in B's outro.
+2. **Tempo-agnostic dissolves and the cut gate.**
+   - A filter dissolve and a tone dissolve join the route-free chain after the echo reset.
+   - The cut is gated: it is planned only after every other candidate failed, and `rejected[]` names each one.
+   - `SET_CANDIDATE_ATTEMPTS` went from 5 to 10.
+3. **`recipe-claims@1`** in the evaluator:
+   - entries that make no beat-match claim are judged on B's first beat only (G2);
+   - an echo's intended dip is logged in `unclaimed[]` and bounded at 6 LU, instead of failing `@1` (G1).
+4. **Per-parameter exclusion** of route-free candidates (`route-free-retry@1`, G3).
+5. **Short overlaps under a weak key.** Filter sweep, loudness match, loop extend and tempo ramp are allowed without choreography when the overlap is at most 8 beats (G4).
+6. **`unavailable` pre-checks** try one more candidate (G11).
+7. **Readouts.** A structure sentence and a "tried first" note appear in "Why this handover", in `DjStatus` and on the phone card (after "enters at m:ss").
+
+**Design review findings:**
+- Fixed: G1, G2, G3, G4 and G11.
+- Partly fixed: G5. Structural exits inside the window are added, but there is no waiting past the second boundary.
+- Unchanged: G6–G10 and G12–G14.
+
+**Owner songs.** The local rated pack was analysed read-only. All 72 ordered pairs were run, with the handover asked at bar 16.
+
+| Outcome | Before (`e54f3a2`) | After |
+| --- | --- | --- |
+| Clean cut | 15 | 0 |
+| Refused | 6 | 0 |
+| Crossfade | 23 | 23 |
+| Echo reset | 24 | 13 |
+| Filter dissolve | 0 | 32 |
+| Beat-matched or stretched (render not simulated) | 4 | 4 |
+
+**Gate results (Windows):** recorded in the coordinator report for the commit that adds this section. macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone is NOT TESTED.
+
+**Risks and limits:**
+- Section labels are heuristics. Some labels on the owner songs are doubtful.
+- The 6 LU dip bound and the dissolve curves are not calibrated by listening.
+- The brake and loop extend have no route-free form.
+- G6 and G7 remain the largest open causes of plain results.
+
+**Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening, on a real device, of the filter dissolve and the echo reset on a tempo-gap pair such as 100 → 122.

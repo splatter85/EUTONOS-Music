@@ -16,7 +16,8 @@ import {MusicLibrary, type MusicLibrarySnapshot} from '../src/library.js';
 import {IndexedDbLibraryStorage} from '../src/library-indexeddb.js';
 import {captureRecipeReplay} from '../src/recipe-library.js';
 import {decodeWav} from '../src/audio-analysis.js';
-import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, SongEntries, transitionReadout, type AutoBars, type NextBars} from './set-mode.js';
+import {AUTO_BARS, autoDecision, describeSetMix, moveTarget, NEXT_BARS, recipeLabel, SongEntries, transitionReadout, triedFirst, type AutoBars, type NextBars} from './set-mode.js';
+import {handoverSentence} from './mix-structure.js';
 import type {TransitionPlanRecord} from './transition-policy.js';
 import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
 import {makeTransitionFeedback, type FeedbackDevice, type FeedbackMeasured} from './transition-feedback.js';
@@ -29,7 +30,22 @@ import {browserMixPrecheck} from './mix-precheck.js';
 import {precheckLabel} from './mix-precheck-data.js';
 import {QUEUE_LIMIT, type PhoneCommand, type TransitionInfo} from './phone-protocol.js';
 import {AudioGate} from './audio-gate.js';
-import {phoneTransition} from './phone-transition.js';
+import {phoneTransition as basePhoneTransition} from './phone-transition.js';
+/**
+ * Part B: the phone handover card with the mix-structure@1 position ("leaves in the breakdown at bar 33,
+ * enters Hazy Harbor at its first drop (bar 17)") and which candidates were tried first and why. Added here
+ * so the phone files stay untouched; the phone shows these existing text fields as they are.
+ */
+function phoneTransition(summary: Parameters<typeof basePhoneTransition>[0], fallback?: {readonly failedChecks: number}): TransitionInfo {
+  const info = basePhoneTransition(summary, fallback), set = summary.set;
+  const dissolve = summary.recipe === 'fallback-filter-dissolve' || summary.recipe === 'fallback-tone-dissolve';
+  const tried = triedFirst(summary, 200);
+  return {...info,
+    ...(dissolve ? {recipe: recipeLabel(summary.recipe)} : {}),
+    // The card's "enters at m:ss" stays first (existing field shape); the structure sentence follows it.
+    ...(set?.structure ? {entry: `${info.entry ? `${info.entry} · ` : ''}${handoverSentence(set.structure, titleOf(set.toId))}`.slice(0, 240)} : {}),
+    ...(tried ? {fallback: `${info.fallback ? `${info.fallback}. ` : ''}${tried}`.slice(0, 240)} : {})};
+}
 
 const PACKS = {
   rated: {manifest: '/local/s16-rated/pack/manifest.json', label: 'Rated takes (local audition)'},
@@ -572,7 +588,7 @@ if (isSet) $('set-ratings-export').addEventListener('click', () => {
 function renderWhy(summary: NonNullable<ReturnType<typeof transitionReadout>> | null): void {
   if (!isSet || !summary) return;
   setText('set-why-recipe', summary.recipe); setText('set-why-choreo', summary.choreography);
-  setText('set-why-entry', summary.entry); setText('set-why-mode', summary.mode + (summary.planId ? ` · plan ${summary.planId}` : ''));
+  setText('set-why-entry', `${summary.entry} · ${summary.structure}${summary.tried ? ` · ${summary.tried}` : ''}`); setText('set-why-mode', summary.mode + (summary.planId ? ` · plan ${summary.planId}` : ''));
   const list = $('set-why-reasons'); list.replaceChildren(...summary.why.map(reason => {
     const item = document.createElement('li'); item.textContent = reason; return item;
   }));

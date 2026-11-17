@@ -112,9 +112,10 @@ for (const verdict of ['fail', 'unavailable'] as const) test(verdict + ' creates
     const refusal = assert.rejects(pending, /DJ plan check/);
     gate.release(); await refusal;
     const snapshot = player.snapshot();
-    // S21: a measured FAIL tries the next untried candidate (bounded); an unavailable check stops at once.
+    // S21: a measured FAIL tries the next untried candidate (bounded). Part B (G11): an unavailable report
+    // tries one more candidate (it may be shorter), then stops.
     if (verdict === 'fail') assert.ok(gate.calls >= 1 && gate.calls <= SET_CANDIDATE_ATTEMPTS, String(gate.calls));
-    else assert.equal(gate.calls, 1);
+    else assert.equal(gate.calls, 2);
     assert.equal(context.sources.length, 1);
     assert.deepEqual(a.stops, stops); assert.deepEqual(context.gains.map(node => node.gain.calls), gains);
     assert.equal(snapshot.voices[0]!.endFrame, naturalEnd); assert.equal(snapshot.now[0], ids[0]);
@@ -216,19 +217,25 @@ test('queue reorder cancels the old check and admits only the checked new head',
 });
 
 test('S21 review: a clean cut reached after pre-check FAILs is flagged as a fallback, not a plain pass', async () => {
-  let calls = 0;
-  const gate: PrecheckRuntime = async () => report(calls++ < 2 ? 'fail' : 'pass'); // crossfade, echo reset fail; the cut passes
+  // Part B: every non-cut candidate fails (crossfade, echo reset, each dissolve length); only then the cut passes.
+  let calls = 0; const tried: string[] = [];
+  const gate: PrecheckRuntime = async request => {
+    calls++; tried.push(request.plan.recipe);
+    return report(['cut', 'fallback-cut'].includes(request.plan.recipe) ? 'pass' : 'fail');
+  };
   const {player, ids} = await setup(gate);
   try {
     await player.scheduleMixTo(ids[1]!, {bars: 4, anchor: 'song'});
     const mix = player.snapshot().mix!;
-    assert.equal(calls, 3);
+    const failed = calls - 1;
     assert.ok(['cut', 'fallback-cut'].includes(mix.summary!.recipe), mix.summary!.recipe);
+    assert.ok(tried.includes('fallback-filter-dissolve') && tried.includes('fallback-tone-dissolve'), tried.join());
+    assert.ok(tried.indexOf('fallback-filter-dissolve') < tried.length - 1, 'each dissolve was checked before the cut');
     assert.equal(mix.precheck!.status, 'pass', 'the cut itself measured PASS');
-    assert.deepEqual(mix.fallbackAfterFailedPrecheck, {failedChecks: 2, last: 'DJ plan check FAIL: Synthetic gate fail'});
-    assert.match(mix.reason, /Fallback after 2 failed pre-checks/);
-    assert.ok(mix.summary!.set!.transition!.rejected.length >= 2, 'the failed checks are in the plan record');
-    assert.ok(mix.summary!.set!.why!.some(line => /Clean cut \(last resort\) reached after 2 failed pre-checks/.test(line)));
+    assert.deepEqual(mix.fallbackAfterFailedPrecheck, {failedChecks: failed, last: 'DJ plan check FAIL: Synthetic gate fail'});
+    assert.match(mix.reason, new RegExp(`Fallback after ${failed} failed pre-checks`));
+    assert.ok(mix.summary!.set!.transition!.rejected.length >= failed, 'the failed checks are in the plan record');
+    assert.ok(mix.summary!.set!.why!.some(line => new RegExp(`Clean cut \\(last resort\\) reached after ${failed} failed pre-checks`).test(line)));
   } finally { await player.dispose(); }
   // A first-try cut or any non-cut pass carries no flag.
   calls = 0; const clean = await setup(async () => report('pass'));

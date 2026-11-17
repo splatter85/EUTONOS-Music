@@ -13,7 +13,7 @@ import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {setTransitionRecord} from './mix-transition.js';
 import type {TransitionPlanRecord} from '../web/transition-policy.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, gridAlignedAnalysis, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid,
+  replanPreparedMix, renderSetBlend, gridAlignedAnalysis, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid, type HandoverStructure,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -36,7 +36,11 @@ export interface HybridSnapshot {
 /** S21: Next waits at most this long for whole-song B analysis, then uses a bounded non-cut fallback. */
 export const SET_SONG_ANALYSIS_DEADLINE_MS = 6000;
 /** S21: candidates tried per handover request before the transition is refused. */
-export const SET_CANDIDATE_ATTEMPTS = 5;
+/**
+ * Part B: 10 (was 5) so the echo reset (at up to two bars) and each dissolve length are pre-checked before the
+ * gated clean cut.
+ */
+export const SET_CANDIDATE_ATTEMPTS = 10;
 export interface MixSnapshot {
   readonly phase: 'preparing' | 'scheduled' | 'prelude' | 'mixing' | 'complete' | 'fallback' | 'unavailable';
   readonly reason: string;
@@ -72,6 +76,8 @@ export interface SetMixDetail {
   readonly choreography?: string;
   readonly entry?: {readonly seconds: number; readonly fraction: number; readonly rank: number | null};
   readonly why?: readonly string[];
+  /** Part B: mix-structure@1 position of the exit and entry (heuristic section labels). */
+  readonly structure?: HandoverStructure;
   readonly fromId: string; readonly toId: string;
   readonly exitBar: number; readonly boundaryBar: number;
   readonly boundaryBars: number; readonly anchor: SetBoundary['anchor'];
@@ -669,20 +675,23 @@ export class SmallPlayer {
 
   /** Live UI supplies the worker dependency; test/offline consumers can supply their own gate. */
   private async checkSelectedMix(request: PrecheckRequest, signal: AbortSignal,
-    current: () => boolean, retry = false): Promise<PrecheckReport | null | false> {
+    current: () => boolean, retry = false, retryUnavailable = false): Promise<PrecheckReport | null | false> {
     if (!this.mixPrecheck) return null;
     this.mix = {phase: 'preparing', summary: null, reason: 'Checking the selected DJ plan before scheduling audio…'};
-    let report: PrecheckReport;
+    let report: PrecheckReport, threw = false;
     try { report = await this.mixPrecheck(request, signal); }
     catch (error) {
       if (!current()) return null;
+      threw = true;
       report = {version: PRECHECK_PROTOCOL, status: 'unavailable', evaluation: null, coverage: null,
         reason: error instanceof Error ? error.message : String(error)};
     }
     if (!current()) return null;
     const allowed = report.status === 'pass' || report.status === 'warn';
-    // A worker error is not a candidate defect, so only a measured FAIL tries the next candidate.
-    if (!allowed && retry && report.status === 'fail') {
+    // Part B (design review G11): an 'unavailable' report (worker timeout, window too large) tries the next
+    // candidate once per request, since it may be shorter. A thrown gate error is not a candidate defect and
+    // still stops at once. Nothing unchecked is ever scheduled.
+    if (!allowed && retry && (report.status === 'fail' || report.status === 'unavailable' && retryUnavailable && !threw)) {
       // S21: a rejected candidate is excluded and the next one is tried; nothing was scheduled.
       this.mix = {phase: 'preparing', summary: null, precheck: report, reason: precheckLabel(report) + '. Trying the next handover candidate…'};
       return false;
@@ -800,8 +809,10 @@ export class SmallPlayer {
       // that recipe and the next candidate is prepared. Nothing is scheduled until one passes.
       const exclude: string[] = [];
       const explore = this.explore ? {seed: this.explore.next} : null;
+      // Part B: A's whole-song structure when its merged analysis already settled (A was the previous B).
+      const structureA = this.analyses.settledSong(fromSet.asset, rate)?.songStructure ?? null;
       const choose = (allowBlend: boolean): SetTransitionChoice => chooseSetTransition({
-        from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames},
+        from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames, structure: structureA},
         to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
           channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
         sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
@@ -810,7 +821,7 @@ export class SmallPlayer {
       type Prepared = Awaited<ReturnType<SmallPlayer['prepareSetIncoming']>>;
       let choice: SetTransitionChoice = choose(true);
       let prepared!: Prepared, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
-      let lastRejected: PrecheckReport | null = null;
+      let lastRejected: PrecheckReport | null = null, unavailableRetried = false;
       const failedChecks: {recipe: string; reason: string}[] = [];
       const delayFor = (): number => 'entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0;
       const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
@@ -878,10 +889,11 @@ export class SmallPlayer {
           incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
           ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: gridAlignedAnalysis(analysisA, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).fromGrid), to: gridAlignedAnalysis(analysisB, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).toGrid)},
           fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
-        controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS);
+        controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS, !unavailableRetried);
         if (!current()) return;
         if (report !== false) { precheck = report; break; }
         lastRejected = this.mix?.precheck ?? null;
+        if (lastRejected?.status === 'unavailable') unavailableRetried = true;
         // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
         const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
         exclude.push(failedSignature);
@@ -951,7 +963,7 @@ export class SmallPlayer {
           set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
             boundaryBars: boundary.bars, anchor: boundary.anchor, fromGrid: chosen.fromGrid.source,
             toGrid: chosen.toGrid.source, tempoChange: plan.toBpm / plan.fromBpm, notes: [...chosen.notes],
-            transition: record, why: [...(chosen.why ?? [])],
+            transition: record, why: [...(chosen.why ?? [])], ...(chosen.structure ? {structure: chosen.structure} : {}),
             ...('choreography' in plan && plan.choreography ? {choreography: plan.choreography.description} : {}),
             entry: {seconds: plan.toEntryFrame / rate, fraction: plan.toEntryFrame / toRecording.buffer.length,
               rank: 'entry' in plan ? plan.entry?.rank ?? null : null}}}};

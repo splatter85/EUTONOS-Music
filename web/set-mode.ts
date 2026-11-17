@@ -4,6 +4,7 @@
  * snapshot tick and only acts on the returned decision through the DJ's own requests.
  */
 import type {MixSnapshot} from '../src/player.js';
+import {handoverSentence} from './mix-structure.js';
 
 /** Bars per automatic move. */
 export const AUTO_BARS = [16, 32, 64] as const;
@@ -88,6 +89,7 @@ const RECIPE_LABEL: Readonly<Record<string, string>> = {
   'fallback-crossfade': 'Plain crossfade (not beatmatched)', 'fallback-cut': 'Clean cut on the bar (last resort)',
   'meet-in-middle': 'Meet in the middle (both tempos move)', 'dual-ramp': 'Dual tempo ramp (pitch kept)', 'echo-out': 'Echo out',
   'fallback-echo-reset': 'Filtered echo reset (not beatmatched)',
+  'fallback-filter-dissolve': 'Filter dissolve (not beatmatched)', 'fallback-tone-dissolve': 'Tone dissolve (not beatmatched)',
 };
 export function recipeLabel(recipe: string): string { return RECIPE_LABEL[recipe] ?? recipe; }
 
@@ -113,7 +115,22 @@ export function describeSetMix(summary: NonNullable<MixSnapshot['summary']>): st
   const grids = set.fromGrid === 'measured' && set.toGrid === 'measured' ? 'measured beat grids'
     : `grids: ${set.fromGrid} → ${set.toGrid}`;
   return `${label} · ${summary.entryDelayFrames ? 'A effect starts' : 'leaves'} on bar ${set.exitBar} of the outgoing song (${step})`
-    + ` · tempo change ${tempoPercent(set.tempoChange)} · ${grids}`;
+    + ` · tempo change ${tempoPercent(set.tempoChange)} · ${grids}`
+    + (set.structure ? ` · ${handoverSentence(set.structure)}` : '');
+}
+
+/**
+ * Part B: short list of the candidates tried before this one and why each was not used, for the phone
+ * "Handover card" and Studio ("Tried first: Echo reset — DJ plan check FAIL: loudness …"). Empty when none.
+ */
+export function triedFirst(summary: NonNullable<MixSnapshot['summary']>, limit = 240): string {
+  const rejected = summary.set?.transition?.rejected ?? [];
+  if (!rejected.length) return '';
+  const short = (reason: string): string => reason.replace(/^DJ plan check /, 'check ').replace(/\.$/, '').slice(0, 70);
+  const items = rejected.map(r => `${recipeLabel(r.recipe.split(':')[0]!).replace(/ \(not beatmatched\)$/, '')} — ${short(r.reason)}`);
+  let text = `Tried first: ${items.join('; ')}`;
+  if (text.length > limit) text = text.slice(0, limit - 1) + '…';
+  return text;
 }
 
 /** Seconds as m:ss for the readout. */
@@ -128,7 +145,7 @@ function clock(seconds: number): string {
  */
 export function transitionReadout(summary: NonNullable<MixSnapshot['summary']>): {
   readonly recipe: string; readonly choreography: string; readonly entry: string; readonly why: readonly string[];
-  readonly planId: string | null; readonly mode: string;
+  readonly planId: string | null; readonly mode: string; readonly structure: string; readonly tried: string;
 } {
   const set = summary.set, record = set?.transition ?? null;
   const band = record ? ` · tempo gap ${(record.tempo.gap * 100).toFixed(1)}% (${record.tempo.band})` +
@@ -140,5 +157,7 @@ export function transitionReadout(summary: NonNullable<MixSnapshot['summary']>):
     choreography: set?.choreography ?? 'No EQ choreography (this recipe uses its own automation)',
     entry, why: [...(set?.why ?? []), ...(record?.rejected ?? []).map(r => `${recipeLabel(r.recipe)} not used: ${r.reason}`)],
     planId: record?.id ?? null,
+    structure: set?.structure ? handoverSentence(set.structure) : 'Structure: not analysed for this handover',
+    tried: triedFirst(summary),
     mode: record ? (record.mode === 'explore' ? `explore (seed ${record.seed})` : record.mode) : 'not recorded'};
 }

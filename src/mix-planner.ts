@@ -3,6 +3,7 @@ import {bassSwapAutomation, cleanCutAutomation, crossfadeAutomation, filterSweep
 import {nativeRateInputAt, rampInInputAt, type NativeRateRamp, type RampIn} from './time-pitch.js';
 import {choreographyPlan, type ChoreographyParams} from '../web/eq-choreography.js';
 import {DUAL_RAMP_LIMITS, dualRampTempo, ENTRY_POLICY, entrySkipCost} from '../web/transition-policy.js';
+import {structurePairTerm, type SongStructure, type StructurePairTerm} from '../web/mix-structure.js';
 
 /** Engineering choices, not listening-qualified ranges or calibrated probabilities. */
 export const MIX_PLANNER_VERSION = 'automatic-mix@1' as const;
@@ -66,6 +67,11 @@ export interface MixPlannerOptions {
   /** Captured current A gain, never a proposed change to an already-audible source. */
   readonly fromLevelGain?: number;
   readonly loopBars?: 4 | 8;
+  /**
+   * S21 Part B (mix-structure@1): section labels for A and B. When present, pairs earn the structural
+   * term (exit section, B section start, energy match, bass/vocal clash heuristics) before ranking.
+   */
+  readonly structure?: {readonly from: SongStructure | null; readonly to: SongStructure | null};
 }
 export interface AutomaticMixPlan {
   readonly kind: 'mix'; readonly version: typeof MIX_PLANNER_VERSION;
@@ -158,6 +164,9 @@ export function withPreparedLevelGain(plan: AutomaticMixPlan, gain: number): Aut
     matchedDeltaLu: level.to.lufs! + 20 * Math.log10(gain) - level.from.lufs! - 20 * Math.log10(level.fromGain)}};
 }
 
+/** Part B: styles whose own lanes make no sustained harmonic overlap claim (heuristic: overlap of at most 2 bars). */
+const SHORT_STYLE_RECIPES: readonly string[] = ['filter-sweep', 'loudness-match', 'loop-extend', 'tempo-ramp'];
+const SHORT_STYLE_MAX_BEATS = 8;
 function styledBlend(from: MixAnalysis, to: MixAnalysis, options: MixPlannerOptions): MixDecision {
   const plan = planBlend(from, to, options);
   if (plan.kind === 'fallback' || !options.recipe || options.recipe === 'auto' || options.recipe === 'blend' || options.recipe === 'meet-in-middle' || options.recipe === 'dual-ramp') return plan;
@@ -339,7 +348,11 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
   if (harmonicLimited && options.choreography && !['mid-carve', 'bass-drop-handover'].includes(options.choreography.name)) {
     return fallback('A weak or distant key allows only a mid-carve or bass-drop handover (no sustained harmonic overlap).');
   }
-  if (harmonicLimited && !options.choreography) return fallback('A weak or distant key needs a mid-limited choreography.');
+  // Part B (design review G4): the S19 styles keep their own short lanes (at most 2 bars of overlap, no
+  // sustained harmonic overlap), so a weak or distant key no longer closes them for want of a choreography
+  // they would discard anyway. The blend family still needs its mid-limited choreography.
+  const shortStyle = !!options.recipe && SHORT_STYLE_RECIPES.includes(options.recipe) && overlapBeats <= SHORT_STYLE_MAX_BEATS;
+  if (harmonicLimited && !options.choreography && !shortStyle) return fallback('A weak or distant key needs a mid-limited choreography.');
   // Shared tempo during the overlap: A's own for a blend, the meeting tempo for meet-in-middle.
   const sharedBpm = meet || dual ? meetBpm : fromBpm;
   const overlapFrames = Math.round(overlapBeats * 60 * from.sampleRate / sharedBpm);
@@ -374,9 +387,13 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
     const tonalDistance = left && right ? left.chroma.reduce((sum, value, i) =>
       sum + Math.abs(value - right.chroma[(((i - pitchSemitones + aShift) % 12) + 12) % 12]!), 0) / 2 : 0;
     const alignedBoundaries = left && right ? Math.min(left.boundary, right.boundary) : 0;
-    const raw = out.score + into.score - 0.15 * mismatch - 0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries;
+    const structural: StructurePairTerm | null = options.structure && (options.structure.from || options.structure.to)
+      ? structurePairTerm({analysis: from, structure: options.structure.from}, {analysis: to, structure: options.structure.to},
+        out.frame, into.frame, overlapFrames, 4 * 60 * from.sampleRate / fromBpm) : null;
+    const raw = out.score + into.score - 0.15 * mismatch - 0.15 * densityMismatch - 0.1 * tonalDistance + 0.15 * alignedBoundaries +
+      (structural?.score ?? 0);
     const skip = entryPolicy ? entrySkipCost(into.frame, to.frames, options.styleAllowsSkip) : 0;
-    return {out, into, raw, skip, score: raw - skip};
+    return {out, into, raw, skip, score: raw - skip, structural};
   }));
   const best = Math.max(...pairs.map(p => p.score));
   // S21 tie rule: within about 10 points of the best, the earlier B entry wins.
@@ -413,6 +430,8 @@ function planBlend(from: MixAnalysis, to: MixAnalysis,
       keysKnown ? `Harmonic candidate: ${harmonic.fromCamelot} -> ${harmonic.toCamelot} (${harmonic.relation}).` : 'Key evidence is weak; harmonic overlap is limited by the choreography.',
       choreography ? `EQ choreography ${choreography.params.name} over ${choreography.params.overlapBars} bars.` : 'Bass attenuation and complementary gain curves are scheduled on the existing clock.',
       `B enters at ${(choice.into.frame / to.sampleRate).toFixed(1)} s (${Math.round(100 * choice.into.frame / to.frames)}% into the song; skip cost ${choice.skip.toFixed(2)}).`,
+      ...(choice.structural ? [`Structure (mix-structure@1 heuristic): leaves A in ${choice.structural.exit?.label ?? 'an unlabeled part'}, enters B in ${choice.structural.entry?.label ?? 'an unlabeled part'}` +
+        `${choice.structural.energyMatch !== null ? `, energy match ${choice.structural.energyMatch.toFixed(2)}` : ''}; bass clash ${choice.structural.bassClash.toFixed(2)}, vocal clash ${choice.structural.vocalClash.toFixed(2)} (heuristics).`] : []),
       'Global key does not prove local chord/vocal compatibility. Listening is untested.']};
   if (meet) {
     // A ramps to the meeting tempo over two native bars, then B enters on A's next downbeat.

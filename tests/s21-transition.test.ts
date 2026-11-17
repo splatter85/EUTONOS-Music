@@ -174,8 +174,12 @@ test('route-free safety net: echo reset ends on the downbeat; a clean cut only w
   const hp = echo.automation.outgoing.highPassHz!;
   assert.ok(hp.at(-1)!.value >= 400 && hp[0]!.value <= 20, 'A is high-passed during the pre-roll');
   assert.ok(echo.automation.incoming.gain[0]!.value === 0);
-  const noCut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+  // Part B: without the echo reset the tempo-agnostic dissolves come next; with those gone too and no cut allowed, nothing.
+  const dissolve = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
     {exclude: ['fallback-echo-reset'], allowCut: false});
+  assert.ok(dissolve.kind === 'route-free' && dissolve.recipe === 'fallback-filter-dissolve', JSON.stringify(dissolve));
+  const noCut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {exclude: ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve'], allowCut: false});
   assert.equal(noCut.kind, 'unavailable');
 });
 
@@ -335,8 +339,13 @@ test('finding 4: route-free tries a later bar before settling for a clean cut', 
   // reset (which needs its pre-roll before the exit) fits only on a later bar.
   const grid = requestedGrid(120, SR), frames = 200 * SR;
   const earliestFrame = Math.round(downbeatAt(grid, 4));
-  const choice = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames},
+  // Part B: the dissolves need no pre-roll, so they take the requested bar; with them excluded the echo moves later.
+  const first = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames},
     to: {asset: fakeAsset('b', 160, frames), analysis: null, frames, channels: 1}, sampleRate: SR, earliestFrame, boundary: {bars: 4, anchorBar: 0}});
+  assert.ok(first.kind === 'route-free' && first.plan.recipe === 'fallback-filter-dissolve' && first.exitBar === 4, first.kind);
+  const choice = chooseSetTransition({from: {asset: fakeAsset('a', 120, frames), analysis: null, frames},
+    to: {asset: fakeAsset('b', 160, frames), analysis: null, frames, channels: 1}, sampleRate: SR, earliestFrame, boundary: {bars: 4, anchorBar: 0},
+    exclude: ['fallback-filter-dissolve', 'fallback-tone-dissolve']});
   if (choice.kind !== 'route-free') assert.fail(choice.kind);
   assert.equal(choice.plan.recipe, 'fallback-echo-reset', 'not the clean cut');
   assert.ok(choice.exitBar > 4 && choice.exitBar <= 4 + ROUTE_FREE_LATER_BARS, String(choice.exitBar));

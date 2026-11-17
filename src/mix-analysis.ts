@@ -9,6 +9,7 @@ export interface MixPcm {
   readonly sampleRate: number;
   readonly channels: readonly (Float32Array | Float64Array)[];
 }
+import type {SongStructure} from '../web/mix-structure.js';
 export const MIX_ANALYSIS_VERSION = 'mix-analysis-v5' as const;
 export const MIX_ANALYSIS_LIMITS = Object.freeze({
   minSampleRate: 8000, maxSampleRate: 192000, maxSeconds: 180,
@@ -214,6 +215,8 @@ export interface MixAnalysis {
   /** Complete measured downbeat intervals; optional for legacy/controlled analyses. */
   readonly cueFeatures?: readonly CueBarFeatures[];
   readonly vocalSpans?: readonly VocalSpan[];
+  /** S21 Part B (`mix-structure@1`): whole-song section labels, attached after the song merge only. */
+  readonly songStructure?: SongStructure;
   readonly mixIn: readonly MixPointCandidate[];
   readonly mixOut: readonly MixPointCandidate[];
   readonly limitations: readonly string[];

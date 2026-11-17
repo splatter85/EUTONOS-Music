@@ -51,6 +51,36 @@ export const MIX_EVALUATION_THRESHOLDS = Object.freeze({
 });
 
 /**
+ * Part B recipe claims (recipe-claims@1). Each recipe is judged against the frozen thresholds@1 only on
+ * what it promises; the limits themselves never change. Defects that are never intended (true peak,
+ * clicks, unintended silence, low build-up and the separate transition-safety@1 set) are judged for
+ * every recipe. A flag that thresholds@1 would raise on a property the recipe does not claim is logged
+ * in `unclaimed` beside the verdict, never dropped silently.
+ *
+ * - `beatLocked: false` (cut, echo-out): B enters at its own tempo, so only B's entry beat is compared with
+ *   A's grid. (Before this, a faster B's second beat fell inside the 1.01-beat window and failed any
+ *   gap over about 11%, although the code comment already said only the entry beat is judged.)
+ * - `loudness: 'dip'` (echo-out, which the route-free echo reset and dissolves are judged as): A is filtered
+ *   or echoed away before B is up, so a dip below the straight A-to-B interpolation is the recipe itself.
+ *   The upward deviation is judged against thresholds@1; the downward one is judged only against the
+ *   recipe's declared dip bound (RECIPE_CLAIM_LIMITS.echoMaxDipLu) and its thresholds@1 flag is logged
+ *   in `unclaimed`. A real dropout is still caught by the silence-gap rule.
+ */
+export const RECIPE_CLAIMS_VERSION = 'recipe-claims@1' as const;
+export interface RecipeClaims {
+  readonly beatLocked: boolean; readonly loudness: 'crossfade' | 'dip';
+  /** For a 'dip': the deepest drop below the interpolation the recipe declares; deeper still fails (a hole, not a dip). */
+  readonly maxDipLu?: number;
+}
+/** recipe-claims@1 declared dip bound for echo-type recipes (an engineering starting point, not calibrated). */
+export const RECIPE_CLAIM_LIMITS = Object.freeze({echoMaxDipLu: 6});
+export function recipeClaims(recipe: MixRecipe): RecipeClaims {
+  if (recipe === 'echo-out') return {beatLocked: false, loudness: 'dip', maxDipLu: RECIPE_CLAIM_LIMITS.echoMaxDipLu};
+  if (recipe === 'cut') return {beatLocked: false, loudness: 'crossfade'};
+  return {beatLocked: true, loudness: 'crossfade'};
+}
+
+/**
  * S21 versioned safety set, judged beside (never inside) the frozen thresholds@1. Any flag is a
  * rejection: the set path tries its next candidate. NOT calibrated against listening.
  */
@@ -159,6 +189,9 @@ export interface TransitionEvaluation {
   readonly bSource: TransitionRender['bSource'] | null;
   /** S21: the separate safety verdict; a fail rejects the candidate. */
   readonly safety?: SafetyVerdict;
+  /** Part B: recipe-claims@1 version and the thresholds@1 flags on properties this recipe does not claim (logged only). */
+  readonly claims?: typeof RECIPE_CLAIMS_VERSION;
+  readonly unclaimed?: readonly EvaluationFlag[];
 }
 
 type Coefficients = [number, number, number, number, number];
@@ -481,13 +514,15 @@ function beatPhase(render: TransitionRender, spec: TransitionSpec,
   const aIndex = (f: number) => render.S + (f - spec.fromStartFrame) + (spec.entryDelayFrames ?? 0);
   const grid = analysis.from.beatGrid.frames.map(aIndex).filter(n => n <= render.T + period);
   if (!grid.length) return unjudged('No A beat falls inside the compared window.');
-  // Cut and echo keep B at its native tempo by design, so only B's entry beat is judged.
-  const native = spec.recipe === 'cut' || spec.recipe === 'echo-out';
+  // Cut and echo keep B at its native tempo by design, so only B's entry beat is judged (recipe-claims@1:
+  // the first B beat at or after T; a faster B's second beat is not part of the claim).
+  const native = !recipeClaims(spec.recipe).beatLocked;
   const end = native ? render.T + period * 1.01 : Math.max(render.E, render.T + 4 * period);
   const anchor = grid[grid.length - 1]!;
-  const errors = analysis.to.beatGrid.frames
+  const inWindow = analysis.to.beatGrid.frames
     .map(g => render.T + (g - spec.toEntryFrame) / spec.tempoRatio)
-    .filter(n => n >= render.T - 1 && n <= end)
+    .filter(n => n >= render.T - 1 && n <= end);
+  const errors = (native ? inWindow.slice(0, 1) : inWindow)
     .map(n => { const x = (n - anchor) / period; return Math.abs(x - Math.round(x)); });
   if (!errors.length) return unjudged('No B beat falls inside the compared window.');
   return {maxError: Math.max(...errors), meanError: errors.reduce((a, b) => a + b, 0) / errors.length,
@@ -668,18 +703,27 @@ export function judgeSafety(m: SafetyMeasurements): SafetyVerdict {
 
 /** Flags, verdict and an ordering penalty from the versioned thresholds. */
 export function judgeTransition(recipe: MixRecipe, m: TransitionMeasurements): Omit<TransitionEvaluation, 'version' | 'thresholds' | 'recipe' | 'bSource' | 'measurements'> {
-  const t = MIX_EVALUATION_THRESHOLDS, flags: EvaluationFlag[] = [];
-  const check = (metric: EvaluationMetric, value: number | null, limits: {warn: number; fail?: number}, note?: string) => {
+  const t = MIX_EVALUATION_THRESHOLDS, flags: EvaluationFlag[] = [], unclaimed: EvaluationFlag[] = [];
+  const check = (metric: EvaluationMetric, value: number | null, limits: {warn: number; fail?: number}, note?: string,
+    into: EvaluationFlag[] = flags) => {
     if (value === null) return;
     const fail = limits.fail !== undefined && value > limits.fail;
-    if (fail || value > limits.warn) flags.push({metric, level: fail ? 'fail' : 'warn', value,
+    if (fail || value > limits.warn) into.push({metric, level: fail ? 'fail' : 'warn', value,
       threshold: fail ? limits.fail! : limits.warn, ...(note ? {note} : {})});
   };
   check('truePeak', m.truePeakDbtp, t.truePeakDbtp);
-  const loud = [m.loudness.momentaryMaxUpLu, m.loudness.shortTermMaxUpLu,
-    ...[m.loudness.momentaryMaxDownLu, m.loudness.shortTermMaxDownLu].map(v => v === null ? null : -v)]
-    .filter((v): v is number => v !== null);
-  check('loudness', loud.length ? Math.max(...loud) : null, t.loudnessLu, 'largest deviation from the A-to-B interpolation, either direction');
+  const claims = recipeClaims(recipe);
+  const ups = [m.loudness.momentaryMaxUpLu, m.loudness.shortTermMaxUpLu].filter((v): v is number => v !== null);
+  const downs = [m.loudness.momentaryMaxDownLu, m.loudness.shortTermMaxDownLu].filter((v): v is number => v !== null).map(v => -v);
+  const loud = claims.loudness === 'dip' ? ups : [...ups, ...downs];
+  check('loudness', loud.length ? Math.max(...loud) : null, t.loudnessLu, claims.loudness === 'dip'
+    ? 'largest rise over the A-to-B interpolation (a dip is this recipe\'s claim)' : 'largest deviation from the A-to-B interpolation, either direction');
+  if (claims.loudness === 'dip') {
+    const dip = downs.length ? Math.max(...downs) : null;
+    check('loudness', dip, t.loudnessLu, 'dip below the A-to-B interpolation; thresholds@1 flag logged only (the recipe declares a dip)', unclaimed);
+    if (dip !== null && claims.maxDipLu !== undefined && dip > claims.maxDipLu) flags.push({metric: 'loudness', level: 'fail', value: dip,
+      threshold: claims.maxDipLu, note: `dip deeper than the recipe's declared ${claims.maxDipLu} LU (recipe-claims@1)`});
+  }
   check('lowBuildUp', m.lowBuildUp.maxDb, t.lowBuildUpDb, m.lowBuildUp.band ?? undefined);
   if (m.beatPhase.judged) check('beatPhase', m.beatPhase.maxError, t.beatPhase);
   if (m.boundaryFlux.judged) check('boundaryFlux', m.boundaryFlux.excessDb, t.boundaryFluxDb);
@@ -692,7 +736,8 @@ export function judgeTransition(recipe: MixRecipe, m: TransitionMeasurements): O
   const penalty = 100 * fails + 10 * warns + (loud.length ? Math.max(...loud) / t.loudnessLu.fail : 0) +
     Math.max(0, m.lowBuildUp.maxDb ?? 0) / t.lowBuildUpDb.fail + (m.beatPhase.maxError ?? 0) / t.beatPhase.fail +
     Math.max(0, (m.truePeakDbtp ?? -100) - t.truePeakDbtp.warn);
-  return {verdict: fails ? 'fail' : warns ? 'warn' : 'pass', penalty, flags};
+  return {verdict: fails ? 'fail' : warns ? 'warn' : 'pass', penalty, flags, claims: RECIPE_CLAIMS_VERSION,
+    ...(unclaimed.length ? {unclaimed} : {})};
 }
 
 /** Render, measure and judge one transition. An invalid automation is a failed evaluation, not a throw. */

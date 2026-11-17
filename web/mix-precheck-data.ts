@@ -70,6 +70,16 @@ function rebase(analysis: MixAnalysis, offset: number): MixAnalysis {
   return {...analysis, beatGrid: {...analysis.beatGrid, frames: analysis.beatGrid.frames.map(f => f - offset)}};
 }
 
+/**
+ * Recipe the evaluator judges a route-free plan as. S21: the echo reset is judged as the echo-out recipe it
+ * is (native B, intended change). Part B: the filter and tone dissolves make no beat-alignment claim either
+ * (B native, never stretched), so they are judged like echo-out too: B's entry beat only, and no smooth-blend
+ * boundary-flux or bass-hole rule. Every other threshold (peaks, loudness, low-band rise, clicks, silence) applies.
+ */
+export function routeFreeJudgedAs(recipe: string): 'cut' | 'echo-out' | 'blend' {
+  return recipe === 'fallback-cut' ? 'cut' : ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve'].includes(recipe) ? 'echo-out' : 'blend';
+}
+
 /** Copy exactly the evaluator's S-context..E+context inputs, including the actual prepared B seam. */
 export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const {plan, from, to, incoming} = request, rate = from.buffer.sampleRate;
@@ -89,8 +99,7 @@ export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const toGain = 'levelMatch' in plan ? plan.levelMatch?.toGain ?? 1 : 1;
   check([request.fromGain, toGain].every(g => Number.isFinite(g) && g > 0 && g <= 4), 'Invalid captured fixed source gain.');
   const original: TransitionSpec = {...(plan.kind === 'mix' ? planTransitionSpec(plan) : {
-    // S21: the route-free echo reset is judged as the echo-out recipe it is (native B, intended change).
-    recipe: plan.recipe === 'fallback-cut' ? 'cut' : plan.recipe === 'fallback-echo-reset' ? 'echo-out' : 'blend',
+    recipe: routeFreeJudgedAs(plan.recipe),
     fromStartFrame: plan.fromExitFrame - plan.preRollFrames,
     preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame, tempoRatio: 1, automation: plan.automation
   } as TransitionSpec), fixedGains: {from: request.fromGain, to: toGain}};
