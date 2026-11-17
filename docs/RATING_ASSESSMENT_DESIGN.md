@@ -386,3 +386,12 @@ Every sentence carries its counts and, where needed, its caution. Examples (made
 5. May the bench audition candidates that the pre-check rejected (PC only, opt-in, never clipping or true-peak failures)?
 6. Should "don't play this" in a set stay local to the DJ, or also be shown in Music Studio?
 7. Is an automatic pause of the learned policy (3 dislikes in 5) wanted, or should every change wait for the owner?
+
+## Owner decisions (2026-11-16, in chat)
+
+| Question | Decision |
+| --- | --- |
+| Optional "about" row on the phone rating card (handover / song / both / not sure) | Yes, keep it. |
+| EMT as its own campaign or folded into EMF-S23 | **Separate EMT campaign.** |
+| Automatic learner pause after repeated dislikes | **No automatic pause.** The learner keeps running until the owner hits pause (the one-tap kill switch stays). The audit trail and the safety floor (the learner may only reorder candidates that passed every gate) are unchanged. Dislike counts are still shown in the report so the owner can decide when to pause. |
+| Audition of candidates the pre-check rejected (PC-only A/B bench) | Pending: the owner asked what it means. Meaning: let a rejected candidate be played for a human A/B comparison to find out whether a safety check is too strict. Clipping and true-peak failures would stay blocked, and the mode would be opt-in and PC-only. |

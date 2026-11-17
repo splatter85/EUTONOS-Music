@@ -101,3 +101,7 @@ This draft edits no other file. If the owner accepts it, these owners need a mat
 ## Resume and closeout
 
 Read this file, the [design](../RATING_ASSESSMENT_DESIGN.md), the EMF campaign's current checkpoint and [Current Tasks](../CURRENT_TASKS.md). Confirm the owner has admitted the campaign and answered the design's open questions before starting EMT-S01. Inspect the current feedback schema and report in source, since they may have moved on since 2026-11-16.
+
+## Owner decisions (2026-11-16)
+
+EMT stays a **separate campaign** (not folded into EMF-S23). The phone "about" row is accepted. There is **no automatic learner pause**: the learner runs until the owner pauses it; EMT-S08 acceptance must not depend on an automatic pause. The rejected-candidate audition (EMT-S05) is still awaiting an owner decision. See [Rating assessment design](../RATING_ASSESSMENT_DESIGN.md).
