@@ -27,22 +27,26 @@ function evidence(frames: number, exits = [4, 8]): MixAnalysis {
 const a = evidence(16 * rate), b = {...a, tempo: {...a.tempo, bpm: 170}};
 const echo: MixPlannerOptions = {recipe: 'echo-out', echoContentConfirmed: true};
 test('good timing and unknown/distant key admit native cut/echo with a bounded deterministic shortlist', () => {
+  // Owner decision (A), 2026-11-16: Auto ({}) now ends in the shortest layered entry, never a cut; a manual cut stays.
   for (const options of [{}, {recipe: 'cut'}, echo] as const) {
     const plan = planAutomaticMix(a, b, options);
     assert.equal(plan.kind, 'mix');
     if (plan.kind !== 'mix') return;
-    assert.equal(plan.recipe, options.recipe ?? 'cut');
+    assert.equal(plan.recipe, options.recipe ?? 'layered-entry');
     assert.equal(plan.tempoRatio, 1); assert.equal(plan.pitchSemitones, 0);
     assert.equal(plan.harmonic.relation, 'unknown'); assert.equal(plan.harmonic.circleDistance, null);
   }
   const plans = automaticMixCandidates(a, b, {echoContentConfirmed: true});
   assert.ok(plans.length > 1 && plans.length <= 6);
   assert.deepEqual(plans, automaticMixCandidates(a, b, {echoContentConfirmed: true}));
-  assert.ok(plans.some(p => p.recipe === 'cut') && plans.some(p => p.recipe === 'echo-out'));
+  assert.ok(plans.some(p => p.recipe === 'layered-entry') && plans.some(p => p.recipe === 'echo-out'));
+  assert.ok(!plans.some(p => p.recipe === 'cut'), 'no automatic cut');
+  const layered = plans.find(p => p.recipe === 'layered-entry')!;
+  assert.ok(layered.layered?.lastRung && layered.layered.bars === 2 && layered.automation.incoming.bands && layered.automation.outgoing.bands);
   const distant = {...b, key: {...base.key, tonic: 10, confidence: 0.9}};
   const known = {...a, key: {...base.key, tonic: 9, confidence: 0.9}};
   const plan = planAutomaticMix(known, distant);
-  assert.ok(plan.kind === 'mix' && plan.recipe === 'cut' && plan.harmonic.relation === 'distant');
+  assert.ok(plan.kind === 'mix' && plan.recipe === 'layered-entry' && plan.harmonic.relation === 'distant');
 });
 test('new recipes retain timing, strong cue, option and content refusals', () => {
   for (const options of [{recipe: 'echo-out'}, {...echo, pitchSemitones: 1},

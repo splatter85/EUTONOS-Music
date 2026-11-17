@@ -13,8 +13,10 @@ import {echoOutAutomation as routeEchoAutomation} from './mix-automation.js';
 import {harmonicCompatibility, MIX_PLANNER_VERSION} from './mix-planner.js';
 import {chooseChoreography, ENTRY_POLICY as SET_ENTRY_POLICY, entrySkipCost as setEntrySkipCost, exploreChoice, makeTransitionPlanRecord,
   DUAL_RAMP_LIMITS, dualRampTempo, meetTempo, tempoGapPolicy, TRANSITION_POLICY_VERSION, type ExploreChoice, type PairFeatures, type SetRecipe, type TempoGapDecision,
-  type TransitionPlanRecord, type TransitionStyle} from '../web/transition-policy.js';
+  type TransitionPlanRecord, type TransitionStyle, entryStyleRecord, type EntryStyleRecord, EXPLORE_MENU_POLICY, exploreMenuDraw,
+  type ExploreMenuRecord} from '../web/transition-policy.js';
 import {CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyParams} from '../web/eq-choreography.js';
+import {choreographyEntryStyle, ENTRY_STYLES, exploreEntryStyles, LAYERED_ENTRY_LIMITS, layeredEntryAutomation, preferredEntryStyles, type EntryStyle, type LayeredBars, type LayeredEntryInfo} from '../web/layered-entry.js';
 import {labelSongStructure, labelText, MIX_STRUCTURE_VERSION, sectionAt, sectionEndingAt, sectionStartingAt, structuralCues, structurePairTerm, type SongStructure, type HandoverStructure, handoverSentence} from '../web/mix-structure.js';
 export type {HandoverStructure} from '../web/mix-structure.js';
 export {handoverSentence} from '../web/mix-structure.js';
@@ -515,16 +517,19 @@ export function nextBoundary(grid: SetBarGrid, anchorBar: number, bars: number,
   return {bar, frame: downbeatAt(grid, bar)};
 }
 
-/** Later A bars tried (after the earlier feasible ones) before a clean cut is accepted. */
+/** Later A bars tried (after the earlier feasible ones) before the shortest layered entry is accepted. */
 export const ROUTE_FREE_LATER_BARS = 2;
+/** Owner decision (D), 2026-11-16: Next may wait up to this many bars for a better (quiet-section) exit. */
+export const SET_WAIT_LIMIT_BARS = 8;
 export const ROUTE_FREE_LIMITS = Object.freeze({
   /** Treated as the same tempo: four-bar crossfade. */
   equalTempo: 0.005,
-  /** Above this tempo difference a crossfade would drift: clean cut instead. */
+  /** Above this tempo difference a crossfade would drift: an echo reset, dissolve or layered entry instead. */
   crossfadeTempo: 0.08,
   equalTempoBars: 4, nearTempoBars: 1,
 });
-export type RouteFreeRecipe = 'fallback-crossfade' | 'fallback-echo-reset' | 'fallback-filter-dissolve' | 'fallback-tone-dissolve' | 'fallback-cut';
+export type RouteFreeRecipe = 'fallback-crossfade' | 'fallback-echo-reset' | 'fallback-filter-dissolve' | 'fallback-tone-dissolve' |
+  'fallback-layered-entry' | 'fallback-cut';
 /**
  * S21 Part B tempo-agnostic dissolves (no beat-alignment claim: B stays native and is never stretched).
  * Bars per tempo gap; the longer length is tried first. Engineering starting points, not listening-qualified.
@@ -536,7 +541,7 @@ export const ROUTE_FREE_DISSOLVE = Object.freeze({version: 'route-free-dissolve@
   nearGap: 0.08,
 });
 /** Recipes with no beat-alignment claim between the songs (B native); the evaluator judges only B's entry beat. */
-export const TEMPO_AGNOSTIC_ROUTE_FREE: readonly RouteFreeRecipe[] = Object.freeze(['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve']);
+export const TEMPO_AGNOSTIC_ROUTE_FREE: readonly RouteFreeRecipe[] = Object.freeze(['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry']);
 export interface RouteFreePlan {
   readonly kind: 'route-free'; readonly recipe: RouteFreeRecipe;
   /** B enters here; for the echo reset A's dry fade and echo send start `preRollFrames` earlier. */
@@ -550,6 +555,8 @@ export interface RouteFreePlan {
   readonly reason: string;
   /** Part B: route-free candidates passed over at this bar before this one, with the gate that refused each. */
   readonly skipped?: readonly {readonly recipe: string; readonly reason: string}[];
+  /** Owner decisions 2026-11-16 (layered-entry@1): the band-wise entry this plan uses, when it is one. */
+  readonly layered?: LayeredEntryInfo;
 }
 
 /** Equal-power (sin/cos) gain lanes with neutral filters, as 17-point linear segments. */
@@ -592,6 +599,11 @@ export function toneDissolveAutomation(durationFrames: number, sampleRate: numbe
 export function routeFreeSignature(recipe: string, bars: number, exitFrame: number): string {
   return `${recipe}:b${bars}:at${Math.round(exitFrame)}`;
 }
+/** Layered entries are identified per style: `fallback-layered-entry/<style>`. */
+export const layeredRecipeKey = (style: EntryStyle): string => `fallback-layered-entry/${style}`;
+/** explore-menu@1 route-free entries: every passing style is on the menu (layered entries are an addition, not a replacement). */
+export const EXPLORE_ROUTE_FREE_MENU: readonly string[] = Object.freeze(['fallback-crossfade', 'fallback-echo-reset', 'fallback-filter-dissolve',
+  'fallback-tone-dissolve', ...ENTRY_STYLES.map(layeredRecipeKey)]);
 /**
  * Part B exclusion rule for route-free candidates. A bare recipe name still excludes the family (callers
  * and tests that pass names keep working). A parameter signature excludes that exact plan; the dissolves'
@@ -604,6 +616,7 @@ function routeFreeExcluded(exclude: readonly string[], recipe: string, bars: num
   if (exclude.includes(recipe)) return true;
   if (recipe === 'fallback-echo-reset' && exclude.includes('echo-reset')) return true;
   if (recipe === 'fallback-cut' && exclude.includes('cut')) return true;
+  if (recipe.startsWith('fallback-layered-entry/') && exclude.includes('fallback-layered-entry')) return true;
   const prefix = `${recipe}:b${bars}:at`;
   const same = exclude.filter(s => s.startsWith(prefix));
   if (same.includes(routeFreeSignature(recipe, bars, exitFrame))) return true;
@@ -614,14 +627,25 @@ function routeFreeExcluded(exclude: readonly string[], recipe: string, bars: num
 
 /**
  * Route-free set fallback at an exact A downbeat. In order: an equal-power crossfade when the
- * tempi are close (4 bars when equal, 1 bar within 8%); the S21 filtered echo reset (any tempo
- * gap, B on its measured phrase entry); a 10 ms clean cut only when `allowCut` and nothing else
- * fits. B is never time-stretched here and no authored route is consulted.
+ * tempi are close (4 bars when equal, 1 bar within 8%); one layered entry when the section pairing
+ * names a style (layered-entry@1, structural; once per request); the S21 filtered echo reset (any
+ * tempo gap, B on its measured phrase entry); the filter and tone dissolves; the layered entries in
+ * every style (one length each); and finally the ladder's last rung, the shortest (2-bar) layered
+ * entry. Owner decision (A), 2026-11-16: no automatic path ends in an instantaneous cut; a 10 ms
+ * clean cut is planned only when the owner selected it (`allowCut: true`), and then it is planned first. With `lastRung` only the 2-bar layered entries are tried (the
+ * final attempt of the candidate budget). B is never time-stretched here and no authored route is consulted.
  */
 export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readonly frames: number},
   to: {readonly grid: SetBarGrid; readonly frames: number}, exitFrame: number,
   sampleRate: number, options: {readonly entryFrame?: number; readonly exclude?: readonly string[]; readonly allowCut?: boolean;
-    readonly earliestFrame?: number} = {}): RouteFreePlan | {readonly kind: 'unavailable'; readonly reason: string} {
+    readonly earliestFrame?: number;
+    /** Layered-entry style order (section rule or seeded explore) and whether a section rule chose it. */
+    readonly layered?: {readonly styles: readonly EntryStyle[]; readonly structural: boolean; readonly reason?: string};
+    readonly lastRung?: boolean;
+    /** 'early': stop after the dissolves (no general layered entries, no last rung), so the caller can try later bars first. */
+    readonly stage?: 'early';
+    /** Explore menu: plan only this candidate (`fallback-crossfade`, ..., or `fallback-layered-entry/<style>`). */
+    readonly only?: string} = {}): RouteFreePlan | {readonly kind: 'unavailable'; readonly reason: string} {
   const tempoChange = to.grid.bpm / from.grid.bpm, gap = Math.abs(tempoChange - 1);
   const entry = options.entryFrame ?? to.grid.downbeats[0]!;
   const exclude = options.exclude ?? [];
@@ -631,13 +655,53 @@ export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readon
   const inRange: number[] = gap < ROUTE_FREE_LIMITS.equalTempo
     ? [ROUTE_FREE_LIMITS.equalTempoBars, ROUTE_FREE_LIMITS.nearTempoBars]
     : gap <= ROUTE_FREE_LIMITS.crossfadeTempo ? [ROUTE_FREE_LIMITS.nearTempoBars] : [];
-  const crossfades = inRange.filter(bars => !routeFreeExcluded(exclude, 'fallback-crossfade', bars, exitFrame));
+  const want = (key: string): boolean => !options.only || options.only === key;
+  const onlyStyle = options.only?.startsWith('fallback-layered-entry/') ? options.only.slice('fallback-layered-entry/'.length) as EntryStyle : null;
+  const wantLayered = !options.only || !!onlyStyle;
+  const crossfades = want('fallback-crossfade') ? inRange.filter(bars => !routeFreeExcluded(exclude, 'fallback-crossfade', bars, exitFrame)) : [];
   if (inRange.length && !crossfades.length) skip('fallback-crossfade', 'rejected earlier for this request');
   else if (!inRange.length) skip('fallback-crossfade', `tempo change ${pct} is beyond the 8% plain-crossfade limit`);
   const base = {kind: 'route-free' as const, fromExitFrame: exitFrame, toEntryFrame: entry, fromBpm: from.grid.bpm, toBpm: to.grid.bpm,
     tempoChange, fromGrid: from.grid.source, toGrid: to.grid.source};
   const done = (plan: RouteFreePlan): RouteFreePlan => skipped.length ? {...plan, skipped: [...skipped]} : plan;
   const fits = (overlapFrames: number): boolean => exitFrame >= 0 && exitFrame + overlapFrames <= from.frames && entry + overlapFrames <= to.frames;
+  // Owner decisions 2026-11-16: layered (band-wise) entries. B native; A is carved band by band.
+  const styles = onlyStyle ? [onlyStyle] : options.layered?.styles ?? preferredEntryStyles(null, null).styles;
+  const nearLayered = gap <= LAYERED_ENTRY_LIMITS.nearGap;
+  const tryLayered = (lengths: readonly LayeredBars[], lastRung: boolean, why: string, only1?: boolean): RouteFreePlan | null => {
+    if (!wantLayered) return null;
+    for (const bars of lengths) {
+      for (const style of only1 ? styles.slice(0, 1) : styles) {
+        const key = layeredRecipeKey(style);
+        // The last rung is excluded only by its exact signature, so it can still be tried at another bar.
+        if (lastRung ? exclude.includes(key) || exclude.includes('fallback-layered-entry') || exclude.includes(routeFreeSignature(key, bars, exitFrame))
+          : routeFreeExcluded(exclude, key, bars, exitFrame)) continue;
+        let made: ReturnType<typeof layeredEntryAutomation>;
+        try { made = layeredEntryAutomation(style, bars, from.grid.barFrames, from.grid.bpm, sampleRate, {echoTail: true, lastRung}); }
+        catch { continue; }
+        const outFrames = made.outgoing.durationFrames, overlapFrames = made.incoming.durationFrames;
+        if (exitFrame < (options.earliestFrame ?? 0) || exitFrame < 0 || exitFrame + outFrames > from.frames || entry + overlapFrames > to.frames) continue;
+        return done({...base, recipe: 'fallback-layered-entry', overlapFrames, preRollFrames: 0, bars, layered: made.info,
+          automation: {outgoing: made.outgoing, incoming: made.incoming},
+          reason: `Route-free ${bars}-bar ${style} layered entry on A's downbeat (${why}); B at its own tempo (tempo change ${pct}). ` +
+            `B's bands open in turn while A is carved away${made.info.echoTail ? ' and leaves on an echo tail' : ''}; beats are not aligned.`});
+      }
+    }
+    return null;
+  };
+  if (options.lastRung) {
+    const last = tryLayered([2], true, 'last rung: shortest layered entry');
+    return last ?? {kind: 'unavailable', reason: 'Song A has too little audio left for even the shortest layered entry at that bar.'};
+  }
+  // An owner-selected cut is planned as the cut; if it was rejected, the smooth ladder below follows.
+  const ownerCut = (): RouteFreePlan | null => {
+    if (options.allowCut !== true || options.only || routeFreeExcluded(exclude, 'fallback-cut', 0, exitFrame)) return null;
+    const automation = cleanCutAutomation(sampleRate), overlapFrames = automation.incoming.durationFrames;
+    return fits(overlapFrames) ? done({...base, recipe: 'fallback-cut', overlapFrames, preRollFrames: 0, bars: 0, automation,
+      reason: `Route-free clean cut on the downbeat (selected by the owner; tempo change ${pct}).`}) : null;
+  };
+  const owned = ownerCut();
+  if (owned) return owned;
   for (const bars of crossfades) {
     const automation = equalPowerCrossfade(Math.round(bars * from.grid.barFrames), sampleRate);
     const overlapFrames = automation.incoming.durationFrames;
@@ -646,7 +710,18 @@ export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readon
       reason: `Route-free ${bars}-bar equal-power crossfade (tempo change ${pct}; B at its own tempo).`});
   }
   if (crossfades.length) skip('fallback-crossfade', 'too little audio left for the crossfade');
-  if (!routeFreeExcluded(exclude, 'fallback-echo-reset', 0, exitFrame)) {
+  // Section-led: one attempt per request (the preferred style at one length), so a failing layered entry
+  // never uses up the candidate budget before the echo reset and dissolves are tried.
+  // Once per request: skipped once this style was tried (and excluded) at any bar or length. Other styles'
+  // exclusions (failed explore draws) do not block it, so the deterministic ladder after the draw limit keeps it.
+  const sectionKey = layeredRecipeKey(styles[0]!);
+  if (options.layered?.structural && !options.only && !exclude.includes('fallback-layered-entry')
+    && !exclude.some(e => e === sectionKey || e.startsWith(`${sectionKey}:`))) {
+    const structural = tryLayered(nearLayered ? [8] : [4], false, options.layered.reason ?? 'section rule', true);
+    if (structural) return structural;
+  }
+  if (!want('fallback-echo-reset')) { /* explore menu: another candidate */ }
+  else if (!routeFreeExcluded(exclude, 'fallback-echo-reset', 0, exitFrame)) {
     const echo = echoResetAutomation(from.grid.bpm, sampleRate);
     const start = exitFrame - echo.preRollFrames;
     // The deck consumes A for the whole outgoing automation (the dry part is silent after the exit).
@@ -667,6 +742,7 @@ export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readon
     {recipe: 'fallback-tone-dissolve' as const, lengths: near ? ROUTE_FREE_DISSOLVE.toneBars.near : ROUTE_FREE_DISSOLVE.toneBars.far,
       make: toneDissolveAutomation, what: 'tone dissolve (A low-passed darker, B starts thin)'}];
   for (const d of dissolves) {
+    if (!want(d.recipe)) continue;
     const lengths = d.lengths.filter(bars => !routeFreeExcluded(exclude, d.recipe, bars, exitFrame));
     if (!lengths.length) { skip(d.recipe, 'rejected earlier for this request'); continue; }
     for (const bars of lengths) {
@@ -678,13 +754,13 @@ export function planRouteFreeTransition(from: {readonly grid: SetBarGrid; readon
     }
     skip(d.recipe, 'too little audio left for the dissolve');
   }
-  if (options.allowCut !== false && !routeFreeExcluded(exclude, 'fallback-cut', 0, exitFrame)) {
-    const automation = cleanCutAutomation(sampleRate), overlapFrames = automation.incoming.durationFrames;
-    if (fits(overlapFrames)) {
-      return done({...base, recipe: 'fallback-cut', overlapFrames, preRollFrames: 0, bars: 0, automation,
-        reason: `Route-free clean cut on the downbeat (last resort: every other handover was unavailable; tempo change ${pct}).`});
-    }
-  }
+  if (options.stage === 'early') return {kind: 'unavailable', reason: 'Early stage: no crossfade, echo reset or dissolve left at that bar.'};
+  const anyLayered = tryLayered(nearLayered ? [8] : [4], false, options.layered?.reason ?? 'default style order');
+  if (anyLayered) return anyLayered;
+  // The ladder's last rung: the shortest layered entry (still pre-checked by the caller).
+  const lastRung = tryLayered([2], true, 'last rung: shortest layered entry');
+  if (lastRung) return lastRung;
+  skip('fallback-layered-entry', 'every layered entry was rejected earlier or A has too little audio left');
   return {kind: 'unavailable', reason: 'Song A has too little audio left for a route-free handover at that bar.'};
 }
 
@@ -727,6 +803,11 @@ export interface SetTransitionInput {
   readonly style?: TransitionStyle;
   /** Longest choreography overlap the bounded render and pre-check allow (default 26 s). */
   readonly maxOverlapSeconds?: number;
+  /**
+   * Owner decision (A), 2026-11-16: the final attempt of the candidate budget. Analyzed recipes are skipped
+   * and only the ladder's last rung (the shortest layered entry, still pre-checked) is planned.
+   */
+  readonly lastRung?: boolean;
 }
 interface SetChoiceBase {
   readonly exitBar: number; readonly boundaryBar: number;
@@ -738,6 +819,8 @@ interface SetChoiceBase {
   readonly why?: readonly string[];
   /** Part B: where the handover sits in each song's mix-structure@1 sections (heuristic labels). */
   readonly structure?: HandoverStructure;
+  /** explore-menu@1: the seeded draw and the planned alternatives (explore mode only). */
+  readonly menu?: ExploreMenuRecord;
 }
 export type SetTransitionChoice =
   | (SetChoiceBase & {readonly kind: 'analyzed'; readonly plan: AutomaticMixPlan})
@@ -857,7 +940,7 @@ export function transitionSignature(plan: AutomaticMixPlan | RouteFreePlan, exit
   if (plan.recipe === 'cut') return plan.recipe;
   // Part B (design review G3): a route-free plan is excluded by its parameters (recipe, length, exit frame),
   // not by its recipe name, so one FAIL no longer removes that recipe at every bar.
-  if (!('overlapBeats' in plan)) return routeFreeSignature(plan.recipe, plan.bars, plan.fromExitFrame);
+  if (!('overlapBeats' in plan)) return routeFreeSignature(plan.layered ? layeredRecipeKey(plan.layered.style) : plan.recipe, plan.bars, plan.fromExitFrame);
   const c = plan.choreography?.params;
   return [plan.recipe, `bar${exitBar}`, `ov${c?.overlapBars ?? plan.overlapBeats / 4}`, c ? `${c.name}${c.gapBars ? `-gap${c.gapBars}` : ''}` : 'plain'].join(':');
 }
@@ -876,8 +959,10 @@ function pairFeatures(from: MixAnalysis, to: MixAnalysis, bpm: number, maxOverla
  * S21 set transition choice. Candidates come from the tempo-gap policy (transition-policy@2) in
  * band order; rhythm recipes need a confident beat grid, and a weak key only limits sustained
  * harmonic overlap (mid-carve or bass-drop choreography). Every analyzed recipe may only use A
- * exits on the requested boundary bars. The route-free echo reset needs only grids; a clean cut
- * is chosen only when every other candidate is rejected or when the owner selects it.
+ * exits on the requested boundary bars (and quiet-section ends up to SET_WAIT_LIMIT_BARS later).
+ * The route-free echo reset, dissolves and layered entries need only grids. Owner decision (A),
+ * 2026-11-16: a clean cut is chosen only when the owner selects it; the automatic ladder ends in
+ * the shortest layered entry.
  */
 export function chooseSetTransition(input: SetTransitionInput): SetTransitionChoice {
   // Part B (mix-structure@1): A's whole-song structure when known, else its bounded window (partial); B's from its merge.
@@ -910,12 +995,14 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
   const second = first.bar + boundary.bars;
   const boundaries = [first, {bar: second, frame: downbeatAt(fromGrid, second)}];
   const structureTol = Math.round(fromGrid.barFrames / 8);
-  // Part B: the ends of quiet A sections (outro, breakdown) strictly between the two requested boundaries are
-  // exits too (design review G5: more than two exit bars, chosen by structure, never later than the second).
+  // Part B: the ends of quiet A sections (outro, breakdown) after the first requested boundary are exits too
+  // (design review G5: more than two exit bars, chosen by structure). Owner decision (D), 2026-11-16: Next may
+  // wait up to SET_WAIT_LIMIT_BARS bars (or to the second boundary, whichever is later) for such an exit.
+  const waitBar = Math.max(second, first.bar + SET_WAIT_LIMIT_BARS), waitFrame = downbeatAt(fromGrid, waitBar);
   for (const s of fromStructure?.sections ?? []) {
-    if (s.label !== 'outro' && s.label !== 'breakdown' || s.endFrame <= first.frame + structureTol || s.endFrame >= boundaries[1]!.frame - structureTol) continue;
+    if (s.label !== 'outro' && s.label !== 'breakdown' || s.endFrame <= first.frame + structureTol || s.endFrame > waitFrame + structureTol) continue;
     const bar = barAtOrAfter(fromGrid, s.endFrame - structureTol), frame = downbeatAt(fromGrid, bar);
-    if (Math.abs(frame - s.endFrame) <= structureTol && bar > first.bar && bar < second && !boundaries.some(b => b.bar === bar)) boundaries.push({bar, frame});
+    if (Math.abs(frame - s.endFrame) <= structureTol && bar > first.bar && bar <= waitBar && !boundaries.some(b => b.bar === bar)) boundaries.push({bar, frame});
   }
   boundaries.sort((a, b) => a.bar - b.bar);
   // B section starts (and A section ends on an exit bar) the windowed cue finder did not keep become cues.
@@ -941,7 +1028,10 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
   let explore: ExploreChoice | undefined;
   const base = (exitBar: number) => ({exitBar, boundaryBar: first.bar, fromGrid, toGrid, notes, policy, rejected, why,
     ...(explore ? {explore} : {})});
-  if (fromPlan && toPlan) {
+  if (input.lastRung) notes.push('Final candidate attempt: only the shortest layered entry is planned.');
+  // Analyzed (beat-matched) recipes, tried in the given order; the first one that plans is returned.
+  const analyzedFor = (recipes: readonly string[]): SetTransitionChoice | null => {
+  if (fromPlan && toPlan && !input.lastRung) {
     const tolerance = Math.round(fromGrid.barFrames / 8);
     const onBoundary = fromPlan.mixOut.filter(c => boundaries.some(b => Math.abs(c.frame - b.frame) <= tolerance));
     const scoped: MixAnalysis = {...fromPlan, mixOut: onBoundary};
@@ -955,7 +1045,7 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
       const choreography: ChoreographyParams = input.options?.choreography ?? explore?.choreography ?? auto.params;
       const cuesAt = (bar: number): MixAnalysis['mixOut'] => onBoundary.filter(c => Math.abs(c.frame - downbeatAt(fromGrid, bar)) <= tolerance);
       const safeCarve: ChoreographyParams = {name: 'mid-carve', overlapBars: 8, swapMs: CHOREOGRAPHY_LIMITS.swapMs.default};
-      for (const recipe of order) {
+      for (const recipe of recipes) {
         if (recipe === 'echo-reset' || recipe === 'cut') break; // route-free and last-resort handled below
         const stretched = SET_STRETCHED.includes(recipe);
         const meet = recipe === 'meet-in-middle';
@@ -1003,66 +1093,64 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
               }
             } catch (error) { reject(error instanceof Error ? error.message : String(error)); continue; }
           }
-          if (plan.choreography) why.push(...(fixed ? ['Choreography fixed by the request.'] :
-            explore && !exploreRefused && variant.choreo === explore.choreography ? [`Explore seed ${explore.seed} drew ${plan.choreography.params.name}.`] : auto.reasons));
-          if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
-          return {kind: 'analyzed', plan, ...base(barOf(plan.fromExitFrame))};
+          const own = plan.choreography ? (fixed ? ['Choreography fixed by the request.'] :
+            explore && !exploreRefused && variant.choreo === explore.choreography ? [`Explore seed ${explore.seed} drew ${plan.choreography.params.name}.`] : auto.reasons) : [];
+          return {kind: 'analyzed', plan, ...base(barOf(plan.fromExitFrame)), why: [...why, ...own],
+            notes: [...notes, ...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`)]};
         }
       }
     }
-  } else notes.push('Analysis unavailable for at least one song.');
-  // Route-free: crossfade (close tempi) or the filtered echo reset; a clean cut only as the last resort
-  // or when the owner chose it. The requested boundary first, then earlier feasible future bars.
+  } else if (!input.lastRung && !notes.includes('Analysis unavailable for at least one song.')) notes.push('Analysis unavailable for at least one song.');
+  return null;
+  };
+  // Route-free: crossfade (close tempi), section-led layered entry, filtered echo reset, dissolves, layered
+  // entries and finally the shortest layered entry; a clean cut only when the owner chose it.
+  // The requested boundary first, then earlier feasible future bars.
   // Part B: B's route-free entry also earns the structural pair term (energy match with A's exit section).
   const entry = routeFreeEntry(to.analysis, to.frames, false, {from: from.analysis, fromStructure, toStructure,
     exitFrame: first.frame, barFrames: fromGrid.barFrames}) ?? undefined;
-  const allowCut = owner === 'cut' || order.includes('cut');
-  // Part B cut gate: a clean cut only on a four-bar phrase boundary where A's ending section is low energy
-  // (outro, breakdown or intro label, or section energy at most 1.05 x the song's median bar energy).
-  // Without structure for A only the phrase rule applies (said in the notes).
-  const cutGate = (bar: number): {ok: boolean; energy: number; reason: string} => {
-    if (bar % 4 !== 0) return {ok: false, energy: Infinity, reason: `bar ${bar + 1} is not a four-bar phrase boundary`};
-    if (!fromStructure) return {ok: true, energy: 0, reason: 'phrase boundary (no structure analysis for A)'};
-    const frame = downbeatAt(fromGrid, bar);
-    const section = sectionEndingAt(fromStructure, frame, structureTol) ?? sectionAt(fromStructure, frame - 1) ?? sectionAt(fromStructure, frame);
-    if (!section) return {ok: true, energy: 0, reason: 'phrase boundary (outside A\'s analysed window)'};
-    if (['outro', 'breakdown', 'intro'].includes(section.label ?? '')) return {ok: true, energy: section.energy, reason: `phrase boundary after A's ${section.label}`};
-    if (section.energy <= fromStructure.medianEnergy * 1.05) return {ok: true, energy: section.energy, reason: 'phrase boundary at low A energy'};
-    return {ok: false, energy: section.energy, reason: `A's ${labelText(section)} before bar ${bar + 1} is not low energy`};
-  };
+  // Owner decision (A), 2026-11-16: no automatic clean cut. Only an owner-selected cut plans one.
+  const allowCut = owner === 'cut';
   const quietExitBars = boundaries.filter(b => b.bar !== first.bar && (() => {
     const s = sectionEndingAt(fromStructure, b.frame, structureTol);
     return s?.label === 'outro' || s?.label === 'breakdown';
   })()).map(b => b.bar);
-  const tryRouteFree = (cut: boolean): SetTransitionChoice | null => {
+  // Layered-entry style order per exit bar from the section pairing (mix-structure@1, heuristic labels);
+  // explore mode permutes the order deterministically by seed (the pre-check keeps the first that passes).
+  const entrySection = entry !== undefined ? sectionAt(toStructure, entry)?.label ?? null : null;
+  const layeredFor = (frame: number): {styles: readonly EntryStyle[]; structural: boolean; reason: string} => {
+    const ending = sectionEndingAt(fromStructure, frame, structureTol), inside = sectionAt(fromStructure, frame - 1);
+    const choice = preferredEntryStyles(ending?.label ?? inside?.label ?? null, entrySection);
+    // After the explore draw limit the deterministic ladder uses the section order, not the seeded one.
+    return input.explore && exclude.size < EXPLORE_MENU_POLICY.maxDraws ? {styles: exploreEntryStyles(input.explore.seed, choice.styles), structural: choice.structural,
+      reason: `${choice.reason}; explore seed ${input.explore.seed} ordered the styles`} : {...choice};
+  };
+  const tryRouteFree = (cut: boolean, only?: string): SetTransitionChoice | null => {
     // Earlier feasible bars first (more audio left in A), then up to two later bars: the echo needs its
     // pre-roll before the exit, which can leave the requested bar itself short of the earliest effect frame.
-    // Part B: the end of a quiet A section inside the request window comes first.
-    let bars: number[] = [...quietExitBars];
+    // Part B: the end of a quiet A section inside the wait window comes first.
+    const bars: number[] = [...quietExitBars];
     for (let bar = first.bar; bar >= 0 && downbeatAt(fromGrid, bar) >= earliestFrame; bar--) bars.push(bar);
     for (let bar = first.bar + 1; bar <= first.bar + ROUTE_FREE_LATER_BARS; bar++) bars.push(bar);
-    if (cut && owner !== 'cut') {
-      // Phrase bars only, in the same order, then up to 16 later bars; low-energy exits first. With none in reach,
-      // the lowest-energy phrase bar is used and the note says so (a cut still never skips the dissolves before it).
-      for (let bar = first.bar + ROUTE_FREE_LATER_BARS + 1; bar <= first.bar + 16; bar++) bars.push(bar);
-      const gated = [...new Set(bars)].map(bar => ({bar, gate: cutGate(bar)})).filter(x => x.gate.energy !== Infinity);
-      const low = gated.filter(x => x.gate.ok);
-      const chosen = low.length ? low : [...gated].sort((a, b) => a.gate.energy - b.gate.energy || a.bar - b.bar).slice(0, 1);
-      if (!low.length && chosen.length) notes.push(`No low-energy phrase exit within 16 bars; the cut uses the lowest-energy phrase bar ${chosen[0]!.bar + 1}.`);
-      bars = chosen.map(x => x.bar);
-    }
-    for (const bar of [...new Set(bars)]) {
+    if (input.lastRung) for (let bar = first.bar + ROUTE_FREE_LATER_BARS + 1; bar <= first.bar + SET_WAIT_LIMIT_BARS; bar++) bars.push(bar);
+    // Two passes: the proven candidates (crossfade, section-led entry, echo reset, dissolves) at every bar
+    // first, so the echo reset's later-bar retry keeps its place in the attempt budget; then the general
+    // layered entries and the last rung.
+    const stages: readonly ('early' | undefined)[] = only || input.lastRung || cut ? [undefined] : ['early', undefined];
+    for (const stage of stages) for (const bar of [...new Set(bars)]) {
       const frame = downbeatAt(fromGrid, bar);
       const plan = planRouteFreeTransition({grid: fromGrid, frames: from.frames}, {grid: toGrid, frames: to.frames},
-        frame, sampleRate, {...(entry !== undefined ? {entryFrame: entry} : {}), exclude: [...exclude], allowCut: cut, earliestFrame});
+        frame, sampleRate, {...(entry !== undefined ? {entryFrame: entry} : {}), exclude: [...exclude], allowCut: cut, earliestFrame,
+          layered: layeredFor(frame), ...(input.lastRung ? {lastRung: true} : {}), ...(only ? {only} : {}), ...(stage ? {stage} : {})});
       if (plan.kind === 'route-free') {
-        if (bar !== first.bar) notes.push(quietExitBars.includes(bar) ? `Bar ${bar + 1} ends a quiet A section; the handover uses it.`
-          : cut ? `Clean cut moved to phrase bar ${bar + 1} (${cutGate(bar).reason}).`
-            : `Requested bar ${first.bar + 1} lacks ${bar > first.bar ? 'room for the effect pre-roll' : 'audio'}; using bar ${bar + 1}.`);
-        // Part B: every route-free candidate passed over before this one is recorded with its gate.
-        for (const r of plan.skipped ?? []) if (!rejected.some(x => x.recipe === r.recipe)) rejected.push(r);
-        if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
-        return {kind: 'route-free', plan, ...base(bar)};
+        const ownNotes: string[] = [], ownWhy: string[] = [];
+        if (bar !== first.bar) ownNotes.push(quietExitBars.includes(bar) ? `Bar ${bar + 1} ends a quiet A section; the handover uses it.`
+          : `Requested bar ${first.bar + 1} lacks ${bar > first.bar ? 'room for the effect pre-roll' : 'audio'}; using bar ${bar + 1}.`);
+        if (plan.layered) ownWhy.push(`Entry style (${plan.layered.version}): ${only ? 'drawn from the explore menu' : layeredFor(frame).reason}.`);
+        // Part B: every route-free candidate passed over before this one is recorded with its gate (not for a menu entry).
+        if (!only) for (const r of plan.skipped ?? []) if (!rejected.some(x => x.recipe === r.recipe)) rejected.push(r);
+        ownNotes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
+        return {kind: 'route-free', plan, ...base(bar), notes: [...notes, ...ownNotes], why: [...why, ...ownWhy]};
       }
     }
     return null;
@@ -1073,21 +1161,38 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
     const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
     if (cut.kind === 'mix') return {kind: 'analyzed', plan: cut, ...base(boundaries.reduce((b, x) => Math.abs(x.frame - cut.fromExitFrame) < Math.abs(b.frame - cut.fromExitFrame) ? x : b).bar)};
   }
+  // Owner clarification 2026-11-16 (explore-menu@1): in explore mode the style is a seeded weighted draw
+  // among every candidate that plans here; a pre-check FAIL excludes it and the caller draws again.
+  if (input.explore && !owner && !input.lastRung && exclude.size < EXPLORE_MENU_POLICY.maxDraws) {
+    const menu: {key: string; choice: Exclude<SetTransitionChoice, {kind: 'unavailable'}>}[] = [];
+    for (const recipe of order) {
+      if (recipe === 'echo-reset' || recipe === 'cut') break;
+      const c = analyzedFor([recipe]);
+      if (c && c.kind !== 'unavailable' && !menu.some(m => m.key === c.plan.recipe)) menu.push({key: c.plan.recipe, choice: c});
+    }
+    for (const key of EXPLORE_ROUTE_FREE_MENU) {
+      const c = tryRouteFree(false, key);
+      if (c && c.kind !== 'unavailable') menu.push({key, choice: c});
+    }
+    if (menu.length) {
+      const seed = input.explore.seed, attempt = exclude.size;
+      const draw = exploreMenuDraw(seed, attempt, menu.map(m => m.key));
+      const picked = menu[draw.index]!;
+      const record: ExploreMenuRecord = {policy: EXPLORE_MENU_POLICY.version, seed, attempt, chosen: picked.key,
+        alternatives: menu.slice(0, EXPLORE_MENU_POLICY.maxAlternatives).map((m, i) => ({key: m.key, weight: draw.weights[i]!}))};
+      return {...picked.choice, menu: record, notes: [...new Set(picked.choice.notes)],
+        why: [...(picked.choice.why ?? []), `Explore menu (${EXPLORE_MENU_POLICY.version}, seed ${seed}, draw ${attempt + 1}): ${picked.key} drawn at random from ${menu.length} planned candidates (${menu.map(m => m.key).join(', ')}), equal floor weights; listening NOT TESTED.`]};
+    }
+  }
+  if (input.explore && !owner && !input.lastRung && exclude.size >= EXPLORE_MENU_POLICY.maxDraws)
+    notes.push(`Explore: ${exclude.size} candidates failed (draw limit ${EXPLORE_MENU_POLICY.maxDraws}); the deterministic ladder takes the remaining attempts.`);
+  if (owner !== 'cut') {
+    const analyzed = analyzedFor(order);
+    if (analyzed) return analyzed;
+  }
   const smooth = owner === 'cut' ? null : tryRouteFree(false);
   if (smooth) return smooth;
   if (allowCut && !exclude.has('cut')) {
-    // Last resort: the analyzed cut (exact cue) before the route-free cut, both behind the Part B cut gate.
-    if (from.analysis && to.analysis && owner !== 'cut') {
-      const scoped = {...from.analysis, mixOut: from.analysis.mixOut.filter(c => boundaries.some(b => Math.abs(c.frame - b.frame) <= Math.round(fromGrid.barFrames / 8)))};
-      const cut = planAutomaticMix(scoped, to.analysis, {recipe: 'cut', minimumFromFrame: earliestFrame});
-      const cutBar = cut.kind === 'mix' ? boundaries.reduce((b, x) => Math.abs(x.frame - cut.fromExitFrame) < Math.abs(b.frame - cut.fromExitFrame) ? x : b).bar : -1;
-      if (cut.kind === 'mix' && !cutGate(cutBar).ok) rejected.push({recipe: 'cut', reason: `analyzed cut refused by the cut gate: ${cutGate(cutBar).reason}`});
-      else if (cut.kind === 'mix') {
-        if (rejected.length) notes.push(...rejected.map(r => `${r.recipe} unavailable: ${r.reason}`));
-        notes.push('Clean cut chosen only because every other candidate was rejected.');
-        return {kind: 'analyzed', plan: cut, ...base(boundaries.reduce((b, x) => Math.abs(x.frame - cut.fromExitFrame) < Math.abs(b.frame - cut.fromExitFrame) ? x : b).bar)};
-      }
-    }
     const cut = tryRouteFree(true);
     if (cut) return cut;
   }
@@ -1103,6 +1208,11 @@ export function setTransitionRecord(choice: Exclude<SetTransitionChoice, {kind: 
   const meet = choice.kind === 'analyzed' && 'meet' in plan ? plan.meet ?? null : null;
   const entryRank = choice.kind === 'analyzed' && 'entry' in plan ? plan.entry?.rank ?? null : null;
   const overlapBars = choreography ? choreography.overlapBars : choice.kind === 'analyzed' ? (plan as AutomaticMixPlan).overlapBeats / 4 : choice.plan.bars || null;
+  // Owner decisions 2026-11-16: the entry style is a first-class field (layered entries, or a band-led choreography).
+  const layered = 'layered' in plan ? plan.layered : undefined;
+  const choreoStyle = choreographyEntryStyle(choreography?.name);
+  const entryStyle: EntryStyleRecord | undefined = layered ? entryStyleRecord(layered)
+    : choreoStyle ? {style: choreoStyle, source: 'eq-choreography@1', bars: choreography?.overlapBars ?? null, echoTail: false, lastRung: false} : undefined;
   return makeTransitionPlanRecord({mode, seed: choice.explore?.seed ?? seed,
     versions: {policy: TRANSITION_POLICY_VERSION, planner: MIX_PLANNER_VERSION, analysis: `${MIX_ANALYSIS_VERSION}+${SONG_MERGE_POLICY.policy}${choice.structure && (choice.structure.exit.analysed || choice.structure.entry.analysed) ? `+${MIX_STRUCTURE_VERSION}` : ""}`,
       choreography: CHOREOGRAPHY_VERSION, safety: 'transition-safety@1'},
@@ -1111,5 +1221,6 @@ export function setTransitionRecord(choice: Exclude<SetTransitionChoice, {kind: 
       skippedFraction: plan.toEntryFrame / to.frames, entryRank},
     sampleRate, tempo: {gap: choice.policy?.gap ?? Math.abs(plan.toBpm / plan.fromBpm - 1), band: choice.policy?.band ?? 'normal', meetBpm: meet?.bpm ?? null},
     recipe: plan.recipe as SetRecipe | RouteFreeRecipe, choreography, overlapBars,
+    ...(entryStyle ? {entryStyle} : {}), ...(choice.menu ? {menu: choice.menu} : {}),
     why: [...(choice.why ?? [])], rejected: [...(choice.rejected ?? [])]});
 }

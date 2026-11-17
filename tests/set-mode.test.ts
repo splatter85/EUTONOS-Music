@@ -156,7 +156,7 @@ test('bar boundaries count from the song (Next) or from the entry bar (Auto)', (
   assert.deepEqual(nextBoundary(grid, 3, 16, 4 * 32000), {bar: 19, frame: 19 * 32000}, 'Auto: N bars after the entry bar');
 });
 
-test('route-free fallback: 90 -> 128 echo-resets (cut only as last resort); 122 -> 128 crossfades one bar; equal tempo four', () => {
+test('route-free fallback: 90 -> 128 echo-resets (no automatic cut); 122 -> 128 crossfades one bar; equal tempo four', () => {
   const rate = 16000, frames = 60 * rate, exit = 8 * 4 * 60 * rate / 90;
   // S21: a large tempo gap uses the filtered echo reset ending on the boundary downbeat.
   const echo = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate);
@@ -169,13 +169,18 @@ test('route-free fallback: 90 -> 128 echo-resets (cut only as last resort); 122 
     {earliestFrame: exit - 1});
   assert.ok(dissolve.kind === 'route-free' && dissolve.recipe === 'fallback-filter-dissolve' && dissolve.fromExitFrame === exit);
   assert.ok(dissolve.skipped?.some(s => s.recipe === 'fallback-echo-reset' && /pre-roll/.test(s.reason)));
-  const cut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+  // Owner decisions 2026-11-16 (changed expectation): with the dissolves excluded the layered entries come next,
+  // ending in the shortest (2-bar) one; a clean cut is planned only when explicitly allowed (owner-selected cut).
+  const layered = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
     {earliestFrame: exit - 1, exclude: ['fallback-filter-dissolve', 'fallback-tone-dissolve']});
-  assert.equal(cut.kind, 'route-free');
+  assert.ok(layered.kind === 'route-free' && layered.recipe === 'fallback-layered-entry' && layered.fromExitFrame === exit);
+  const noLayered = ['fallback-filter-dissolve', 'fallback-tone-dissolve', 'fallback-layered-entry'];
+  assert.equal(planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {earliestFrame: exit - 1, exclude: noLayered}).kind, 'unavailable', 'no automatic cut');
+  const cut = planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
+    {earliestFrame: exit - 1, allowCut: true, exclude: noLayered});
   assert.ok(cut.kind === 'route-free');
   assert.equal(cut.recipe, 'fallback-cut');
-  assert.equal(planRouteFreeTransition({grid: requestedGrid(90), frames}, {grid: requestedGrid(128), frames}, exit, rate,
-    {earliestFrame: exit - 1, allowCut: false, exclude: ['fallback-filter-dissolve', 'fallback-tone-dissolve']}).kind, 'unavailable', 'no cut when cuts are disallowed');
   assert.equal(cut.fromExitFrame, 8 * 4 * 60 * rate / 90, 'exactly on the boundary downbeat');
   assert.equal(cut.toEntryFrame, 0);
   assert.ok(cut.overlapFrames <= rate * 0.02, 'a short complementary cut');
@@ -184,7 +189,7 @@ test('route-free fallback: 90 -> 128 echo-resets (cut only as last resort); 122 
   assert.equal(near.overlapFrames, Math.round(4 * 60 * rate / 122));
   const same = planRouteFreeTransition({grid: requestedGrid(128), frames}, {grid: requestedGrid(128), frames}, 0, rate);
   assert.ok(same.kind === 'route-free' && same.bars === 4);
-  // Too little A audio for four bars shrinks to one bar, then to a cut, then refuses.
+  // Too little A audio for four bars shrinks to one bar, then refuses (no automatic cut).
   const tight = planRouteFreeTransition({grid: requestedGrid(128), frames: Math.round(2 * 4 * 60 * rate / 128)},
     {grid: requestedGrid(128), frames}, 0, rate);
   assert.ok(tight.kind === 'route-free' && tight.bars === 1);

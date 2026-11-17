@@ -182,13 +182,15 @@ try {
   const [, entryMin, entrySec] = /B enters at (\d+):(\d\d)/.exec((await page.locator('#set-why-entry').textContent())!)!;
   const entryBars = Math.round((Number(entryMin) * 60 + Number(entrySec)) / (4 * 60 / 174));
   assert.ok((await page.locator('#set-why-choreo').textContent())!.length > 10, 'choreography described');
-  assert.match((await page.locator('#set-why-mode').textContent())!, /^auto · plan tp-[0-9a-f]{8}$/);
+  // Owner clarification 2026-11-16: explore (seeded random styles) is the default for set Auto/Next.
+  assert.ok(await page.locator('#set-explore').isChecked(), 'explore is on by default');
+  assert.match((await page.locator('#set-why-mode').textContent())!, /^explore \(seed \d+\) · plan tp-[0-9a-f]{8}$/);
   await page.locator('#set-why summary').click();
   // A rating never attaches to the planned (not yet heard) handover: nothing has finished, so it is refused.
   await page.locator('#set-why [data-rate="like"]').click();
   await waitText(page, 'set-why-rating', /no handover has finished yet, so there is nothing to rate/, 5000);
   report.checks.push('S21 readout shows recipe, tempo band, choreography, B entry and plan id; rating before any handover has finished is refused');
-  await page.locator('#set-explore-seed').fill('7'); await page.locator('#set-explore').check();
+  await page.locator('#set-explore-seed').fill('7'); await page.locator('#set-explore-seed').dispatchEvent('change'); await page.locator('#set-explore').check();
   assert.match(await text(page, 'dj-next-title'), /synthetic-174-b/);
   await waitText(page, 'dj-now', /^Synthetic 174 BPM \(synthetic-174-b\)$/, 40000);
   report.checks.push(`Next moves 174-c -> 174-b (not catalogue order) on bar ${exitBar} of the outgoing song; recipe and tempo change shown`);

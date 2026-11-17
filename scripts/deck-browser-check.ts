@@ -98,6 +98,13 @@ try {
   await page.waitForFunction(() => document.getElementById('deck-a-low')?.getAttribute('aria-valuetext')?.includes('You'));
   await page.locator('#deck-a-filter').focus(); await page.keyboard.press('ArrowRight');
   await page.locator('#deck-crossfader').evaluate(node => { (node as HTMLInputElement).value = '0.35'; node.dispatchEvent(new Event('input')); });
+  // Explore is the set default with a fresh seed per load; pin one so this gate is reproducible. This seed
+  // draws a candidate whose PASS arrives after its audio-clock deadline, so it exercises the re-choose of a
+  // later (again pre-checked) bar; before that change it refused Next ("Request Next again").
+  await page.evaluate(seed => {
+    const field = document.getElementById('set-explore-seed') as HTMLInputElement;
+    field.value = seed; field.dispatchEvent(new Event('change'));
+  }, '1763426704');
   await page.locator('#dj-play').click();
   await page.waitForFunction(() => document.getElementById('dj-now')?.textContent?.includes('deck-174-a'));
   assert.match(await page.locator('#deck-a-title').innerText(), /deck-174-a/);

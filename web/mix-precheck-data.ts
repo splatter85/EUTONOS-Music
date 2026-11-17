@@ -76,7 +76,8 @@ function rebase(analysis: MixAnalysis, offset: number): MixAnalysis {
  * (B native, never stretched), so they are judged like echo-out too: B's entry beat only, and no smooth-blend
  * boundary-flux or bass-hole rule. Every other threshold (peaks, loudness, low-band rise, clicks, silence) applies.
  */
-export function routeFreeJudgedAs(recipe: string): 'cut' | 'echo-out' | 'blend' {
+export function routeFreeJudgedAs(recipe: string): 'cut' | 'echo-out' | 'blend' | 'layered-entry' {
+  if (recipe === 'fallback-layered-entry') return 'layered-entry'; // recipe-claims@2: judged on its per-band claims
   return recipe === 'fallback-cut' ? 'cut' : ['fallback-echo-reset', 'fallback-filter-dissolve', 'fallback-tone-dissolve'].includes(recipe) ? 'echo-out' : 'blend';
 }
 
@@ -101,7 +102,8 @@ export function makePrecheckWindow(request: PrecheckRequest): PrecheckWindow {
   const original: TransitionSpec = {...(plan.kind === 'mix' ? planTransitionSpec(plan) : {
     recipe: routeFreeJudgedAs(plan.recipe),
     fromStartFrame: plan.fromExitFrame - plan.preRollFrames,
-    preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame, tempoRatio: 1, automation: plan.automation
+    preRollFrames: plan.preRollFrames, toEntryFrame: plan.toEntryFrame, tempoRatio: 1, automation: plan.automation,
+    ...(plan.layered ? {layered: plan.layered} : {})
   } as TransitionSpec), fixedGains: {from: request.fromGain, to: toGain}};
   validateMixAutomation(original.automation.outgoing, rate); validateMixAutomation(original.automation.incoming, rate);
   check(integer(original.fromStartFrame) && original.fromStartFrame < from.buffer.length &&
@@ -265,6 +267,13 @@ export function validatePrecheckEvaluation(value: unknown, recipe: TransitionSpe
         nullable(s.bassHoleDb) && s.bassHoleJudged === isSmoothRecipe(recipe) && (s.bassHoleJudged || s.bassHoleDb === null) &&
         Number.isSafeInteger(s.declaredGapFrames) && s.declaredGapFrames >= 0, 'Pre-check safety measurements are invalid.');
       check(JSON.stringify(evaluation.safety) === JSON.stringify(judgeSafety(s)), 'Pre-check safety judgment differs from transition-safety@1.');
+    }
+    // recipe-claims@2: a layered entry must carry its per-band evidence (judged above through judgeTransition).
+    if (recipe === 'layered-entry') {
+      const l = m.layered, nullable = (n: unknown): boolean => n === null || typeof n === 'number' && Number.isFinite(n);
+      check(!!l && typeof l.style === 'string' && nullable(l.leadDb) && nullable(l.maskingDb) && Number.isFinite(l.lowOverlapDb) &&
+        Number.isFinite(l.lowSumMinDb) && typeof l.leadFirst === 'boolean' && typeof l.lanesOk === 'boolean' && nullable(l.riseOverLouderLu) && nullable(l.dipUnderQuieterLu),
+      'Pre-check layered-entry evidence is missing or invalid.');
     }
   }
   return evaluation;

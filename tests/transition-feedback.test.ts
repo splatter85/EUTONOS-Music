@@ -87,7 +87,7 @@ test('the rate command is an allowlist with known ratings and tags, a capped not
   assert.deepEqual(parseControlCommand({command: 'rate', rating: 'dislike', tags: ['bass-clash', 'too-long', 'bass-clash'], note: ' too  muddy\u0000 ', planId: 'tp-0123abcd'}),
     {command: 'rate', rating: 'dislike', tags: ['bass-clash', 'too-long'], note: 'too  muddy', planId: 'tp-0123abcd'});
   assert.deepEqual(parseControlCommand({command: 'rate', rating: 'ok', note: '   '}), {command: 'rate', rating: 'ok', tags: []}, 'a blank note is dropped');
-  assert.equal(FEEDBACK_TAGS.length, 15);
+  assert.equal(FEEDBACK_TAGS.length, 17, 'two layered-entry tags appended (owner decisions 2026-11-16)');
   assert.ok(parseControlCommand({command: 'rate', rating: 'like', tags: [...FEEDBACK_TAGS]}));
   for (const bad of [{command: 'rate'}, {command: 'rate', rating: 'meh'}, {command: 'rate', rating: 7}, {command: 'rate', rating: 'love', tags: 'too-long'},
     {command: 'rate', rating: 'love', tags: ['unknown']}, {command: 'rate', rating: 'love', tags: [...FEEDBACK_TAGS, 'too-long']},
@@ -375,6 +375,9 @@ test('the report counts by recipe, band, choreography, entry, fallback and mode,
   assert.equal(rows('choreography')['bass-drop-handover'], 1);
   assert.equal(rows('choreography')['none (recipe uses its own automation)'], 1);
   assert.deepEqual(rows('rated on'), {pc: 4}, 'the phone rating was replaced by the later PC one');
+  // Older records carry no entry style or explore menu; they group as such (owner decisions 2026-11-16).
+  assert.deepEqual(rows('entry style'), {'none recorded': 4});
+  assert.deepEqual(rows('explore menu'), {'no menu (deterministic or manual)': 4});
   const cutRow = report.groups.recipe!.find(r => r.key === 'cut')!;
   assert.deepEqual([cutRow.n, cutRow.counts.dislike, cutRow.dislikedShare, cutRow.tooSmall], [1, 1, 1, true]);
   assert.ok(report.groups.recipe!.every(r => r.n >= MIN_GROUP || r.tooSmall));

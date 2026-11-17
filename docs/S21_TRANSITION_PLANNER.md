@@ -122,7 +122,7 @@ The same panel has an Explore checkbox with a seed, and Love/Like/OK/Dislike but
 
 Supersedes the older three-value log for new ratings (old browser ratings are migrated once and kept). Local only: nothing here is uploaded, committed or fed back to the planner.
 
-- **Schema `em.transition-feedback.v1`** (`web/transition-feedback.ts`, vocabulary in `web/feedback-vocabulary.ts`): `version`, `planId`, `plan` (the unchanged `TransitionPlanRecord`; the id must match its content), `rating` (`love`, `like`, `ok`, `dislike`), `tags` (multi-select from 15: too-abrupt, too-long, too-short, clashing-beat, clashing-key, bass-clash, vocals-clash, boring, bad-entry-spot, wrong-energy, tempo-change-audible, volume-jump, and the positives great-bass-handover, great-blend, great-surprise), `note` (text, at most 200 characters, control characters removed), `device` (`pc` or `phone`), `at` (ISO UTC time) and `measured` (pre-check status, a short reason and the number of failed checks it fell back from, or null). It holds song ids and SHA-256 hashes only: no audio, no absolute paths, no personal data. Unknown fields are refused, on write and on read.
+- **Schema `em.transition-feedback.v1`** (`web/transition-feedback.ts`, vocabulary in `web/feedback-vocabulary.ts`): `version`, `planId`, `plan` (the unchanged `TransitionPlanRecord`; the id must match its content), `rating` (`love`, `like`, `ok`, `dislike`), `tags` (multi-select from 17: too-abrupt, too-long, too-short, clashing-beat, clashing-key, bass-clash, vocals-clash, boring, bad-entry-spot, wrong-energy, tempo-change-audible, volume-jump, layered-entry-too-thin, and the positives great-bass-handover, great-blend, great-surprise, great-layered-entry; the two layered tags were appended on 2026-11-16), `note` (text, at most 200 characters, control characters removed), `device` (`pc` or `phone`), `at` (ISO UTC time) and `measured` (pre-check status, a short reason and the number of failed checks it fell back from, or null). It holds song ids and SHA-256 hashes only: no audio, no absolute paths, no personal data. Unknown fields are refused, on write and on read.
 - **Which transition.** A rating attaches to the **last completed** handover (`player.transition === 'complete'`), never the one being prepared. Studio and phone say which one. The phone sends the plan id it saw so a stale view is refused.
 - **File.** `local/transition-ratings/ratings.jsonl`, written only by the phone relay (see [S17](S17_PHONE_LISTENING.md)); append-only, so a re-rating adds a line and readers use the latest line per plan. The `local/` folder is gitignored. Without the relay the Studio keeps the browser cache only and says so.
 - **Report.** `npm run transitions:report` prints plain text and writes `local/transition-ratings/report.json`. It counts rated plans by rating, recipe, tempo-gap band, choreography, overlap bars, skipped-fraction bucket, fallback after a failed pre-check, explore vs auto, pre-check verdict and device; lists the most common complaint tags per recipe; and shows the best and worst plans with their parameters. Fewer than 20 rated plans in total, or 5 in a group, is labelled too small. No significance test is run and nothing is extrapolated. It is analysis only and does not change the planner (S23 is where learning would start, after listening).
@@ -326,7 +326,7 @@ The nine songs of the local rated pack were analysed read-only in place, with no
 - The section labels are heuristics. They were not checked against a listener's markup, and some are doubtful.
 - The 6 LU dip bound and the dissolve curves are engineering values, not calibrated by listening. Nothing here was heard.
 - The brake and loop extend have no route-free form. G6 (first acceptable, not best), G7 (rhythm evidence on both songs), G8 (tempo ramp ranges), G9, G10, G12–G14 are unchanged.
-- No exit waits beyond the second requested boundary (owner decision 2).
+- No exit waits beyond the second requested boundary (owner decision 2). Superseded on 2026-11-16 by decision D below: up to 8 bars for the end of a quiet A section.
 - Thresholds `@2` were not needed: the recipe claims leave every `@1` value unchanged.
 - Windows only. macOS and Linux were not run. The real phone and audio devices were not tested.
 
@@ -338,3 +338,189 @@ Songs are analysed before play and the results are kept. This is engineering onl
 - **PC store**: relay `GET /api/dj/dossiers`, `GET /api/dj/dossiers/<id>`, `POST /api/dj/dossier` (token, origin and loopback guarded) write atomically to git-ignored `local/song-dossiers/` (`scripts/song-dossier-file.ts`: no symlink following, no paths in errors, caps 96 KiB per dossier, 512 files, 32 MiB). It survives throwaway browser profiles such as `npm run phone:host`.
 - **Browser** (`web/song-dossier-store.ts`, `web/studio-dossiers.ts`): memory, then IndexedDB, then relay. A scheduler analyses missing or stale songs one at a time (now playing, next, queue, rest), pauses during a handover or pending Next, backs off after failures, and re-analyses when the analysis version changes. The page shows "Analysed 7/9 · next ready" and the phone card carries it in `DjStatus.analysis`. `?dossiers=off` disables it (the older lazy-load browser checks use it).
 - **Limits**: a dossier cannot rebuild the planner's full `MixAnalysis`; "next ready" means a current dossier exists and the planner's analysis cache is warm, and the planner's 6 s deadline fallback is unchanged. Importers do not write dossiers yet. No Node CLI. Real phone, macOS/Linux and listening are NOT TESTED.
+
+## Owner decisions 2026-11-16: layered entries, no automatic cut, 15% stretch and the explore menu
+
+The owner decided four things on 2026-11-16:
+- (A) There are no automatic instantaneous cuts. Layered, band-wise entries are used instead.
+- (B) The pitch-preserving stretch limit rises from 8% to 15%.
+- (C) Thresholds `@2` only if they are genuinely needed. Safety is never weakened.
+- (D) Next may wait up to 8 bars for a better exit.
+
+A later clarification added two points. Plain crossfades, the echo reset, the dissolves, the bass handover and the dual ramp all stay valid. While the owner rates transitions, the DJ should produce a varied, seeded random mix of styles.
+
+### Layered entries (`layered-entry@1`, `web/layered-entry.ts`)
+
+- **Styles.** Four styles run on the LR4 3-band split (160 Hz / 3.5 kHz):
+  - `bass-first`: B's bass first, under A.
+  - `mid-first`: B's vocal and lead band first.
+  - `high-first`: B's hats and air first.
+  - `drums-first`: B's mids and highs together, then its bass.
+- **Lengths.** An entry lasts 2, 4 or 8 of A's bars. Gaps up to 8% use 8 bars; larger gaps use 4. Two bars is the last rung only.
+- **Band crossings.** B's lead bands cross first, on equal-power curves (smoothstep, 8 steps), and A's matching bands leave in the same windows. A also closes a low-pass over the last 40% of the entry, and its fader closes over the last 10%.
+- **Echo tail.** `bass-first` and `mid-first` entries of 4 bars or more leave A on an echo tail: half-beat repeats, 0.2 send, 0.3 feedback, low-passed at 2.5 kHz. Those are the styles where A's highs leave last, so an echo of A's bass never sits on B's.
+- **Tempo.** B plays native. Beats are not aligned, and no beat alignment is claimed.
+- **Lane rules.** These are checked from the plan itself, before any audio:
+  - Masking: the two songs' low bands are never both above −3 dB.
+  - Continuity: the low-band power sum stays at or above −3.5 dB until B's bass has fully arrived.
+  - Order: B's lead bands reach half level before any other B band passes 0.1.
+- **Plan record.** `entryStyle` is an optional, first-class field: `{style, source, bars, echoTail, lastRung}`. EQ choreographies are also mapped to a style (source `eq-choreography@1`).
+- **Where the style appears:**
+  - the plan record;
+  - the route-free signature (`fallback-layered-entry/<style>:b<bars>:at<frame>`), so `rejected[]` names the style;
+  - `describeSetMix` and `DjStatus` (label and plain sentence);
+  - "Why this handover";
+  - the phone card wrapper in `web/studio.ts`. The phone relay itself is unchanged.
+- **Style by section.**
+
+  | Situation | Lead style |
+  | --- | --- |
+  | B enters at a drop | high-first |
+  | A leaves a breakdown or outro | bass-first |
+  | B enters at its intro | drums-first |
+  | B enters at a build | mid-first |
+  | A leaves a drop | high-first |
+  | No rule applies | default order, highs first |
+
+  A section-led entry is tried once per request, before the echo reset. The deterministic path therefore never spends its candidate budget on layered entries before the echo reset and dissolves have had a turn.
+
+### No automatic cut (decision A)
+
+- **Policy.** `transition-policy@3` drops `cut` from every band. Each list ends in the route-free chain.
+- **Route-free ladder.** The order is:
+  1. crossfade (gaps up to 8%; B native);
+  2. one section-led layered entry;
+  3. echo reset;
+  4. filter dissolve and tone dissolve;
+  5. layered entries in every style, one length each;
+  6. the last rung: the 2-bar layered entry. It is still pre-checked, and only its exact signature excludes it.
+
+  The chooser walks the exit bars in two passes. The first pass covers steps 1–4 at every bar, which keeps the echo reset's retry one bar later inside the attempt budget. The second pass covers steps 5–6.
+- **The player.** The tenth attempt (`SET_CANDIDATE_ATTEMPTS`) plans only the last rung. If ordinary candidates run out sooner, the last rung is tried before giving up. A last rung reached after failed checks is flagged like the old cut fallback (`fallbackAfterFailedPrecheck`, "Shortest layered entry (last rung) reached after N failed pre-checks").
+- **The cut gate is removed.** A 10 ms clean cut is planned only when the owner selected `cut` on a manual path that already offered it. That cut is then planned first.
+- **Covered paths.** Set Auto, set Next, Studio pair Auto (`automaticMixCandidates` now ends in `layered-entry` instead of `cut`) and phone Next (it uses the set path).
+- **The 8-bar wait (decision D).** The end of a quiet A section (breakdown or outro) is used if it falls within 8 bars after the requested exit. Before this change, the wait stopped at the second requested boundary.
+
+### Recipe claims `recipe-claims@2`
+
+- **What the claim says.** `layered-entry` claims no beat lock, a loudness dip bounded at 4 LU (tighter than the echo's 6 LU, because band hand-overs keep the power sum), and `layered: true`.
+- **What is judged.**
+  - Per-band behaviour. In the lead phase, B's lead bands must measure at least 6 dB above its other bands, relative to B native.
+  - A low-band masking proxy. The highest 500 ms `min(A low, B low)`, each relative to its own native level, must stay at or below −1.5 dB.
+  - The lane rules above.
+  - Loudness continuity (the envelope of the two songs). Per 400 ms window (100 ms hop, K-weighted):
+    - a rise of the mix over the LOUDER native song fails above the `thresholds@1` value (3 LU);
+    - a drop of the mix below the QUIETER native song (only the audible song when the other is silent) fails beyond the declared 4 LU.
+    - The rise and dip against the straight-line A-to-B energy interpolation are logged in `unclaimed[]` only.
+    - Why: when the songs differ a lot in level, B's bands arriving early is what the recipe does. The interpolation rule failed every layered entry on such pairs: rises when A is quiet, dips of 8–20 LU when B is quiet.
+    - On one owner-song pair the interpolation rule failed every smooth candidate, so the old ladder could pass only with the cut.
+    - Being louder than both songs, or a hole below both, still fails. The rule is a claim of this recipe only: every other recipe keeps the interpolation rule.
+    - This is a judgement call for review. No threshold value changed. A transition into a much quieter song now reaches B's level within the entry rather than along a straight line; nothing here was heard.
+- **What is not judged.** Beat phase is not judged, because alignment is not claimed.
+- **Missing evidence fails.** A layered spec without layered measurements never passes.
+- **Unchanged.** Every `thresholds@1` value and `transition-safety@1` are unchanged, so thresholds `@2` were not needed (decision C). `routeFreeJudgedAs('fallback-layered-entry')` is `layered-entry`.
+
+### 15% stretch (decision B, `transition-policy@3`)
+
+- **Limits.** WSOLA (`eutonos-wsola@1`) and `MIX_LIMITS` now accept tempo ratios from 0.85 to 1.15. The dual ramp's reach grows to about 35.3% (1.15² − 1).
+- **Bands.** Band edges belong to the lower band.
+
+  | Gap | Band | Auto order |
+  | --- | --- | --- |
+  | 0–4% | normal | blend, dual ramp, loudness match, filter sweep, loop extend, echo out, echo reset |
+  | 4–15% | stretched | dual ramp, blend, filter sweep, loop extend, echo out, echo reset |
+  | 15–32.25% | meet (both decks within 15%) | dual ramp, meet in the middle, echo out, tempo ramp, echo reset |
+  | 32.25–40% | bridge | dual ramp if it reaches, echo out, tempo ramp, brake, echo reset |
+  | above 40% | reset | brake, echo out, echo reset |
+
+  The route-free chain, ending in the last rung, follows every list. The plain crossfade keeps its own 8% limit, because B is not stretched there.
+- **Artefact measurements.** Offline engineering measurements on synthetic signals at 44.1 kHz (sines at 110, 220 and 880 Hz, a four-note chord, a 120 BPM noise-click train):
+  - Pitch held within 1 cent at every ratio.
+  - Every click came through once: no doubled or lost onsets, and onset width unchanged at about 7 ms.
+  - The sample-jump metric was unchanged (0.0125).
+  - WSOLA's local offset peaked at its 10 ms search bound at every ratio.
+  - The sine residual after a per-block sinusoid fit (a THD+N proxy) was between −34 and −65 dB at every ratio from 0.85 to 1.15. It was worst at 880 Hz (−34 to −43 dB), against −152 dB unstretched.
+  - 10–15% showed no measurable step up from 8% on these proxies. The splice residual exists at any stretch, and at 880 Hz it is large enough that it may be audible.
+  - Not measured: phasiness on dense polyphonic material, transient smearing on real drums, and listening. Listening is NOT TESTED.
+
+### Explore menu (`explore-menu@1`), default for set Auto and Next
+
+- **The draw.** In explore mode, every candidate that plans at this request goes on a menu: each beat-matched recipe the policy allows, crossfade, echo reset, both dissolves, and each layered style. One seeded, weighted draw picks among them.
+  - Floor weights: every candidate keeps at least half of an even share. Base weights are equal, because there is no learned preference yet.
+- **Rejection sampling.** A pick that fails its pre-check is excluded, and the next draw (the attempt number feeds the seed) picks among the rest. The style finally scheduled is therefore a weighted random pick among the candidates that pass.
+- **Draw limit.** At most 5 draws per handover (`maxDraws`). After 5 failed draws, the deterministic ladder takes the remaining attempts: other exit bars, the echo reset's later retry, then the last rung. It uses the section style order, not the seeded one, and the section-led layered entry is still tried once unless that style already failed. Without the limit, two owner-song pairs that the deterministic path schedules were refused in explore runs, because the draws spent the whole attempt budget at one exit bar.
+- **Late pass (changed rule, for review).** Explore draws often plan the earliest bar with a longer recipe, so their pre-check takes longer. On a short lead, the PASS can arrive after the plan's audio-clock deadline.
+  - Before: the whole Next request was refused ("Request Next again").
+  - Now: that exact parameterisation is excluded, recorded in `rejected[]`, and a later bar is chosen and pre-checked again. Nothing unchecked is ever scheduled, and the attempt budget still applies.
+  - The Windows deck gate found this with seed `1763426704` (1 of 20 seeds tried on its 174 BPM, 20-bar fixture). The set gate hit it once with a fresh seed.
+  - The deck gate now pins that seed, so it exercises the re-choose.
+- **Determinism.** The result is deterministic per seed.
+- **Plan record.** `menu` is optional: `{policy, seed, attempt, chosen, alternatives[{key, weight}]}`. `alternatives` are planned candidates, not pre-checked ones; failed draws are in `rejected[]`. "Why this handover" names the draw and the menu.
+- **Where it is the default.** On Studio's set page, the Explore checkbox is now checked by default, and the seed field takes a fresh seed on each page load. Set Auto and Next therefore explore unless the owner unticks it. The seed is shown, so a given transition can be replayed. The player API and scripts still default to deterministic Auto, so the tests and the owner-song run stay reproducible.
+- **What explore never does.** It never plans a cut, and the last rung still comes last.
+
+### Record compatibility and feedback
+
+- `entryStyle` and `menu` are optional. The record id is FNV-1a of the canonical body, and that body drops undefined fields, so records without these fields keep their ids. Existing ratings stay attached.
+- The feedback vocabulary appends two tags, `layered-entry-too-thin` and the positive `great-layered-entry`, for 17 in total. Older feedback stays valid.
+- `npm run transitions:report` groups by entry style and by explore menu.
+
+### Owner songs: 72 pairs after these decisions
+
+These results come from one offline harness. It ran on the owner's 9-song pack on Windows: 72 ordered pairs, a Next request at bar 16 (bar 13 for the shortest song), and the real set chooser, renders and pre-check with up to 10 attempts. It printed aggregates only. Both songs use their requested grids, so this harness plans no beat-matched recipe; the earlier tables in this document, which measured analysed grids, show 4. The baseline is `bffba00`, run through the same harness.
+
+| Run | Crossfade | Filter dissolve | Tone dissolve | Echo reset | Layered entry | Cut | Refused |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Before (`bffba00`, deterministic) | 25 | 25 | 0 | 20 | — | 1 | 1 |
+| After, deterministic | 25 | 20 | 0 | 13 | 13 | 0 | 1 |
+| After, explore seed base 1 | 5 | 21 | 19 | 6 | 20 | 0 | 1 |
+| After, explore seed base 2 | 8 | 19 | 14 | 12 | 18 | 0 | 1 |
+| After, explore seed base 3 | 6 | 19 | 15 | 14 | 17 | 0 | 1 |
+
+- **Zero cuts.** No run planned a cut, and no candidate tried was a cut. The baseline scheduled 1 cut, on a 122→128 pair; it now gets a drums-first 8-bar layered entry.
+- **One refusal, the same pair as the baseline** (122→110). Every candidate failed the unchanged evaluator, and every layered entry failed the frozen `transition-safety@1` true-peak ceiling (−0.21 to +0.71 dBTP, with clipping on two). Safety was not weakened, so this pair is still refused. A headroom trim on layered entries is a possible later change; it was not made here.
+- **Layered entries by style:**
+
+  | Run | bass-first | mid-first | high-first | drums-first | Last rung (2 bars) |
+  | --- | --- | --- | --- | --- | --- |
+  | Deterministic | 0 | 0 | 8 | 5 | 0 |
+  | Explore 1 | 6 | 5 | 5 | 4 | 3 |
+  | Explore 2 | 6 | 6 | 4 | 2 | 3 |
+  | Explore 3 | 2 | 2 | 6 | 7 | 2 |
+
+  The deterministic path uses only the section-led styles. Explore spreads across all four styles and all three lengths.
+- **The tone dissolve** is never the deterministic choice on these pairs, because the filter dissolve passes first. Explore schedules it on 14–22 pairs.
+- **Attempts.** On the deterministic run, 35 pairs passed on the first attempt, and none needed more than 8.
+
+### Tests (this pass)
+
+- New `tests/layered-entry.test.ts` (8 tests):
+  - lanes for every style and length, the masking break, and the echo-tail rule;
+  - style by section and explore determinism;
+  - `recipe-claims@2` pass and fail cases, including missing evidence and both sides of the continuity envelope;
+  - explore-menu determinism, floor weights and coverage;
+  - chooser explore (varied, with the menu recorded and the next draw after a FAIL);
+  - record id compatibility;
+  - the no-cut ladder and owner cut;
+  - the 15% limits.
+- Changed expectations (each test carries a comment):
+  - `tempo-gap table` (s21-transition): no `cut`, new band edges, and 120→132 and 120→144 move to `stretched` and `meet` with the dual ramp first.
+  - Safety-net tests (s21-transition, set-mode): a layered entry where the cut was; `unavailable` without layered entries; a cut only with `allowCut`.
+  - `+22% chain` (s21-structure): it now ends at the 2-bar last rung after exactly 10 attempts: the section-led layered entry, the echo reset (twice, at two bars), 2 filter, 2 tone, then general layered entries.
+  - `the cut gate` was replaced by `no automatic cut`: a layered entry at the end of a quiet A section 8 bars later, and a cut only for the owner.
+  - The `+22.3%` echo-reset test excludes the section-led layered entry, so it still judges the echo reset.
+  - `mix-precheck-player`: the fallback after failed pre-checks is the last rung, never a cut.
+  - `mix-recipes`: Auto candidates end in `layered-entry`.
+  - `s21-partb`: the dual ramp reaches about 35%.
+  - `time-pitch`: the bounds are 0.85 and 1.15.
+  - `transition-feedback`: 17 tags, plus the new report groups.
+  - `set-browser-check`: explore is on by default.
+  - `mix-precheck-player`: a PASS after its audio deadline now re-chooses a later bar and pre-checks it again. It used to refuse.
+  - `deck-browser-check`: pins explore seed `1763426704`, which exercises the late-pass re-choose (see "Late pass").
+
+### Known limits (this pass)
+
+- Nothing here was heard. The band windows, the 6 dB lead margin, the −1.5 dB masking proxy and the 4 LU dip are engineering values, not calibrated by listening.
+- Layered entries do not align beats. Over 8 bars, two native grids drift apart when the tempi differ, so gaps above 8% use 4 bars.
+- The explore menu's alternatives are planned, not pre-checked, so a listed alternative may have failed had it been drawn.
+- Windows only. macOS and Linux were not run. The real phone and audio devices were not tested.
