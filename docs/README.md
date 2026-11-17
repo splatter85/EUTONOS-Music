@@ -28,6 +28,7 @@ Read [Product goal](PRODUCT_GOAL.md) → [First playable](FIRST_PLAYABLE.md) →
 | [S11 library](S11_LIBRARY.md) | Versioned local library, saved recipe replays, stopped restore, renderer history, three recipe studies and their limits |
 | [S19 transitions](S19_TRANSITIONS.md) | Built on worker branch pending coordinator review/merge: full-song window/native join and five explicit styles; [detailed handoff](handoffs/EMF-S19-HANDOFF.md) |
 | [S21 transition planner](S21_TRANSITION_PLANNER.md) | Part A built on `work/emf-s21-transitions`, not merged: tempo-gap recipe policy, whole-song entries, LR4 EQ choreography, seeded explore records and `transition-safety@1`; [handoff](handoffs/EMF-S21-HANDOFF.md) |
+| [Rating assessment design](RATING_ASSESSMENT_DESIGN.md) | Proposal (design only, nothing built): what song and transition ratings are evidence of, small-sample assessment rules, evaluator calibration, mixability, learner safety contract and proposed schemas |
 | [Stage identity target](STAGE_IDENTITY_TARGET.md) | Target end state for stable stage IDs with reorderable labels; migration on hold |
 | [DJ transitions](DJ_TRANSITIONS.md) | EMF-S14 analysed mix points, EQ/filter handovers, prepared tempo/pitch and the automatic `mix` handoff |
 | [Phone listening](S17_PHONE_LISTENING.md) | EMF-S17 (in main for engineering scope, Windows only; real phone/listening untested): streaming the live PC DJ to a phone through the loopback relay and Tailscale serve, phone remote commands, security split and limits; [evidence](handoffs/EMF-S17-HANDOFF.md) |
@@ -63,6 +64,7 @@ The [guidebook](guides/README.md) retains detailed foundations, genre vocabulary
 | [EMF campaign](campaigns/EMF_INITIAL_INFRASTRUCTURE.md) | Sole stage/status/acceptance owner and CLOUD/PC/BOTH slice order with handoffs |
 | [EMD campaign](campaigns/EMD_DJ_APP.md) | Human-facing DJ app on the shared DJ interface, after EMF's Mission Control adapter |
 | [EMS campaign](campaigns/EMS_MUSIC_STUDIO.md) | Owner-local Music Studio improvements and the rated-takes export to the DJ |
+| [EMT campaign (draft)](campaigns/EMT_TASTE_ASSESSMENT.md) | PLANNED draft, not admitted or on the board: taste and rating assessment slices EMT-S01 to S08 and what to reconcile with EMF-S23 |
 | [Delivery plan](DELIVERY_PLAN.md) | Proof, pilot, authoring, full qualification and earned later expansion |
 | [Decisions](DECISIONS.md) | Stable design choices and reconsideration conditions |
 | [Work model](WORK_MODEL.md) | Repo-local convention and **mandatory detailed + mini handoffs** at every slice |
