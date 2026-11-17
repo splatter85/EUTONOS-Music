@@ -148,15 +148,15 @@ try {
   report.native = await page.evaluate(async () => {
     const load = (path: string) => import(path);
     const {loadBrowserPack} = await load('/dist/src/browser-pack.js') as typeof import('../src/browser-pack.js');
-    const {createRecipeStudyPack} = await load('/dist/src/recipe-library.js') as typeof import('../src/recipe-library.js');
-    const {S01_RECIPE, S11_RECIPE_FAMILIES, compilePhrase} = await load('/dist/src/phrase-plan.js') as typeof import('../src/phrase-plan.js');
+    const {createRecipeBreadthPack} = await load('/dist/src/recipe-library.js') as typeof import('../src/recipe-library.js');
+    const {S01_RECIPE, S11_ALL_RECIPE_FAMILIES, compilePhrase} = await load('/dist/src/phrase-plan.js') as typeof import('../src/phrase-plan.js');
     const {decodeProceduralSamples, ProceduralSource} = await load('/dist/src/procedural-source.js') as typeof import('../src/procedural-source.js');
     const {WebAudioClock} = await load('/dist/src/web-audio.js') as typeof import('../src/web-audio.js');
     const loaded = await loadBrowserPack(new URL('/fixtures/s01/manifest.json', location.href), true);
-    const pack = createRecipeStudyPack(loaded.pack, {id: 's11-browser-studies', revision: 1}, S01_RECIPE);
+    const pack = createRecipeBreadthPack(loaded.pack, {id: 's11-browser-studies', revision: 1}, S01_RECIPE);
     const bound = {...loaded, pack};
     const results: {recipe: string; rate: number; state: string; seed: number; frames: number; peak: number; differingBits: number}[] = [];
-    for (const recipe of S11_RECIPE_FAMILIES) for (const rate of [44100, 48000]) {
+    for (const recipe of S11_ALL_RECIPE_FAMILIES) for (const rate of [44100, 48000]) {
       for (const state of ['explore', 'drive'] as const) for (const seed of [0, 104729]) {
         const render = async () => {
           const context = new OfflineAudioContext(1, rate * 16, rate), clock = new WebAudioClock(context);
@@ -187,7 +187,9 @@ try {
     }
     return results;
   });
-  report.groups.push('24 native recipe/state/seed/rate cases, paired bitwise replay, headroom and resource release');
+  const nativeCases = report.native;
+  assert.ok(Array.isArray(nativeCases) && nativeCases.length > 0);
+  report.groups.push(`${nativeCases.length} native recipe/state/seed/rate cases, paired bitwise replay, headroom and resource release`);
   assert.deepEqual(errors, []);
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {

@@ -4,7 +4,7 @@
  */
 import {validatePackManifest} from './pack.js';
 import type {AudioPack, VersionRef} from './pack-types.js';
-import {compilePhrase, S11_RECIPE_FAMILIES, type CompilePhraseOptions, type ProceduralPlan,
+import {compilePhrase, S11_RECIPE_FAMILIES, S11_ALL_RECIPE_FAMILIES, type CompilePhraseOptions, type ProceduralPlan,
   type S01PhraseState} from './phrase-plan.js';
 import {digestJson, freeze, hash, integer, object, requireLibrary, sameRef, versionRef} from './library-codec.js';
 
@@ -32,6 +32,20 @@ export function createRecipeStudyPack(input: AudioPack, identity: VersionRef, te
     'source already contains a reserved S11 recipe identity', 'conflict');
   return freeze(validatePackManifest({...pack, ...next, recipes: [...pack.recipes,
     ...S11_RECIPE_FAMILIES.map(family => ({...base, id: family.id, revision: family.revision,
+      genres: [family.genre]}))]}));
+}
+
+/** S22 breadth pack uses a new identity; never mutate the original three-study pack
+ * at the same id/revision, because existing replay digests must remain resolvable. */
+export function createRecipeBreadthPack(input: AudioPack, identity: VersionRef, template: VersionRef): AudioPack {
+  const pack = validatePackManifest(input), next = versionRef(identity), wanted = versionRef(template);
+  requireLibrary(!sameRef(pack, next), 'breadth studies need a new pack identity', 'conflict');
+  const base = pack.recipes.find(item => sameRef(item, wanted));
+  requireLibrary(base, 'template recipe revision is unavailable', 'unavailable');
+  requireLibrary(!pack.recipes.some(item => S11_ALL_RECIPE_FAMILIES.some(family => item.id === family.id)),
+    'source already contains a reserved S11 study or breadth recipe identity', 'conflict');
+  return freeze(validatePackManifest({...pack, ...next, recipes: [...pack.recipes,
+    ...S11_ALL_RECIPE_FAMILIES.map(family => ({...base, id: family.id, revision: family.revision,
       genres: [family.genre]}))]}));
 }
 
