@@ -653,3 +653,18 @@ Increment 1 comes first because it is small and removes the direct cause of the 
 8. **Generator hints.** May the engine read the generator's own metadata (instrumental flag, lyric timing, requested structure) as hints for lead presence and sections?
 9. **Time-stretch limit.** Keep ±8% until listening, or allow an experiment at ±10–12% on drum-heavy passages?
 10. **Shadow period.** How many sessions should the engine run in shadow before it drives playback?
+
+## Owner decisions (2026-11-16, in chat)
+
+| # | Question | Decision |
+| --- | --- | --- |
+| 1 | Recipe-aware thresholds (`@2` gating live, `@1` logged beside it) | Yes. |
+| 2 | Next may wait for a better exit, up to 8 bars | Yes. |
+| 3 | Local git-ignored per-song analysis store written through the relay | Yes. |
+| 4 | Explore rate | Not yet decided. The owner asked what it means; working default when the learning increment arrives: at most 1 handover in 4, with an off switch. |
+| 5 | Clean cut as a normal candidate | **No pure clean cuts, from now on.** Replace the cut with layered entries (see below). |
+| 6 | Time-stretch limit | Up to **15%** (was 8%). Engineering must check artefacts at 10-15% and report; listening still required. |
+
+### Replacement for the clean cut: layered entry (owner direction)
+
+A hard A-to-B cut with both bands switching at one instant is no longer an allowed plan. Where the old chain would end in a cut, the engine instead brings the incoming song in **in parts and modulates both songs**: for example the incoming bass or the vocal/lead band comes in first behind a filter or EQ, the rest of the song follows over bars, while the outgoing song is thinned (its bass, then mids, then highs) by EQ/filter so the two never fully collide. This generalises the existing tone dissolve and bass handover into a family of **band-wise entries**: bass-first, vocal-first, drums-first, high-band-first, with matching outgoing carve-outs, filter openings and echo tails. Candidate generation, pre-checks and the plan record must name the entry style; ratings can then separate which styles work. The degradation ladder keeps a final rung, but it is the shortest safe layered entry, never an instantaneous cut.
