@@ -5,6 +5,7 @@
  * The AI generator is the separate local Music Studio service (optional, loopback only).
  * One playback owner per page: starting any engine stops the others first.
  */
+import {PAIR_SEARCH_MODES, type PairSearchMode} from './engine-journal.js';
 import {loadBrowserPack, type LoadedBrowserPack} from '../src/browser-pack.js';
 import {SmallPlayer, type PlayerSnapshot} from '../src/player.js';
 import type {MixRecipe} from '../src/mix-planner.js';
@@ -71,6 +72,9 @@ const requestedPack = params.get('pack') ?? 's01';
 const packChoice: PackChoice | null = Object.hasOwn(PACKS, requestedPack) ? requestedPack as PackChoice : null;
 /** S18 any-to-any set: no authored routes, automatic mix only, Next/Auto move the music. */
 const isSet = packChoice === 'set';
+/** Engine increment 3 (pair-search@1): off by default; `?pairsearch=shadow|live` or the Why panel select turn it on. */
+const requestedPairSearch = params.get('pairsearch');
+let pairSearchMode: PairSearchMode = (PAIR_SEARCH_MODES as readonly string[]).includes(requestedPairSearch ?? '') ? requestedPairSearch as PairSearchMode : 'off';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -198,6 +202,7 @@ function getDj(): DeterministicDj {
     isSet ? browserMixPrecheck : null);
   dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
+  if (isSet) djPlayer.setPairSearch(pairSearchMode);
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
   // Owner clarification 2026-11-16: explore (seeded, logged random styles) is the default for set Auto/Next.
   if (isSet) queueMicrotask(applyExplore);
@@ -562,6 +567,14 @@ function applyExplore(): void {
   try { getDj(); djPlayer?.setTransitionExplore(exploreBox.checked ? seed : null); }
   catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
 }
+const pairSearchSelect = isSet ? $<HTMLSelectElement>('set-pair-search-mode') : null;
+if (pairSearchSelect) {
+  pairSearchSelect.value = pairSearchMode;
+  pairSearchSelect.addEventListener('change', () => {
+    pairSearchMode = pairSearchSelect.value as PairSearchMode;
+    try { djPlayer?.setPairSearch(pairSearchMode); } catch (error) { djError.textContent = error instanceof Error ? error.message : String(error); }
+  });
+}
 exploreBox?.addEventListener('change', applyExplore); exploreSeed?.addEventListener('change', applyExplore);
 // Explore is on by default (studio.html); a fresh seed per page load gives a new but logged and replayable sequence.
 if (exploreSeed && exploreSeed.dataset.fresh === 'true') exploreSeed.value = String(Math.floor(Date.now() / 1000) % 2 ** 31);
@@ -618,6 +631,11 @@ function renderSet(): void {
       : 'Rate the last handover that finished playing. None has finished yet.');
   }
   if (summary?.set && summary.set.transition?.id !== shownPlan?.id) { shownPlan = summary.set.transition ?? null; renderWhy(transitionReadout(summary)); }
+  // Pair search: keep the background table aimed at the queue head (idempotent; cancelled/restarted when it changes).
+  if (djPlayer && snap) {
+    djPlayer.preparePair(snap.control.queue[0]?.trackId ?? null);
+    setText('set-pair-search', djPlayer.pairSearchReadiness().text);
+  }
   setText('set-mix', player?.mix?.phase === 'preparing' ? player.mix.reason
     : player?.mix?.phase === 'unavailable' ? `No handover: ${player.mix.reason}`
     : lastSetMix ? `${summary?.set ? 'Planned' : 'Last handover'}: ${lastSetMix}` : 'No handover planned yet.');

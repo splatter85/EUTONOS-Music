@@ -279,5 +279,18 @@ export function validatePrecheckEvaluation(value: unknown, recipe: TransitionSpe
   return evaluation;
 }
 export type PrecheckRuntime = (request: PrecheckRequest, signal?: AbortSignal) => Promise<PrecheckReport>;
+/** Report status from a validated evaluation (shared by the Worker adapter and the inline runtime). */
+export function reportFromEvaluation(evaluation: TransitionEvaluation, coverage: PrecheckCoverage): PrecheckReport {
+  const reasons = evaluation.flags.map(flag => flag.metric + ' ' + flag.level).join(', ');
+  const phase = evaluation.measurements?.beatPhase;
+  const unjudgedPhase = !!phase && !phase.judged;
+  const reason = (reasons || 'no configured defect flagged') + (unjudgedPhase ? '; beat phase unjudged' + (phase.reason ? ` (${phase.reason})` : '') : '');
+  // S21: a transition-safety@1 failure rejects the plan even when thresholds@1 pass or warn.
+  const unsafe = evaluation.safety?.verdict === 'fail';
+  const safetyReason = unsafe ? '; safety ' + evaluation.safety!.flags.map(f => f.metric).join(', ') + ' fail' : '';
+  // Part B: an unjudged beat phase is never reported as a plain PASS; it is a WARN that names why.
+  const status = unsafe ? 'fail' : evaluation.verdict === 'pass' && unjudgedPhase ? 'warn' : evaluation.verdict;
+  return {version: PRECHECK_PROTOCOL, status, reason: reason + safetyReason, evaluation, coverage};
+}
 export const precheckLabel = (report: PrecheckReport): string => 'DJ plan check ' + report.status.toUpperCase() +
   (report.reason ? ': ' + report.reason : '') + (report.coverage?.nativeJoin === 'after-window' ? '; later native join is outside this check' : '');

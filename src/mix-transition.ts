@@ -14,7 +14,8 @@ import {harmonicCompatibility, MIX_PLANNER_VERSION} from './mix-planner.js';
 import {chooseChoreography, ENTRY_POLICY as SET_ENTRY_POLICY, entrySkipCost as setEntrySkipCost, exploreChoice, makeTransitionPlanRecord,
   DUAL_RAMP_LIMITS, dualRampTempo, meetTempo, tempoGapPolicy, TRANSITION_POLICY_VERSION, type ExploreChoice, type PairFeatures, type SetRecipe, type TempoGapDecision,
   type TransitionPlanRecord, type TransitionStyle, entryStyleRecord, type EntryStyleRecord, EXPLORE_MENU_POLICY, exploreMenuDraw,
-  type ExploreMenuRecord} from '../web/transition-policy.js';
+  type ExploreMenuRecord, RHYTHM_RECIPES} from '../web/transition-policy.js';
+import type {EngineRecord} from '../web/engine-journal.js';
 import {CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyParams} from '../web/eq-choreography.js';
 import {choreographyEntryStyle, ENTRY_STYLES, exploreEntryStyles, LAYERED_ENTRY_LIMITS, layeredEntryAutomation, preferredEntryStyles, type EntryStyle, type LayeredBars, type LayeredEntryInfo} from '../web/layered-entry.js';
 import {labelSongStructure, labelText, MIX_STRUCTURE_VERSION, sectionAt, sectionEndingAt, sectionStartingAt, structuralCues, structurePairTerm, type SongStructure, type HandoverStructure, handoverSentence} from '../web/mix-structure.js';
@@ -808,6 +809,17 @@ export interface SetTransitionInput {
    * and only the ladder's last rung (the shortest layered entry, still pre-checked) is planned.
    */
   readonly lastRung?: boolean;
+  /**
+   * Pair search (engine-candidates@1): plan exactly this one candidate. The exit is this A bar only, explore
+   * is off and the result is checked against the candidate (recipe, length, exit); a mismatch is unavailable.
+   * `recipe` is a policy recipe (analyzed; the planner picks B's entry), a route-free recipe, or
+   * `fallback-layered-entry/<style>`. `bars` fixes the route-free length; `lastRung` marks the 2-bar entry.
+   */
+  readonly candidate?: SetCandidateInput;
+}
+export interface SetCandidateInput {
+  readonly recipe: string; readonly exitBar: number;
+  readonly entryFrame?: number | null; readonly bars?: number | null; readonly lastRung?: boolean;
 }
 interface SetChoiceBase {
   readonly exitBar: number; readonly boundaryBar: number;
@@ -991,6 +1003,7 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
   const toGrid = setBarGrid(to.asset, to.analysis, sampleRate);
   if (fromGrid.source === 'requested') notes.push('A uses its requested grid (not measured).');
   if (toGrid.source === 'requested') notes.push('B uses its requested grid (not measured).');
+  if (input.candidate) return candidateChoice(input, input.candidate, fromGrid, toGrid, fromStructure, toStructure, notes);
   const first = nextBoundary(fromGrid, boundary.anchorBar, boundary.bars, earliestFrame);
   const second = first.bar + boundary.bars;
   const boundaries = [first, {bar: second, frame: downbeatAt(fromGrid, second)}];
@@ -1199,10 +1212,96 @@ function chooseSetTransitionWith(input: SetTransitionInput, fromStructure: SongS
   return {kind: 'unavailable', reason: 'No future bar of A leaves room for a handover; A will finish naturally.', notes};
 }
 
+/** Route-free lengths per recipe for one tempo gap (the lengths `planRouteFreeTransition` would try). */
+export function routeFreeLengths(recipe: string, fromBpm: number, toBpm: number): readonly number[] {
+  const gap = Math.abs(toBpm / fromBpm - 1);
+  if (recipe === 'fallback-crossfade') return gap < ROUTE_FREE_LIMITS.equalTempo ? [ROUTE_FREE_LIMITS.equalTempoBars, ROUTE_FREE_LIMITS.nearTempoBars]
+    : gap <= ROUTE_FREE_LIMITS.crossfadeTempo ? [ROUTE_FREE_LIMITS.nearTempoBars] : [];
+  const near = gap <= ROUTE_FREE_DISSOLVE.nearGap;
+  if (recipe === 'fallback-filter-dissolve') return near ? ROUTE_FREE_DISSOLVE.filterBars.near : ROUTE_FREE_DISSOLVE.filterBars.far;
+  if (recipe === 'fallback-tone-dissolve') return near ? ROUTE_FREE_DISSOLVE.toneBars.near : ROUTE_FREE_DISSOLVE.toneBars.far;
+  if (recipe.startsWith('fallback-layered-entry/')) return [gap <= LAYERED_ENTRY_LIMITS.nearGap ? 8 : 4];
+  return [0];
+}
+
+/** Pair search: plan one generated candidate at its own exit bar (no explore, no ladder, no other bar). */
+function candidateChoice(input: SetTransitionInput, c: SetCandidateInput, fromGrid: SetBarGrid, toGrid: SetBarGrid,
+  fromStructure: SongStructure | null, toStructure: SongStructure | null, notes: string[]): SetTransitionChoice {
+  const {from, to, sampleRate, earliestFrame} = input;
+  if (!Number.isSafeInteger(c.exitBar) || c.exitBar < 0) return {kind: 'unavailable', reason: 'Invalid candidate exit bar.', notes};
+  const frame = downbeatAt(fromGrid, c.exitBar);
+  const owner = input.options?.recipe && input.options.recipe !== 'auto' ? input.options.recipe : null;
+  const beatConfident = !!from.analysis && !!to.analysis && fromGrid.source === 'measured' && toGrid.source === 'measured' &&
+    [from.analysis, to.analysis].every(a => a.beatGrid.confidence >= SET_GRID_LIMITS.tempoConfidence && a.structure.downbeatConfidence >= SET_GRID_LIMITS.downbeatConfidence);
+  const policy = tempoGapPolicy(fromGrid.bpm, toGrid.bpm, {beatConfident});
+  const rejected: {recipe: string; reason: string}[] = [];
+  const why = [...policy.reasons, `Pair search candidate: ${c.recipe}${c.bars ? ` (${c.bars} bars)` : ''} at bar ${c.exitBar + 1}.`];
+  const base = {exitBar: c.exitBar, boundaryBar: c.exitBar, fromGrid, toGrid, notes, policy, rejected, why};
+  const unavailable = (reason: string): SetTransitionChoice => ({kind: 'unavailable', reason, notes: [...notes, reason]});
+  if (!c.recipe.startsWith('fallback-')) {
+    if (!from.analysis || !to.analysis) return unavailable('An analyzed candidate needs both analyses.');
+    if (!beatConfident && (RHYTHM_RECIPES as readonly string[]).includes(c.recipe)) return unavailable('A beat-matched candidate needs trusted grids on both songs.');
+    if (!(policy.recipes as readonly string[]).includes(c.recipe)) return unavailable(`${c.recipe} is not in the tempo-gap policy for this pair.`);
+    const tol = Math.round(fromGrid.barFrames / 8);
+    const structural = fromStructure ? structuralCues(from.analysis, fromStructure, false, s => Math.abs(frame - s.endFrame) <= tol) : [];
+    const scoped: MixAnalysis = {...from.analysis, mixOut: [...from.analysis.mixOut, ...structural].filter(x => Math.abs(x.frame - frame) <= tol)};
+    if (!scoped.mixOut.length) return unavailable('No analyzed A cue on that bar.');
+    const toPlan: MixAnalysis = toStructure ? {...to.analysis, mixIn: [...to.analysis.mixIn, ...structuralCues(to.analysis, toStructure, true)]} : to.analysis;
+    const stretched = SET_STRETCHED.includes(c.recipe);
+    const maxOverlapSeconds = input.maxOverlapSeconds ?? 26;
+    const features = pairFeatures(scoped, toPlan, fromGrid.bpm, maxOverlapSeconds, input.style);
+    const usesChoreo = ['blend', 'meet-in-middle', 'dual-ramp'].includes(c.recipe);
+    const dual = c.recipe === 'dual-ramp' ? dualRampTempo(fromGrid.bpm, toGrid.bpm) : null;
+    const auto = chooseChoreography(dual ? {...features,
+      maxOverlapSeconds: Math.max(8 * 60 / fromGrid.bpm, maxOverlapSeconds - DUAL_RAMP_LIMITS.rampBars * 4 * 60 / fromGrid.bpm)} : features);
+    const choreo = input.options?.choreography ?? auto.params;
+    const plan = planAutomaticMix(scoped, toPlan, {...input.options, ...(fromStructure || toStructure ? {structure: {from: fromStructure, to: toStructure}} : {}),
+      recipe: c.recipe as NonNullable<MixPlannerOptions['recipe']>, minimumFromFrame: earliestFrame, returnToOriginalTempo: stretched, harmonicMode: 'limited',
+      ...(usesChoreo ? {choreography: choreo} : {}),
+      ...(c.recipe === 'meet-in-middle' ? {meetBpm: meetTempo(fromGrid.bpm, toGrid.bpm, 0.5), tempoReturn: {bars: policy.perDeckChange > 0.05 ? 8 : 4, curve: 'smoothstep' as const}} :
+        dual ? {tempoReturn: {bars: Math.abs(dual.toRatio - 1) > 0.05 ? 8 : 4, curve: 'smoothstep' as const}} :
+        stretched && policy.band === 'stretched' ? {tempoReturn: {bars: 4, curve: 'smoothstep' as const}} : {}),
+      ...(c.recipe === 'echo-out' ? {echoHeuristic: true} : {})});
+    if (plan.kind !== 'mix') return unavailable(plan.reason);
+    if (plan.recipe !== c.recipe) return unavailable(`The planner returned ${plan.recipe}, not ${c.recipe}.`);
+    if (['tempo-ramp', 'brake'].includes(plan.recipe) && to.channels > 2) return unavailable('Native-rate render needs a prepared B.');
+    if (stretched) {
+      try {
+        const window = setBlendWindow(plan, toPlan, to.frames);
+        if (!fitsBlendRender(window.sourceEndFrame - window.sourceStartFrame, to.channels, sampleRate)) return unavailable('B entry exceeds the bounded time-stretch render budget.');
+      } catch (error) { return unavailable(error instanceof Error ? error.message : String(error)); }
+    }
+    return {kind: 'analyzed', plan, ...base, why: [...why, ...(plan.choreography ? auto.reasons : [])]};
+  }
+  // Route-free: one recipe, one length, B's entry snapped to its own grid within 1/8 bar.
+  let entry = c.entryFrame ?? routeFreeEntry(to.analysis, to.frames, false, {from: from.analysis, fromStructure, toStructure,
+    exitFrame: frame, barFrames: fromGrid.barFrames}) ?? toGrid.downbeats[0]!;
+  const tolB = Math.round(toGrid.barFrames / 8);
+  const snap = toGrid.downbeats.reduce((best, d) => Math.abs(d - entry) < Math.abs(best - entry) ? d : best, toGrid.downbeats[0]!);
+  if (Math.abs(snap - entry) <= tolB) entry = snap;
+  const key = c.recipe;
+  const layeredKey = key.startsWith('fallback-layered-entry/');
+  const lengths = layeredKey ? [] : routeFreeLengths(key, fromGrid.bpm, toGrid.bpm);
+  const exclude = c.bars ? lengths.filter(b => b !== c.bars).map(b => routeFreeSignature(key, b, frame)) : [];
+  const ending = sectionEndingAt(fromStructure, frame, Math.round(fromGrid.barFrames / 8)), inside = sectionAt(fromStructure, frame - 1);
+  const layered = preferredEntryStyles(ending?.label ?? inside?.label ?? null, sectionAt(toStructure, entry)?.label ?? null);
+  const cut = key === 'fallback-cut';
+  if (cut && owner !== 'cut') return unavailable('A clean cut is planned only when the owner selected it.');
+  const plan = planRouteFreeTransition({grid: fromGrid, frames: from.frames}, {grid: toGrid, frames: to.frames}, frame, sampleRate,
+    {entryFrame: entry, exclude, allowCut: cut, earliestFrame, layered,
+      ...(cut ? {} : {only: key}), ...(c.lastRung ? {lastRung: true} : {})});
+  if (plan.kind !== 'route-free') return unavailable(plan.reason);
+  const got = plan.layered ? layeredRecipeKey(plan.layered.style) : plan.recipe;
+  if (got !== key || (c.bars !== null && c.bars !== undefined && plan.bars !== c.bars) || plan.fromExitFrame !== frame || !!plan.layered?.lastRung !== !!c.lastRung)
+    return unavailable(`The planner returned ${got} (${plan.bars} bars), not the candidate.`);
+  return {kind: 'route-free', plan, ...base,
+    why: [...why, ...(plan.layered ? [`Entry style (${plan.layered.version}): chosen by the pair search.`] : [])]};
+}
+
 /** S21 versioned, replayable record of the exact plan scheduled (ratings attach to it). */
 export function setTransitionRecord(choice: Exclude<SetTransitionChoice, {kind: 'unavailable'}>,
   from: {readonly id: string; readonly sha256: string}, to: {readonly id: string; readonly sha256: string; readonly frames: number},
-  sampleRate: number, mode: 'auto' | 'explore' | 'manual', seed: number | null = null): TransitionPlanRecord {
+  sampleRate: number, mode: 'auto' | 'explore' | 'manual', seed: number | null = null, engine?: EngineRecord): TransitionPlanRecord {
   const plan = choice.plan;
   const choreography = choice.kind === 'analyzed' ? plan.kind === 'mix' && 'choreography' in plan ? plan.choreography?.params ?? null : null : null;
   const meet = choice.kind === 'analyzed' && 'meet' in plan ? plan.meet ?? null : null;
@@ -1221,6 +1320,6 @@ export function setTransitionRecord(choice: Exclude<SetTransitionChoice, {kind: 
       skippedFraction: plan.toEntryFrame / to.frames, entryRank},
     sampleRate, tempo: {gap: choice.policy?.gap ?? Math.abs(plan.toBpm / plan.fromBpm - 1), band: choice.policy?.band ?? 'normal', meetBpm: meet?.bpm ?? null},
     recipe: plan.recipe as SetRecipe | RouteFreeRecipe, choreography, overlapBars,
-    ...(entryStyle ? {entryStyle} : {}), ...(choice.menu ? {menu: choice.menu} : {}),
+    ...(entryStyle ? {entryStyle} : {}), ...(choice.menu ? {menu: choice.menu} : {}), ...(engine ? {engine} : {}),
     why: [...(choice.why ?? [])], rejected: [...(choice.rejected ?? [])]});
 }

@@ -87,6 +87,10 @@
               <label class="check"><input id="set-explore" type="checkbox" checked autocomplete="off"> Explore (seeded random styles, default on)</label>
               <label>seed<input id="set-explore-seed" type="number" min="0" step="1" value="1" data-fresh="true" autocomplete="off"></label>
             </div>
+            <div class="set-controls">
+              <label>Pair search<select id="set-pair-search-mode" autocomplete="off"><option value="off">off</option><option value="shadow">shadow (logs only)</option><option value="live">live</option></select></label>
+            </div>
+            <p id="set-pair-search" class="dim" role="status">Pair search off.</p>
             <p id="set-rate-which" class="dim" role="status">Rate the last handover that finished playing. None has finished yet.</p>
             <div class="set-controls" id="set-rate-buttons">
               <button class="chip" type="button" data-rate="love">Love it</button><button class="chip" type="button" data-rate="like">Like it</button>
