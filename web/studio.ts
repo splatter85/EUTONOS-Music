@@ -23,6 +23,9 @@ import type {TransitionPlanRecord} from './transition-policy.js';
 import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
 import {makeTransitionFeedback, type FeedbackDevice, type FeedbackMeasured} from './transition-feedback.js';
 import {FeedbackStore} from './transition-feedback-store.js';
+import {DjSettingsStore} from './dj-settings-store.js';
+import {SettingsCard} from './dj-settings-ui.js';
+import {describeSnapshot, resolveDjSettings, summarizeSnapshot} from './dj-settings.js';
 import {PhoneAutoStart, PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
@@ -74,7 +77,9 @@ const packChoice: PackChoice | null = Object.hasOwn(PACKS, requestedPack) ? requ
 const isSet = packChoice === 'set';
 /** Engine increment 3 (pair-search@1): off by default; `?pairsearch=shadow|live` or the Why panel select turn it on. */
 const requestedPairSearch = params.get('pairsearch');
-let pairSearchMode: PairSearchMode = (PAIR_SEARCH_MODES as readonly string[]).includes(requestedPairSearch ?? '') ? requestedPairSearch as PairSearchMode : 'off';
+/** DJ booth settings: the pair search mode is now a setting; this URL flag stays as an override that wins over it. */
+const urlPairSearch: PairSearchMode | null = (PAIR_SEARCH_MODES as readonly string[]).includes(requestedPairSearch ?? '') ? requestedPairSearch as PairSearchMode : null;
+let pairSearchMode: PairSearchMode = urlPairSearch ?? 'off';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -202,7 +207,7 @@ function getDj(): DeterministicDj {
     isSet ? browserMixPrecheck : null);
   dj = new DeterministicDj(djPlayer, loaded, 'explore', {handoff: handoffMode, mix: {recipe: mixRecipe}});
   if (isSet) dj.setSetBoundary({bars: nextBars, anchor: 'song'});
-  if (isSet) djPlayer.setPairSearch(pairSearchMode);
+  if (isSet) applySettings(); // DJ booth settings (pair search, allowed styles, stretch, wait, explore level) before the first plan
   dj.setVolume(Number(volume.value)); djNeedsMute = muted;
   // Owner clarification 2026-11-16: explore (seeded, logged random styles) is the default for set Auto/Next.
   if (isSet) queueMicrotask(applyExplore);
@@ -429,6 +434,9 @@ let lastSetMix = '';
 interface CompletedTransition {readonly plan: TransitionPlanRecord; readonly measured: FeedbackMeasured | null; readonly info: TransitionInfo | null}
 let lastCompleted: CompletedTransition | null = null;
 let feedbackStore: FeedbackStore | null = null;
+/** DJ booth settings (set page only): the store holds them, the card edits them, `applySettings` hands them to the player. */
+let settingsStore: DjSettingsStore | null = null;
+let settingsCard: SettingsCard | null = null;
 /** Song dossiers: songs are analysed before play by a background scheduler (web/studio-dossiers.ts). */
 let dossiers: StudioDossiers | null = null;
 const setNextBars = $<HTMLSelectElement>('set-next-bars'), setAutoBars = $<HTMLSelectElement>('set-auto-bars');
@@ -568,14 +576,40 @@ function applyExplore(): void {
   catch (error) { setText('set-why-rating', error instanceof Error ? error.message : String(error)); }
 }
 const pairSearchSelect = isSet ? $<HTMLSelectElement>('set-pair-search-mode') : null;
-if (pairSearchSelect) {
-  pairSearchSelect.value = pairSearchMode;
-  pairSearchSelect.addEventListener('change', () => {
-    pairSearchMode = pairSearchSelect.value as PairSearchMode;
-    try { djPlayer?.setPairSearch(pairSearchMode); } catch (error) { djError.textContent = error instanceof Error ? error.message : String(error); }
-  });
+function settingsStatusText(): string {
+  const store = settingsStore;
+  if (!store) return '';
+  const where = !store.relayReady ? 'Saved in this browser only (no PC relay).' : store.isSaved ? 'Saved on the PC.'
+    : store.pending ? 'Not saved on the PC yet; it will retry.' : 'Waiting for the PC.';
+  return `${where}${urlPairSearch ? ` The ?pairsearch=${urlPairSearch} URL flag overrides pair search for this page load.` : ''}${store.lastProblem ? ` ${store.lastProblem}` : ''}`;
 }
-exploreBox?.addEventListener('change', applyExplore); exploreSeed?.addEventListener('change', applyExplore);
+/** Hands the current booth settings to the player and keeps every mirror control in step. Safe to call at any time. */
+function applySettings(): void {
+  const store = settingsStore;
+  if (!isSet || !store) return;
+  const settings = store.get(), effective = resolveDjSettings(settings, urlPairSearch);
+  pairSearchMode = effective.pairSearch;
+  settingsCard?.render(settings);
+  settingsCard?.say(settingsStatusText());
+  if (pairSearchSelect && pairSearchSelect.value !== effective.pairSearch) pairSearchSelect.value = effective.pairSearch;
+  if (exploreBox && exploreBox.checked !== effective.explore.enabled) exploreBox.checked = effective.explore.enabled;
+  if (!djPlayer) return;
+  try { djPlayer.setDjSettings(settings, urlPairSearch); applyExplore(); }
+  catch (error) { djError.textContent = error instanceof Error ? error.message : String(error); }
+}
+function patchSettings(patch: Record<string, unknown>): void {
+  if (!settingsStore) return;
+  void settingsStore.update(patch).catch(error => { settingsCard?.say(`Refused: ${error instanceof Error ? error.message : String(error)}`); });
+}
+pairSearchSelect?.addEventListener('change', () => patchSettings({pairSearch: {mode: 'manual', value: pairSearchSelect.value}}));
+// The old quick box is a mirror of the Explore setting: unticking pins Explore to off; ticking it again hands it back to the DJ.
+exploreBox?.addEventListener('change', () => {
+  const current = settingsStore?.get().explore;
+  if (!exploreBox.checked) patchSettings({explore: {mode: 'manual', value: 'off'}});
+  else if (current?.mode === 'manual' && current.value === 'off') patchSettings({explore: {mode: 'dj'}});
+  else applyExplore();
+});
+exploreSeed?.addEventListener('change', applyExplore);
 // Explore is on by default (studio.html); a fresh seed per page load gives a new but logged and replayable sequence.
 if (exploreSeed && exploreSeed.dataset.fresh === 'true') exploreSeed.value = String(Math.floor(Date.now() / 1000) % 2 ** 31);
 const selectedTags = new Set<FeedbackTag>();
@@ -614,7 +648,11 @@ function renderWhy(summary: NonNullable<ReturnType<typeof transitionReadout>> | 
   if (!isSet || !summary) return;
   setText('set-why-recipe', summary.recipe); setText('set-why-choreo', summary.choreography);
   setText('set-why-entry', `${summary.entry} · ${summary.structure}${summary.tried ? ` · ${summary.tried}` : ''}`); setText('set-why-mode', summary.mode + (summary.planId ? ` · plan ${summary.planId}` : ''));
-  const list = $('set-why-reasons'); list.replaceChildren(...summary.why.map(reason => {
+  // DJ booth settings active when this handover was planned (the id is stable: the same settings always give the same id).
+  const stamp = shownPlan?.settings;
+  setText('set-why-settings', stamp ? `${stamp.id} · ${summarizeSnapshot(stamp.snapshot, stamp.urlPairSearch)}${stamp.allowListOverridden ? ' · allow-list overridden' : ''}` : 'not recorded');
+  const reasons = [...summary.why, ...(stamp ? describeSnapshot(stamp.snapshot, stamp.urlPairSearch).map(line => `Booth setting - ${line}`) : [])];
+  const list = $('set-why-reasons'); list.replaceChildren(...reasons.map(reason => {
     const item = document.createElement('li'); item.textContent = reason; return item;
   }));
 }
@@ -654,6 +692,12 @@ const phoneToken = takeRelayToken(phoneRelay);
 if (isSet) {
   feedbackStore = new FeedbackStore({relay: phoneToken ? phoneRelay : null, token: phoneToken, onChange: () => { renderSet(); }});
   const store = feedbackStore;
+  // DJ booth settings: browser cache plus the PC file through the relay (the phone edits the same file); newest change wins.
+  settingsStore = new DjSettingsStore({endpoint: phoneToken ? `${phoneRelay}/api/dj/settings` : null, token: phoneToken, onChange: () => { applySettings(); }});
+  settingsCard = new SettingsCard($('set-booth-card'), {patch: patchSettings, reset: () => { void settingsStore?.reset(); }}, 'booth');
+  applySettings();
+  void settingsStore.sync();
+  setInterval(() => { void settingsStore?.tick(); }, 3000);
   // The PC file is the source of truth: send anything queued, then read the file back; retry queued ratings every 15 s.
   void store.flush().then(() => store.sync());
   dossiers = new StudioDossiers({loaded: () => loaded, player: () => djPlayer, dj: () => dj, cache: setAnalyses!, relay: phoneRelay, token: phoneToken,

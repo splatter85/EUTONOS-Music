@@ -9,6 +9,7 @@ import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {FEEDBACK_RATINGS, FEEDBACK_TAG_LABELS, POSITIVE_TAGS, type FeedbackRating, type FeedbackTag} from '../web/feedback-vocabulary.js';
 import {latestPerPlan, type TransitionFeedback} from '../web/transition-feedback.js';
+import {describeSnapshot, summarizeSnapshot} from '../web/dj-settings.js';
 import {defaultFeedbackRoot, FeedbackFile} from './transition-feedback-file.js';
 
 export const REPORT_VERSION = 'em.transition-report.v1' as const;
@@ -40,6 +41,8 @@ export interface TransitionReport {
   readonly verdict: string;
   readonly byRating: RatingCounts;
   readonly groups: Readonly<Record<string, readonly GroupRow[]>>;
+  /** DJ booth settings: what each settings id in the groups meant (ids are stable hashes of the settings). */
+  readonly settingsLegend: Readonly<Record<string, {readonly summary: string; readonly lines: readonly string[]; readonly urlPairSearch: string | null}>>;
   readonly negativeTagsByRecipe: Readonly<Record<string, readonly {readonly tag: string; readonly label: string; readonly count: number}[]>>;
   readonly best: readonly PlanSummary[];
   readonly worst: readonly PlanSummary[];
@@ -52,6 +55,13 @@ const percent = (x: number): string => `${Math.round(x * 100)}%`;
 export function skippedBucket(fraction: number): string {
   return fraction < 0.1 ? 'enters in the first 10%' : fraction < 0.25 ? 'enters 10-25% in' : fraction < 0.5 ? 'enters 25-50% in' : 'enters 50%+ in';
 }
+/** The style of a plan: the layered entry style when it has one, else the recipe. */
+export function styleOfEntry(e: TransitionFeedback): string {
+  const s = e.plan.entryStyle;
+  return s && s.source === 'layered-entry@1' ? `layered ${s.style}${s.lastRung ? ' (last rung)' : ''}` : e.plan.recipe;
+}
+export const NO_SETTINGS = 'no settings recorded (before the booth settings)';
+export const settingsIdOfEntry = (e: TransitionFeedback): string => e.settings?.id ?? e.plan.settings?.id ?? NO_SETTINGS;
 function gapBucket(gapFraction: number): string { return `${(gapFraction * 100).toFixed(1)}%`; }
 
 const DIMENSIONS: readonly {readonly name: string; readonly of: (e: TransitionFeedback) => string}[] = [
@@ -67,6 +77,10 @@ const DIMENSIONS: readonly {readonly name: string; readonly of: (e: TransitionFe
     ? `${e.plan.entryStyle.style}${e.plan.entryStyle.bars ? ` ${e.plan.entryStyle.bars} bars` : ''}${e.plan.entryStyle.lastRung ? ' (last rung)' : ''}`
     : 'none recorded'},
   {name: 'explore menu', of: e => e.plan.menu ? `drawn from ${e.plan.menu.alternatives.length} candidates` : 'no menu (deterministic or manual)'},
+  // DJ booth settings: group by the exact settings that were active, by style, and by style within each settings id.
+  {name: 'settings id', of: e => settingsIdOfEntry(e) + (e.plan.settings?.allowListOverridden ? ' (allow-list overridden)' : '')},
+  {name: 'style (recipe or layered entry)', of: styleOfEntry},
+  {name: 'style within settings id', of: e => `${settingsIdOfEntry(e)} · ${styleOfEntry(e)}`},
   {name: 'pre-check verdict at the time', of: e => e.measured?.status ?? 'not recorded'},
   {name: 'rated on', of: e => e.device},
 ];
@@ -98,6 +112,12 @@ export function buildReport(all: readonly TransitionFeedback[], source: {lines: 
   for (const e of entries) byRating[e.rating]++;
   const groups: Record<string, GroupRow[]> = {};
   for (const d of DIMENSIONS) groups[d.name] = groupBy(entries, d.of);
+  const settingsLegend: Record<string, {summary: string; lines: string[]; urlPairSearch: string | null}> = {};
+  for (const e of entries) {
+    const stamp = e.settings ?? e.plan.settings;
+    if (stamp && !settingsLegend[stamp.id]) settingsLegend[stamp.id] = {summary: summarizeSnapshot(stamp.snapshot, stamp.urlPairSearch),
+      lines: describeSnapshot(stamp.snapshot, stamp.urlPairSearch), urlPairSearch: stamp.urlPairSearch ?? null};
+  }
   const negativeTagsByRecipe: Record<string, {tag: string; label: string; count: number}[]> = {};
   for (const recipeRow of groups.recipe ?? []) {
     const counts = new Map<string, number>();
@@ -116,7 +136,7 @@ export function buildReport(all: readonly TransitionFeedback[], source: {lines: 
     : enoughData ? `${entries.length} rated plans. Differences between groups are descriptive; groups under ${MIN_GROUP} plans are marked too small, and no significance is computed.`
       : `Too few ratings (${entries.length} rated plans; at least ${MIN_TOTAL} are needed before even a rough pattern is worth reading). Treat everything below as individual anecdotes, not as findings.`;
   return {version: REPORT_VERSION, source: {lines: source.lines, skippedLines: source.skipped, ratingsEntries: all.length}, ratedPlans: entries.length,
-    replacedRatings: all.length - entries.length, enoughData, verdict, byRating, groups, negativeTagsByRecipe,
+    replacedRatings: all.length - entries.length, enoughData, verdict, byRating, groups, settingsLegend, negativeTagsByRecipe,
     best: best.map(summarize), worst: worst.map(summarize),
     notes: ['Counts only. No significance test is run and nothing here changes the planner (learning is a later slice).',
       'Groups overlap: the recipe, tempo band and choreography are chosen together, so a difference may belong to a different dimension than the one it appears under.',
@@ -135,6 +155,11 @@ export function formatReport(report: TransitionReport): string {
     for (const r of rows) {
       lines.push(`  ${r.key.padEnd(44)} n=${String(r.n).padStart(3)}  love ${r.counts.love} like ${r.counts.like} ok ${r.counts.ok} dislike ${r.counts.dislike}  (liked ${percent(r.likedShare)}, disliked ${percent(r.dislikedShare)})${r.tooSmall ? '  [too small to read]' : ''}`);
     }
+    lines.push('');
+  }
+  if (Object.keys(report.settingsLegend).length) {
+    lines.push('Settings ids (DJ booth settings active when each plan was made):');
+    for (const [id, s] of Object.entries(report.settingsLegend)) lines.push(`  ${id}: ${s.summary}`);
     lines.push('');
   }
   lines.push('Most common complaint tags per recipe:');

@@ -214,3 +214,21 @@ main { flex: 1; padding: 16px 18px; width: 100%; max-width: 1400px; margin: 0 au
 
 .gesture-gate:not([hidden]) { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; background: rgba(8, 10, 14, 0.92); color: #fff; }
 .gesture-gate-button { font: inherit; font-size: 1.4rem; padding: 18px 28px; border-radius: 14px; border: 2px solid #fbbf24; background: #fbbf24; color: #201700; cursor: pointer; }
+
+/* DJ booth settings card (shared markup with the phone page, see web/dj-settings-ui.ts) */
+.set-booth { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.set-booth > summary { cursor: pointer; font-weight: 600; }
+.dj-set { display: grid; gap: 10px; margin-top: 8px; }
+.dj-set-row { display: grid; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.dj-set-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.dj-set-name { font-weight: 600; font-size: 13px; }
+.dj-set-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.dj-set-mode { background: var(--panel); border: 0; padding: 4px 10px; font-size: 12px; color: var(--dim); cursor: pointer; }
+.dj-set-mode + .dj-set-mode { border-left: 1px solid var(--line); }
+.dj-set-mode[aria-pressed="true"] { background: #2a2140; color: #ddd2ff; }
+.dj-set-row.is-dj .dj-set-select, .dj-set-row.is-dj .dj-set-styles { opacity: .6; }
+.dj-set-select { max-width: 100%; }
+.dj-set-styles { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.dj-set-style { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.dj-set-note, .dj-set-message { margin: 0; font-size: 12px; color: var(--dim); }
+.dj-set-reset { justify-self: start; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }

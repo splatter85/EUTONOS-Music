@@ -127,3 +127,16 @@ The Studio set page (opened from the relay-printed address, so a token exists) h
 | `web/phone-watchdog.ts` | Phone stall watchdog (reconnect after ~8 s of waiting/stalled) |
 | `tests/phone-relay.test.ts`, `tests/player.test.ts` | Node tests incl. real-ffmpeg smoke |
 | `scripts/phone-browser-check.ts` | Browser check (`npm run check:phone`, part of `check:browser`) |
+
+## DJ booth settings endpoints and phone card
+
+The relay also holds the DJ booth settings (planner contract: [S21](S21_TRANSITION_PLANNER.md#dj-booth-settings)). The file is `local/dj-settings/settings.json` under the feedback root (gitignored, 8 KiB cap, symlinks and junctions refused, atomic write). Errors never name a path.
+
+| Endpoint | Caller | Guard |
+| --- | --- | --- |
+| `GET`/`POST /api/dj/settings` | Studio page | same as the other DJ endpoints: `X-Relay-Token`, loopback `Host`, allowlisted `Origin`, no proxy headers; `OPTIONS` preflight answered; no query token |
+| `GET`/`POST /api/settings` | phone page | same-origin JSON only (`Origin` must equal the relay host, `Sec-Fetch-Site` not cross-site, `Content-Type: application/json`), like the other phone endpoints |
+
+`POST` is a partial merge of `{pairSearch, explore, styles, maxStretch, waitBars}` (each `{mode, value}`) or `{reset: true}`. Unknown keys are ignored; a bad value returns 400 `invalid-settings` and changes nothing; an oversized body returns 413. Both endpoints share one file, so a change from either side shows on the other within the 3 s poll.
+
+The phone page has a collapsed "DJ booth settings" card with a Manual / DJ decides toggle per setting and "Reset to safe defaults". It uses three more files from the allowlist (`/dj-settings.js`, `/dj-settings-store.js`, `/dj-settings-ui.js`) and no inline script or style, so the strict CSP is unchanged. Real phone behaviour is NOT TESTED; the Chromium check drives the same page at desktop width on an ephemeral port.

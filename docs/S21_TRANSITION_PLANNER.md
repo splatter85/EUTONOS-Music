@@ -711,3 +711,33 @@ One existing gate changed, with comments in the file: `mix-precheck-browser-chec
 - Analyzed recipes are generated only on cue or section-end exits, with the planner choosing the entry, so not every exit × entry pair is tried for beat-matched recipes.
 - Kept heavy renders cost memory; at most 4 are kept. Browser memory was not measured.
 - Windows only. macOS and Linux were not run. The real phone and audio devices were not tested. Listening is NOT TESTED.
+
+## DJ booth settings
+
+Status: built on branch `worktree-agent-a3617d6ec8aed19f5`, Windows only. Engineering evidence only; listening and a real phone are NOT TESTED.
+
+**Idea.** Every planner knob the owner may want to test lives in one settings object, adjustable from the Studio booth card and from the phone. Each setting has a mode: **Manual** (the owner pinned a value) or **DJ decides** (today's behaviour). Everything defaults to DJ decides, and touching a control pins it. Handing a setting back to the DJ restores its own behaviour, not the last pinned value.
+
+| Setting | Values | DJ decides |
+| --- | --- | --- |
+| Pair search | off / shadow / live | off |
+| Explore | off / low / high | on, seed shown (neutral weights) |
+| Allowed styles | 8 route-free styles: crossfade, echo reset, filter dissolve, tone dissolve, layered bass-, mid-, high-, drums-first | all 8 |
+| Max stretch | 8% / 15% | 15% |
+| Wait for a better exit | 0 / 4 / 8 bars | 8 |
+
+**Rules.**
+- Unticked styles are never chosen. A hard cut is not in the list and is never a fallback. The last ticked style cannot be unticked (the card puts the box back and says why; the validators reject an empty list).
+- If the allow-list leaves a pair with no candidate, the planner takes the last-rung 2-bar layered entry and records `allowListOverridden` in the plan and in the stamp. It never cuts.
+- Beat-matched (analyzed) recipes are not filtered by the allow-list; only the 8 route-free styles are. This is a judgement call: the list is about what the owner hears as a style, and analyzed recipes are chosen only when the grids are trusted.
+- Explore levels weight the same menu: low = bold styles 1 / safe 3, high = bold 3 / safe 1 (bold: layered, echo reset, echo out, tempo ramp, brake, meet in the middle). The 15% hard limit and `time-pitch` limits are unchanged; 8% narrows the tempo bands, the dual ramp, the explore meet and adds a post-plan stretch gate.
+- Wait 0 means only the requested boundary. The `?pairsearch=` URL flag still overrides the pair search setting and is recorded as `urlPairSearch`.
+- A settings change that alters planning cancels and restarts the background pair search for the same pair; an identical settings object does not.
+
+**Validation.** `web/dj-settings.ts` is the single owner (`parseDjSettings`, `mergeDjSettings`): unknown keys are ignored, a bad value rejects the whole request, nothing is half-applied. Stored settings that fail validation fall back to the defaults.
+
+**Stamp and testing.** Each plan record and each rating carries an optional `settings` stamp: a short id (`ds-` + FNV-1a of the canonical snapshot) plus the snapshot. An all-DJ object always has the constant default id. A player that has never had settings applied stamps nothing (older ratings stay valid). `scripts/transitions-report.ts` adds three groupings, by settings id, by style (recipe or layered entry style), and by style within a settings id, and prints a legend mapping each id to its settings. "Why this handover" shows the stamp id and a one-line summary.
+
+**Persistence.** Browser `localStorage` (`eutonos-music.dj-settings.v1`) plus `local/dj-settings/settings.json` through the relay (gitignored, 8 KiB cap, symlink and junction refusal, atomic tmp + rename, serialized writes, `rev` counter). The newest `updatedAt` wins between the browser cache and the PC file; the Studio and phone poll every 3 s (no push channel). A change applies in the page immediately; if the relay is unreachable it is kept locally and pushed on the next sync (the card says "Queued"). The older `#set-explore` checkbox and `#set-pair-search-mode` select remain as mirrors of the settings.
+
+**Checks.** `tests/dj-settings.test.ts`, `tests/dj-settings-player.test.ts`, `tests/dj-settings-relay.test.ts`, `scripts/dj-settings-browser-check.ts` (`npm run check:browser`).

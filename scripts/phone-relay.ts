@@ -20,6 +20,7 @@ import {fileURLToPath} from 'node:url';
 import {FeedbackFile, FeedbackFileError} from './transition-feedback-file.js';
 import {DossierFileError, SongDossierFile} from './song-dossier-file.js';
 import {isDossierId} from '../web/song-dossier.js';
+import {DjSettingsFile, DjSettingsFileError} from './dj-settings-file.js';
 import {parseControlCommand, sanitizeDjStatus, type DjStatus, type RelayStatus,
   type RelayedCommand} from '../web/phone-protocol.js';
 
@@ -39,6 +40,8 @@ export const LIMITS = {
   ratingBytes: 24 * 1024,
   /** One song dossier (the store refuses anything over 96 KiB serialized). */
   dossierBytes: 128 * 1024,
+  /** One DJ booth settings write (a handful of small settings; the stored file is capped at 8 KiB). */
+  settingsBytes: 4 * 1024,
   /** About two seconds of 256 kbit/s MP3, sent first to a new listener for fast start. */
   recentBytes: 64 * 1024,
   /** A listener whose unsent backlog exceeds this is dropped instead of buffered. */
@@ -79,6 +82,8 @@ export interface PhoneRelayOptions {
   readonly feedbackRoot?: string;
   /** Folder whose `local/song-dossiers/` holds the song dossiers; defaults to `feedbackRoot`, then the repository root. */
   readonly dossierRoot?: string;
+  /** Folder whose `local/dj-settings/` holds the booth settings; defaults to `feedbackRoot`, then the repository root. */
+  readonly settingsRoot?: string;
   /** Clock in ms; injectable so tests can age phone activity without waiting. */
   readonly now?: () => number;
 }
@@ -128,6 +133,9 @@ const PHONE_FILES: Readonly<Record<string, {file: string; type: string}>> = {
   '/phone-watchdog.js': {file: 'dist/web/phone-watchdog.js', type: 'text/javascript; charset=utf-8'},
   '/phone-ui.js': {file: 'dist/web/phone-ui.js', type: 'text/javascript; charset=utf-8'},
   '/feedback-vocabulary.js': {file: 'dist/web/feedback-vocabulary.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-settings.js': {file: 'dist/web/dj-settings.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-settings-store.js': {file: 'dist/web/dj-settings-store.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-settings-ui.js': {file: 'dist/web/dj-settings-ui.js', type: 'text/javascript; charset=utf-8'},
 };
 
 /** Raw-target path check in the same discipline as scripts/serve.ts; returns the decoded path. */
@@ -190,6 +198,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   const now = options.now ?? Date.now;
   const feedbackFile = new FeedbackFile(options.feedbackRoot);
   const dossierFile = new SongDossierFile(options.dossierRoot ?? options.feedbackRoot);
+  const settingsFile = new DjSettingsFile(options.settingsRoot ?? options.feedbackRoot);
   /** Time of the last phone-side request (status, live stream, control); DJ requests never set it. */
   let phoneSeenAt: number | null = null;
 
@@ -299,6 +308,34 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     response.setHeader('Vary', 'Origin');
   }
 
+  function settingsError(response: ServerResponse, error: unknown): void {
+    if (error instanceof DjSettingsFileError) {
+      if (error.code === 'invalid') json(response, 400, {error: 'invalid-settings', detail: error.message.slice(0, 160)});
+      else {
+        fail(`settings store: ${error.message}`);
+        json(response, error.code === 'too-large' ? 413 : 409, {error: `settings-${error.code}`});
+      }
+    } else {
+      fail(`settings store failed: ${error instanceof Error ? error.message : String(error)}`);
+      json(response, 500, {error: 'settings-store-failed'});
+    }
+  }
+  /** GET returns the stored settings; a POST body is a partial merge (`{reset: true}` restores the safe defaults). */
+  async function settingsRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (request.method === 'GET') {
+      try { json(response, 200, await settingsFile.read()); } catch (error) { settingsError(response, error); }
+      return;
+    }
+    const body = await readBody(request, LIMITS.settingsBytes);
+    let parsed: unknown;
+    try { parsed = JSON.parse(body.toString('utf8')); } catch { json(response, 400, {error: 'invalid-json'}); return; }
+    try {
+      const reset = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && (parsed as Record<string, unknown>).reset === true;
+      const doc = await settingsFile.write(reset ? {} : parsed, new Date(now()), reset);
+      json(response, 200, doc);
+    } catch (error) { settingsError(response, error); }
+  }
+
   function status(): RelayStatus {
     return {
       dj: {connected: djEvents !== null, ageMs: djStatus ? now() - djStatus.at : null, status: djStatus?.status ?? null},
@@ -372,6 +409,11 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
         if (djEvents === response) { djEvents = null; log('Relay: DJ page disconnected from control events.'); }
       });
       log('Relay: DJ page connected for control events.');
+      return;
+    }
+    if (path === '/api/dj/settings') {
+      if (request.method !== 'GET' && request.method !== 'POST') { response.setHeader('Allow', 'GET, POST, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      await settingsRequest(request, response);
       return;
     }
     if (path === '/api/dj/ratings') {
@@ -501,6 +543,14 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       json(response, 202, {ok: true, id: relayed.id});
       return;
     }
+    if (path === '/api/settings') {
+      // Phone side: same-origin only, like /api/control. JSON content type forces a preflight for any foreign page.
+      if (request.method !== 'GET' && request.method !== 'POST') { response.setHeader('Allow', 'GET, POST'); plain(response, 405, 'Method not allowed'); return; }
+      if (request.headers['sec-fetch-site'] === 'cross-site' || !sameOriginOrAbsent(request)) { json(response, 403, {error: 'same-origin-only'}); return; }
+      if (request.method === 'POST' && !/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) { json(response, 403, {error: 'same-origin-json-only'}); return; }
+      await settingsRequest(request, response);
+      return;
+    }
     if (request.method !== 'GET' && !head) { response.setHeader('Allow', 'GET, HEAD'); plain(response, 405, 'Method not allowed'); return; }
     if ((path === '/api/status' || path === '/live.mp3') && request.headers['sec-fetch-site'] === 'cross-site') {
       plain(response, 403, 'Cross-site requests are refused', head); return;
@@ -552,7 +602,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === undefined) { plain(response, 404, 'Not found'); return; }
     const url = new URL(request.url ?? '/', 'http://relay.invalid');
     const handler = path.startsWith('/api/dj/')
-      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings', '/api/dj/dossier', '/api/dj/dossiers'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
+      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings', '/api/dj/dossier', '/api/dj/dossiers', '/api/dj/settings'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
       : isPhoneHost(request.headers.host, allowHosts)
         ? handlePhone(request, response, path)
         : Promise.resolve(plain(response, 400, 'Invalid host'));

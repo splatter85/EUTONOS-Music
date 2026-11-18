@@ -61,6 +61,8 @@ export interface CandidateContext {
   readonly latestFrame?: number;
   /** Owner chose a clean cut for this request; otherwise none is ever generated. */
   readonly allowCut?: boolean;
+  /** DJ booth settings: route-free styles outside `allowedRecipeKeys` are never generated; `maxStretch` replaces 15%. */
+  readonly settings?: {readonly allowedRecipeKeys?: readonly string[]; readonly maxStretch?: number};
 }
 export interface CandidateSet {
   readonly version: typeof ENGINE_CANDIDATES_VERSION;
@@ -91,7 +93,7 @@ export function entrySection(d: SongDossier, frame: number, tol: number, rate: n
   return {label: inside?.label ?? null, start: false, section: inside};
 }
 
-function stretchFor(recipe: string, fromBpm: number, toBpm: number): CandidateSpec['tempo'] {
+function stretchFor(recipe: string, fromBpm: number, toBpm: number, maxStretch: number = CANDIDATE_LIMITS.maxStretch): CandidateSpec['tempo'] {
   const gap = Math.abs(fromBpm / toBpm - 1);
   if (['blend', 'loudness-match', 'filter-sweep', 'loop-extend'].includes(recipe)) return {strategy: 'stretch-b', stretch: gap};
   if (recipe === 'meet-in-middle') {
@@ -99,7 +101,7 @@ function stretchFor(recipe: string, fromBpm: number, toBpm: number): CandidateSp
     return {strategy: 'meet', stretch: Math.sqrt(1 + g) - 1};
   }
   if (recipe === 'dual-ramp') {
-    const d = dualRampTempo(fromBpm, toBpm);
+    const d = dualRampTempo(fromBpm, toBpm, maxStretch);
     return {strategy: 'dual-ramp', stretch: d ? Math.max(Math.abs(d.fromRatio - 1), Math.abs(d.toRatio - 1)) : Infinity};
   }
   if (recipe === 'tempo-ramp' || recipe === 'brake') return {strategy: 'native-rate', stretch: 0};
@@ -114,7 +116,9 @@ export function generateCandidates(ctx: CandidateContext): CandidateSet {
   const pruned: Record<string, number> = {};
   const prune = (why: string): void => { pruned[why] = (pruned[why] ?? 0) + 1; };
   const beatConfident = dossierBeatConfident(from.dossier, to.dossier, ga, gb);
-  const policy = tempoGapPolicy(ga.bpm, gb.bpm, {beatConfident});
+  const maxStretch: number = ctx.settings?.maxStretch ?? CANDIDATE_LIMITS.maxStretch;
+  const allowedKeys = ctx.settings?.allowedRecipeKeys ?? null;
+  const policy = tempoGapPolicy(ga.bpm, gb.bpm, {beatConfident}, maxStretch);
   const gap = Math.abs(gb.bpm / ga.bpm - 1);
   // ---- exits: phrase boundaries, section ends and analysed exit cues, earliest feasible bar to the end.
   const latest = Math.min(ctx.latestFrame ?? from.frames, from.frames - Math.round(2 * ga.barFrames));
@@ -161,8 +165,9 @@ export function generateCandidates(ctx: CandidateContext): CandidateSet {
   const out: CandidateSpec[] = [];
   const make = (kind: CandidateKind, recipe: string, exit: CandidateSpec['exit'], entry: CandidateSpec['entry'],
     overlapBars: number | null, lastRung: boolean): void => {
-    const tempo = stretchFor(recipe, ga.bpm, gb.bpm);
-    if (tempo.stretch > CANDIDATE_LIMITS.maxStretch + 1e-9) { prune('stretch beyond 15%'); return; }
+    if (allowedKeys && kind === 'route-free' && !allowedKeys.includes(recipe)) { prune('style not in the allowed styles'); return; }
+    const tempo = stretchFor(recipe, ga.bpm, gb.bpm, maxStretch);
+    if (tempo.stretch > maxStretch + 1e-9) { prune(`stretch beyond ${Math.round(maxStretch * 100)}%`); return; }
     const beatLock = kind === 'analyzed' && (RHYTHM_RECIPES as readonly string[]).includes(recipe);
     if (beatLock && !beatConfident) { prune('beat lock without trusted grids'); return; }
     // Audio for the whole plan: A for the overlap plus one bar of tail, B for the overlap (route-free, known entry).

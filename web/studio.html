@@ -76,15 +76,21 @@
             <label class="check"><input id="set-loop" type="checkbox" autocomplete="off"> Loop the set</label>
             <button id="set-requeue" class="chip" type="button">Queue the whole set</button>
           </div>
+          <details id="set-booth" class="set-booth" open>
+            <summary>DJ booth settings</summary>
+            <p class="dim">Each setting is either pinned by you (Manual) or left to the DJ (DJ decides, today's behaviour). Touching a control pins it. The same card is on the phone. Changes apply to the next handover that is planned and are recorded with it.</p>
+            <div id="set-booth-card"></div>
+          </details>
           <p id="set-mix" class="set-mix" role="status">No handover planned yet.</p>
           <p id="set-analysis" class="dim" role="status"></p>
           <details id="set-why" class="set-why">
             <summary>Why this handover</summary>
             <dl class="facts"><dt>Recipe</dt><dd id="set-why-recipe">None yet</dd><dt>EQ moves</dt><dd id="set-why-choreo">None yet</dd>
-              <dt>B enters</dt><dd id="set-why-entry">None yet</dd><dt>Mode</dt><dd id="set-why-mode">Auto</dd></dl>
+              <dt>B enters</dt><dd id="set-why-entry">None yet</dd><dt>Mode</dt><dd id="set-why-mode">Auto</dd>
+              <dt>Settings</dt><dd id="set-why-settings">not recorded</dd></dl>
             <ul id="set-why-reasons" class="dim"></ul>
             <div class="set-controls">
-              <label class="check"><input id="set-explore" type="checkbox" checked autocomplete="off"> Explore (seeded random styles, default on)</label>
+              <label class="check"><input id="set-explore" type="checkbox" checked autocomplete="off"> Explore (seeded random styles, default on; same as the Explore setting in the booth card)</label>
               <label>seed<input id="set-explore-seed" type="number" min="0" step="1" value="1" data-fresh="true" autocomplete="off"></label>
             </div>
             <div class="set-controls">
