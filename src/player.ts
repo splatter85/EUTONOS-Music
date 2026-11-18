@@ -13,7 +13,8 @@ import {bindEchoReturn, unbindEchoReturn} from './mix-automation.js';
 import {setTransitionRecord} from './mix-transition.js';
 import type {TransitionPlanRecord} from '../web/transition-policy.js';
 import {browserMixPreparation, chooseSetTransition, MixAnalysisCache, prepareMixTransition,
-  replanPreparedMix, renderSetBlend, gridAlignedAnalysis, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid, type HandoverStructure,
+  replanPreparedMix, renderSetBlend, gridAlignedAnalysis, transitionSignature, renderPlannedMix, prepareOutgoingLoop, nextBoundary, downbeatAt, setBarGrid,
+  layeredRecipeKey, SET_WAIT_LIMIT_BARS, type MixPreparationRuntime, type RouteFreeRecipe, type SetBarGrid, type HandoverStructure,
   type SetTransitionChoice, type SongAnalysisResult} from './mix-transition.js';
 import {outputFrameAtSource, sourceFrameAtOutput, type TimePitchMapping} from './time-pitch.js';
 import {eligibleForPlayback} from './pack.js';
@@ -21,6 +22,13 @@ import {SONG_ANALYSIS_WINDOW, type MixAnalysis} from './mix-analysis.js';
 import {DeckMixer, type DeckId, type DeckControl, type ChannelControls, type ControlValue} from '../web/deck-mixer.js';
 import {deckPositionAt, type DeckPositionInput, type DeckPosition} from '../web/deck-readout.js';
 import {precheckLabel, PRECHECK_PROTOCOL, type PrecheckReport, type PrecheckRequest, type PrecheckRuntime} from '../web/mix-precheck-data.js';
+import {buildSongDossier, identityOfAsset} from '../web/song-dossier.js';
+import {generateCandidates, ENGINE_CANDIDATES_VERSION} from '../web/engine-candidates.js';
+import {modelScore, familyOf, ENGINE_MODEL_VERSION} from '../web/engine-model.js';
+import {buildTable, PairSearch, PAIR_SEARCH_VERSION, type CheckOutcome, type ScoredCandidate, type SearchProgress} from '../web/engine-search.js';
+import {pickChecked, pickModelled, ENGINE_LADDER_VERSION, RUNG_TEXT, type LadderPick, type LadderRung, type LadderWindow} from '../web/engine-ladder.js';
+import {DecisionJournal, ENGINE_RECORD_VERSION, PAIR_SEARCH_MODES, type EngineCandidateRecord, type EngineRecord, type JournalEntry,
+  type PairSearchMode} from '../web/engine-journal.js';
 
 export type PlayerState = 'idle' | 'loading' | 'scheduled' | 'playing' | 'paused' | 'ended' | 'closed';
 /** S05 diagnostics. The phase comes from the audio clock, not from measured device output. */
@@ -133,6 +141,32 @@ interface Voice {
     readonly sourceStartFrame?: number; readonly nativeJoin?: {readonly sourceFrame: number; readonly outputFrame: number}};
 }
 type Selection = 'a' | 'b' | ProceduralPlan | {readonly assetId: string};
+type ChosenSet = Exclude<SetTransitionChoice, {kind: 'unavailable'}>;
+interface PreparedSet {
+  plan: ChosenSet['plan']; incoming: DecodedRecording;
+  entryFrame: number; mapping: TimePitchMapping | null; processor: string;
+  sourceStartFrame?: number; nativeJoin?: {sourceFrame: number; outputFrame: number};
+}
+/** Pair search: one checked plan with everything Next needs to schedule it without rendering again. */
+interface KeptPlan {readonly choice: ChosenSet; readonly prepared: PreparedSet; readonly loopBuffer?: AudioBuffer; readonly report: PrecheckReport}
+/** Pair search job for (playing voice, next song). */
+interface PairJob {
+  readonly targetId: string; readonly voice: Voice; readonly fromId: string; readonly abort: AbortController;
+  phase: 'analysing' | 'searching' | 'done' | 'failed' | 'halted';
+  reason: string;
+  search: PairSearch<KeptPlan> | null;
+  ctx: null | {readonly analysisA: MixAnalysis; readonly analysisB: MixAnalysis; readonly toAsset: AudioAsset;
+    readonly toRecording: DecodedRecording; readonly gridA: SetBarGrid; readonly generated: number};
+}
+export interface PairSearchReadiness {
+  readonly mode: PairSearchMode; readonly targetId: string | null;
+  readonly phase: 'idle' | PairJob['phase'];
+  readonly progress: SearchProgress | null;
+  readonly text: string;
+}
+const nowMs = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now();
+const candidateRecord = (c: ScoredCandidate, terms = false): EngineCandidateRecord => ({key: c.spec.key.slice(0, 120), model: c.model.score,
+  final: c.final, status: c.status, ...(terms ? {terms: {...c.model.terms}} : {})});
 const isProcedural = (selection: Selection): selection is ProceduralPlan =>
   typeof selection === 'object' && !('assetId' in selection);
 
@@ -721,6 +755,212 @@ export class SmallPlayer {
   get transitionExplore(): number | null { return this.explore?.seed ?? null; }
   private explore: {seed: number; next: number} | null = null;
 
+  // ---------------------------------------------------------------------------------------
+  // Transition engine increment 3: pair search (pair-search@1)
+  // ---------------------------------------------------------------------------------------
+  private pairSearchMode: PairSearchMode = 'off';
+  private pairJob: PairJob | null = null;
+  private readonly decisions = new DecisionJournal();
+  private lastFamily: string | null = null;
+
+  /**
+   * 'off' (default): no background search. 'shadow': the search runs and its would-be choice is logged while the
+   * existing path schedules. 'live': Next schedules from the pair plan table (L0, then L1), then the existing ladder.
+   */
+  setPairSearch(mode: PairSearchMode): void {
+    requireAudio(PAIR_SEARCH_MODES.includes(mode), 'Unknown pair search mode.');
+    this.pairSearchMode = mode;
+    if (mode === 'off') this.cancelPairSearch('pair search switched off');
+  }
+  get pairSearch(): PairSearchMode { return this.pairSearchMode; }
+  /** In-memory decision journal (newest last; bounded). */
+  decisionJournal(): readonly JournalEntry[] { return this.decisions.entries(); }
+  /** Kept-audio lookup for tests and diagnostics: true when Next can schedule this candidate without rendering. */
+  pairSearchKeeps(candidateId: string): boolean { return !!this.pairJob?.search?.preparedFor(candidateId); }
+  /** The current pair plan table (read-only use), or null. */
+  pairPlanTable(): PairSearch<KeptPlan>['table'] | null { return this.pairJob?.search?.table ?? null; }
+
+  pairSearchReadiness(): PairSearchReadiness {
+    const job = this.pairJob, progress = job?.search?.progress() ?? null;
+    if (this.pairSearchMode === 'off') return {mode: 'off', targetId: null, phase: 'idle', progress: null, text: 'Pair search off.'};
+    if (!job) return {mode: this.pairSearchMode, targetId: null, phase: 'idle', progress: null, text: `Pair search (${this.pairSearchMode}): waiting for a next song.`};
+    const median = progress?.medianCheckMs ?? null;
+    const text = job.phase === 'analysing' ? `Pair search (${this.pairSearchMode}): analysing the pair…`
+      : job.phase === 'failed' ? `Pair search (${this.pairSearchMode}) unavailable: ${job.reason}`
+      : `Pair search (${this.pairSearchMode}): ${progress?.checkedPlans ?? 0} checked plan${progress?.checkedPlans === 1 ? '' : 's'} in ${progress?.slots ?? 0} exit slots` +
+        `${median !== null ? ` · median ${median} ms per render+check` : ''}${job.phase === 'done' ? ' · search finished' : job.phase === 'halted' ? ' · stopped' : ''}.`;
+    return {mode: this.pairSearchMode, targetId: job.targetId, phase: job.phase, progress, text};
+  }
+
+  /**
+   * Starts (or keeps) the background pair search for (playing song -> `targetId`). Idempotent; a different next
+   * song or a new playing voice cancels the old search and starts again. Call it whenever the queue head may have
+   * changed. It never schedules audio and never touches the visible mix state.
+   */
+  preparePair(targetId: string | null): void {
+    if (this.pairSearchMode === 'off' || !this.routeFree || !this.mixPrecheck || this.state === 'closed') { this.cancelPairSearch('pair search off'); return; }
+    if (this.mixAbort) return; // A handover is being prepared; it owns the CPU and this job's table.
+    this.settleCompletedTransition();
+    const from = this.voices.length === 1 && !this.plan ? this.voices[0]! : null;
+    const valid = !!from && !!targetId && from.source instanceof RecordedSource && !!from.set && targetId !== from.set.asset.id &&
+      this.setSongs().some(a => a.id === targetId);
+    if (!valid) {
+      if (this.pairJob && (this.plan === null || this.pairJob.voice !== this.voices[0])) this.cancelPairSearch('no pair to search');
+      return;
+    }
+    const job = this.pairJob;
+    if (job && job.targetId === targetId && job.voice === from && job.phase !== 'halted') return;
+    this.cancelPairSearch(job ? 'the next song or playing song changed' : 'new pair');
+    const next: PairJob = {targetId: targetId!, voice: from!, fromId: from!.set!.asset.id, abort: new AbortController(),
+      phase: 'analysing', reason: '', search: null, ctx: null};
+    this.pairJob = next;
+    this.journal(next, 'search-started', `Pair search started (${this.pairSearchMode}).`);
+    void this.runPairSearch(next);
+  }
+
+  private journal(job: PairJob, kind: JournalEntry['kind'], text: string, engine?: EngineRecord): void {
+    this.decisions.add({at: new Date().toISOString(), fromId: job.fromId, toId: job.targetId, kind, text, ...(engine ? {engine} : {})});
+  }
+
+  private cancelPairSearch(reason: string): void {
+    const job = this.pairJob;
+    if (!job) return;
+    this.pairJob = null;
+    job.abort.abort();
+    job.search?.cancel();
+    if (job.phase === 'analysing' || job.phase === 'searching') this.journal(job, 'search-cancelled', `Pair search cancelled: ${reason}.`);
+  }
+
+  private async runPairSearch(job: PairJob): Promise<void> {
+    const live = (): boolean => this.pairJob === job && !job.abort.signal.aborted;
+    try {
+      const from = job.voice, outgoing = from.source as RecordedSource, fromSet = from.set!;
+      const toAsset = this.setSongs().find(a => a.id === job.targetId)!;
+      const rate = this.clock.sampleRate;
+      this.retainSetSongs([job.targetId]);
+      const toRecording = await this.decodeSetSong(job.targetId);
+      if (!live()) return;
+      const [a, b] = await Promise.all([this.analyses.analyzeSong(outgoing.nativeRecording, this.mixRuntime),
+        this.analyses.analyzeSong(toRecording, this.mixRuntime)]);
+      if (!live()) return;
+      if (!a.ok || !b.ok) throw new Error(!a.ok ? `song A analysis: ${a.reason}` : `song B analysis: ${(b as {reason: string}).reason}`);
+      const analysisA = a.analysis, analysisB = b.analysis;
+      const gridA = setBarGrid(fromSet.asset, analysisA, rate), gridB = setBarGrid(toAsset, analysisB, rate);
+      const at = new Date().toISOString();
+      // Stage 1 reads the dossiers only. They are built from the same cached whole-song analyses the store uses.
+      const dossierA = buildSongDossier(analysisA, {identity: identityOfAsset(fromSet.asset), channels: fromSet.asset.file.channels === 1 ? 1 : 2, analysisMs: 0, at});
+      const dossierB = buildSongDossier(analysisB, {identity: identityOfAsset(toAsset), channels: toAsset.file.channels === 1 ? 1 : 2, analysisMs: 0, at});
+      const map = this.voiceMap(from);
+      const set = generateCandidates({from: {dossier: dossierA, grid: gridA, frames: map.nativeFrames},
+        to: {dossier: dossierB, grid: gridB, frames: toRecording.buffer.length}, sampleRate: rate, earliestFrame: map.earliestNative()});
+      const scored = set.candidates.map(spec => ({spec, model: modelScore(spec, {from: dossierA, to: dossierB, sampleRate: rate,
+        fromBarFrames: gridA.barFrames, toBarFrames: gridB.barFrames, previousFamily: this.lastFamily})}));
+      const table = buildTable({fromId: fromSet.asset.id, toId: toAsset.id, fromSha256: fromSet.asset.file.sha256, toSha256: toAsset.file.sha256,
+        versions: {candidates: ENGINE_CANDIDATES_VERSION, model: ENGINE_MODEL_VERSION, search: PAIR_SEARCH_VERSION, dossier: dossierA.key.analysis}},
+      scored, set.candidates.length);
+      job.ctx = {analysisA, analysisB, toAsset, toRecording, gridA, generated: set.candidates.length};
+      const search = new PairSearch<KeptPlan>(table, {
+        check: (candidate, signal) => this.checkCandidate(job, candidate, signal),
+        earliestFrame: () => map.earliestNative(),
+        now: nowMs,
+      });
+      job.search = search; job.phase = 'searching';
+      await search.start();
+      if (!live()) return;
+      const p = search.progress();
+      job.phase = p.state === 'cancelled' ? 'halted' : 'done';
+      this.journal(job, 'search-finished', `Pair search ${p.state}: ${p.checkedPlans} checked plans, ${p.rendered} rendered, ${table.searched.modelScored} modelled, ${p.ms} ms` +
+        `${p.medianCheckMs !== null ? `, median ${p.medianCheckMs} ms per render+check` : ''}.`);
+    } catch (error) {
+      if (!live()) return;
+      job.phase = 'failed'; job.reason = error instanceof Error ? error.message : String(error);
+      this.journal(job, 'search-finished', `Pair search unavailable: ${job.reason}`);
+    }
+  }
+
+  /** Materialise one candidate exactly as Next would (plan, render, loop) and pre-check it. Never schedules. */
+  private async checkCandidate(job: PairJob, candidate: ScoredCandidate, signal: AbortSignal): Promise<CheckOutcome<KeptPlan>> {
+    const ctx = job.ctx!, map = this.voiceMap(job.voice), rate = this.clock.sampleRate;
+    const {analysisA, analysisB, toAsset, toRecording} = ctx;
+    const t0 = nowMs();
+    const spec = candidate.spec;
+    const choice = chooseSetTransition({
+      from: {asset: map.fromSet.asset, analysis: analysisA, frames: map.nativeFrames, structure: analysisA.songStructure ?? null},
+      to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length, channels: toRecording.buffer.numberOfChannels},
+      sampleRate: rate, earliestFrame: map.earliestNative(), boundary: {bars: 4, anchorBar: 0},
+      options: {fromLevelGain: map.outgoing.levelGain},
+      candidate: {recipe: spec.recipe, exitBar: spec.exit.bar, entryFrame: spec.entry.frame, bars: spec.overlapBars, lastRung: spec.lastRung}});
+    if (choice.kind === 'unavailable') return {status: 'refused', reason: choice.reason};
+    const fail = (error: unknown): CheckOutcome<KeptPlan> => {
+      if (signal.aborted) throw error;
+      return {status: 'unavailable', reason: error instanceof Error ? error.message : String(error), renderMs: Math.round(nowMs() - t0)};
+    };
+    let prepared: PreparedSet, loopBuffer: AudioBuffer | undefined;
+    try {
+      prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, signal);
+      if (prepared.plan.kind === 'mix') loopBuffer = await prepareOutgoingLoop(this.context, map.outgoing.nativeRecording, prepared.plan, map.outgoing.levelGain, signal, this.mixRuntime);
+    } catch (error) { return fail(error); }
+    const at = map.atFor(prepared.plan), effect = at.frame - map.delayFor(prepared.plan) - prepared.plan.preRollFrames;
+    if (effect < this.clock.currentFrame + this.leadFrames) return {status: 'unavailable', reason: 'The exit passed while the candidate was prepared.', renderMs: Math.round(nowMs() - t0)};
+    const aNeeds = prepared.plan.automation.outgoing.durationFrames - prepared.plan.preRollFrames;
+    if (map.toBuffer(prepared.plan.fromExitFrame) + aNeeds > map.outgoing.playbackFrames || prepared.entryFrame + prepared.plan.overlapFrames > prepared.incoming.buffer.length)
+      return {status: 'unavailable', reason: 'Not enough audio for this handover.', renderMs: Math.round(nowMs() - t0)};
+    const renderMs = Math.round(nowMs() - t0), t1 = nowMs();
+    const report = await this.mixPrecheck!({plan: prepared.plan, from: map.outgoing.nativeRecording, to: toRecording, incoming: prepared.incoming,
+      entryFrame: prepared.entryFrame, fromGain: map.outgoing.levelGain, ...(loopBuffer ? {loopBuffer} : {}),
+      analysis: {from: gridAlignedAnalysis(analysisA, choice.fromGrid), to: gridAlignedAnalysis(analysisB, choice.toGrid)},
+      fromPlayback: {recording: map.outgoing.recording, entryFrame: map.fromSet.offset, elapsedFrames: effect - job.voice.start.at.frame}}, signal);
+    return {status: report.status, reason: report.reason, evaluation: report.evaluation,
+      prepared: {choice, prepared, ...(loopBuffer ? {loopBuffer} : {}), report}, heavy: prepared.incoming !== toRecording || !!loopBuffer,
+      effectFrame: prepared.plan.fromExitFrame - prepared.plan.preRollFrames, renderMs, checkMs: Math.round(nowMs() - t1)};
+  }
+
+  /** Native/buffer/clock mappings of one playing set voice (shared by Next and the pair search). */
+  private voiceMap(from: Voice) {
+    const outgoing = from.source as RecordedSource, fromSet = from.set!, rate = this.clock.sampleRate;
+    const nativeFrames = outgoing.nativeRecording.buffer.length;
+    const toNative = (bufferFrame: number): number => outgoing.nativeRate ? outgoing.nativeFrameAtClock(from.start.at.frame + bufferFrame - fromSet.offset) : fromSet.nativeJoin && bufferFrame >= fromSet.nativeJoin.outputFrame
+      ? fromSet.nativeJoin.sourceFrame + bufferFrame - fromSet.nativeJoin.outputFrame
+      : fromSet.mapping ? (fromSet.sourceStartFrame ?? 0) + sourceFrameAtOutput(fromSet.mapping, bufferFrame) : bufferFrame;
+    const toBuffer = (nativeFrame: number): number => outgoing.nativeRate ? nativeFrame : fromSet.nativeJoin && nativeFrame >= fromSet.nativeJoin.sourceFrame
+      ? fromSet.nativeJoin.outputFrame + nativeFrame - fromSet.nativeJoin.sourceFrame
+      : fromSet.mapping ? outputFrameAtSource(fromSet.mapping, nativeFrame - (fromSet.sourceStartFrame ?? 0)) : nativeFrame;
+    const bufferAt = (clockFrame: number): number => fromSet.offset + clockFrame - from.start.at.frame;
+    const settledNative = fromSet.nativeJoin?.sourceFrame ?? (fromSet.mapping?.returnToOriginal
+      ? sourceFrameAtOutput(fromSet.mapping, fromSet.mapping.returnToOriginal.afterFrames + fromSet.mapping.returnToOriginal.rampFrames)
+      : fromSet.mapping ? nativeFrames : 0);
+    // Native A frame now, and the earliest native A frame with a two-second preparation allowance.
+    const earliestNative = (): number => Math.max(settledNative, toNative(fromSet.offset),
+      toNative(bufferAt(this.clock.currentFrame + this.leadFrames + 2 * rate)));
+    const delayFor = (plan: ChosenSet['plan']): number => 'entryDelayFrames' in plan ? plan.entryDelayFrames ?? 0 : 0;
+    const atFor = (plan: ChosenSet['plan']): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(plan.fromExitFrame) :
+      from.start.at.frame + toBuffer(plan.fromExitFrame) - fromSet.offset) + delayFor(plan));
+    return {outgoing, fromSet, nativeFrames, toNative, toBuffer, bufferAt, earliestNative, delayFor, atFor};
+  }
+
+  /** Ladder window for one Next request: from the earliest frame to 8 bars past the requested boundary. */
+  private engineWindow(job: PairJob, boundary: SetBoundary, map: ReturnType<SmallPlayer['voiceMap']>): LadderWindow {
+    const grid = job.ctx!.gridA, earliest = map.earliestNative();
+    const anchorBar = boundary.anchor === 'song' ? 0 : Math.max(0, Math.round((map.toNative(map.fromSet.offset) - downbeatAt(grid, 0)) / grid.barFrames));
+    const first = nextBoundary(grid, anchorBar, boundary.bars, earliest);
+    return {earliestFrame: earliest, firstBar: first.bar, lastBar: first.bar + SET_WAIT_LIMIT_BARS};
+  }
+
+  /** The plan record's engine field for one committed handover. */
+  private engineRecord(job: PairJob | null, rung: LadderRung, pick: {candidate: ScoredCandidate; alternatives: readonly ScoredCandidate[]} | null,
+    shadow: LadderPick | null | undefined, chosenRecipeKey: string, unsure: readonly string[]): EngineRecord {
+    const p = job?.search?.progress() ?? null, t = job?.search?.table ?? null;
+    const shadowRecord = shadow === undefined ? {} : {shadow: {rung: shadow ? shadow.rung : null, candidate: shadow ? candidateRecord(shadow.candidate) : null,
+      sameRecipe: shadow ? shadow.candidate.spec.recipe === chosenRecipeKey : null}};
+    return {version: ENGINE_RECORD_VERSION, mode: this.pairSearchMode, rung, badge: rung === 'L0' || rung === 'L1' ? 'checked' : 'fallback',
+      table: t && p ? {generated: t.searched.generated, modelScored: t.searched.modelScored, rendered: t.searched.rendered, checkedPlans: p.checkedPlans,
+        slots: p.slots, ms: t.searched.ms, complete: t.complete, medianCheckMs: p.medianCheckMs, state: p.state} : null,
+      ...(pick ? {candidate: candidateRecord(pick.candidate, true), alternatives: pick.alternatives.slice(0, 3).map(c => candidateRecord(c))} : {}),
+      ...shadowRecord,
+      versions: {candidates: ENGINE_CANDIDATES_VERSION, model: ENGINE_MODEL_VERSION, search: PAIR_SEARCH_VERSION, ladder: ENGINE_LADDER_VERSION},
+      unsure: unsure.slice(0, 16).map(u => u.slice(0, 240))};
+  }
+
   /** Whole-song B analysis, bounded by a deadline so Next never waits on new analysis for long. */
   private incomingAnalysis(recording: DecodedRecording, signal: AbortSignal): Promise<SongAnalysisResult> {
     const task = this.analyses.analyzeSong(recording, this.mixRuntime);
@@ -781,141 +1021,192 @@ export class SmallPlayer {
       // grid. The measured window is rebound to native coordinates; its start is never bar 1.
       const contextBars = Math.max(4, 4 * Math.floor(SONG_ANALYSIS_WINDOW.seconds * rate / requestedGrid.barFrames / 8));
       const analysisStart = Math.min(nativeFrames - 1, Math.max(0, downbeatAt(requestedGrid, Math.max(0, targetBar - contextBars))));
-      const fromAnalysis = this.analyses.analyze(outgoing.nativeRecording, this.mixRuntime, controller.signal, analysisStart);
-      // An early return below must not leave this started analysis as an unhandled rejection.
-      fromAnalysis.catch(() => undefined);
+      // Pair search (pair-search@1): this pair's table, when the background search ran for exactly this voice and song.
+      // The search stops here (the handover owns the CPU); its table and kept audio stay for this decision.
+      const job = this.pairJob && this.pairJob.voice === from && this.pairJob.targetId === targetId && this.pairJob.ctx && this.pairJob.search ? this.pairJob : null;
+      if (this.pairJob && !job) this.cancelPairSearch('a handover was requested before the pair search had a table');
+      if (job) { job.search!.halt(); job.abort.abort(); job.phase = 'halted'; }
+      const ownerChoice = !!options.recipe && options.recipe !== 'auto' || !!options.choreography;
+      const explore = this.explore ? {seed: this.explore.next} : null;
+      const engineLive = this.pairSearchMode === 'live' && !!job && !ownerChoice;
+      const startA = () => {
+        const task = this.analyses.analyze(outgoing.nativeRecording, this.mixRuntime, controller.signal, analysisStart);
+        // An early return below must not leave this started analysis as an unhandled rejection.
+        task.catch(() => undefined);
+        return task;
+      };
+      // Live mode skips the A window analysis unless the table cannot serve this request.
+      let fromAnalysis = engineLive ? null : startA();
       const toRecording = await this.decodeSetSong(targetId);
       if (!current()) return;
-      const [a, b] = await Promise.all([fromAnalysis, this.incomingAnalysis(toRecording, controller.signal)]);
-      if (!current()) return;
-      const analysisA = a.ok ? a.analysis : null, analysisB = b.ok ? b.analysis : null;
-      // Native A frame now, and the earliest native A frame with a two-second preparation allowance.
-      const toNative = (bufferFrame: number): number => outgoing.nativeRate ? outgoing.nativeFrameAtClock(from.start.at.frame + bufferFrame - fromSet.offset) : fromSet.nativeJoin && bufferFrame >= fromSet.nativeJoin.outputFrame
-        ? fromSet.nativeJoin.sourceFrame + bufferFrame - fromSet.nativeJoin.outputFrame
-        : fromSet.mapping ? (fromSet.sourceStartFrame ?? 0) + sourceFrameAtOutput(fromSet.mapping, bufferFrame) : bufferFrame;
-      const toBuffer = (nativeFrame: number): number => outgoing.nativeRate ? nativeFrame : fromSet.nativeJoin && nativeFrame >= fromSet.nativeJoin.sourceFrame
-        ? fromSet.nativeJoin.outputFrame + nativeFrame - fromSet.nativeJoin.sourceFrame
-        : fromSet.mapping ? outputFrameAtSource(fromSet.mapping, nativeFrame - (fromSet.sourceStartFrame ?? 0)) : nativeFrame;
-      const bufferAt = (clockFrame: number): number => fromSet.offset + clockFrame - from.start.at.frame;
-      const settledNative = fromSet.nativeJoin?.sourceFrame ?? (fromSet.mapping?.returnToOriginal
-        ? sourceFrameAtOutput(fromSet.mapping, fromSet.mapping.returnToOriginal.afterFrames + fromSet.mapping.returnToOriginal.rampFrames)
-        : fromSet.mapping ? nativeFrames : 0);
-      const earliestNative = (): number => Math.max(settledNative, toNative(fromSet.offset),
-        toNative(bufferAt(this.clock.currentFrame + this.leadFrames + 2 * rate)));
-      const grid = setBarGrid(fromSet.asset, analysisA, rate);
-      const anchorBar = boundary.anchor === 'song' ? 0 : Math.max(0,
-        Math.round((toNative(fromSet.offset) - downbeatAt(grid, 0)) / grid.barFrames));
-      // S21: candidates are tried in policy order; a render, deadline or pre-check rejection excludes
-      // that recipe and the next candidate is prepared. Nothing is scheduled until one passes.
-      const exclude: string[] = [];
-      const explore = this.explore ? {seed: this.explore.next} : null;
-      // Part B: A's whole-song structure when its merged analysis already settled (A was the previous B).
-      const structureA = this.analyses.settledSong(fromSet.asset, rate)?.songStructure ?? null;
-      // Owner decision (A), 2026-11-16: the final attempt plans only the ladder's last rung (shortest layered entry).
-      const choose = (allowBlend: boolean, lastRung = false): SetTransitionChoice => chooseSetTransition({
-        from: {asset: fromSet.asset, analysis: analysisA, frames: nativeFrames, structure: structureA},
-        to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
-          channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
-        sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
-        options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {}), ...(lastRung ? {lastRung} : {})});
-      // When every ordinary candidate is used up, the last rung is still tried before giving up.
-      const chooseOrLastRung = (allowBlend: boolean, lastRung = false): SetTransitionChoice => {
-        const picked = choose(allowBlend, lastRung);
-        return picked.kind === 'unavailable' && !lastRung ? choose(allowBlend, true) : picked;
-      };
-      if (!analysisB && !b.ok) this.mix = {phase: 'preparing', summary: null, reason: b.reason};
-      type Prepared = Awaited<ReturnType<SmallPlayer['prepareSetIncoming']>>;
-      let choice: SetTransitionChoice = chooseOrLastRung(true);
-      let prepared!: Prepared, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
-      let lastRejected: PrecheckReport | null = null, unavailableRetried = false;
+      const map = this.voiceMap(from);
+      const {toNative, toBuffer, earliestNative} = map;
+      let choice!: SetTransitionChoice;
+      let prepared!: PreparedSet, at!: ClockStamp, loopBuffer: AudioBuffer | undefined, precheck: PrecheckReport | null = null;
       const failedChecks: {recipe: string; reason: string}[] = [];
-      const delayFor = (): number => 'entryDelayFrames' in prepared.plan ? prepared.plan.entryDelayFrames ?? 0 : 0;
-      const atFor = (): ClockStamp => this.clock.stamp((outgoing.nativeRate ? outgoing.clockFrameAtNative(prepared.plan.fromExitFrame) :
-        from.start.at.frame + toBuffer(prepared.plan.fromExitFrame) - fromSet.offset) + delayFor());
-      for (let attempt = 1; ; attempt++) {
-        if (choice.kind === 'unavailable') {
-          const reason: string = lastRejected ? precheckLabel(lastRejected) + '. No other handover candidate passed; the playing song is unchanged.' : choice.reason;
-          this.mix = {phase: 'unavailable', reason, summary: null, ...(lastRejected ? {precheck: lastRejected} : {})};
-          requireAudio(false, reason);
+      const delayFor = (): number => map.delayFor(prepared.plan);
+      const atFor = (): ClockStamp => map.atFor(prepared.plan);
+      // Ladder (engine-ladder@1): L0 checked plan from the table, L1 best modelled candidate with one pre-check,
+      // then the existing policy ladder (L2) ending in the shortest layered entry (L3); a cut only when the owner chose it (L4).
+      let engine: {rung: 'L0' | 'L1'; candidate: ScoredCandidate; alternatives: readonly ScoredCandidate[]} | null = null;
+      let shadow: LadderPick | null | undefined;
+      const unsure: string[] = [];
+      if (job && !ownerChoice && this.pairSearchMode !== 'off') {
+        const search = job.search!, window = this.engineWindow(job, boundary, map);
+        // A kept plan is usable only while its effect is still ahead of the clock and the audio still covers it.
+        const usable = (kept: KeptPlan): boolean => {
+          const plan = kept.prepared.plan, effect = map.atFor(plan).frame - map.delayFor(plan) - plan.preRollFrames;
+          return effect >= this.clock.currentFrame + this.leadFrames &&
+            map.toBuffer(plan.fromExitFrame) + plan.automation.outgoing.durationFrames - plan.preRollFrames <= outgoing.playbackFrames &&
+            kept.prepared.entryFrame + plan.overlapFrames <= kept.prepared.incoming.buffer.length;
+        };
+        const eligible = (c: ScoredCandidate): boolean => { const kept = search.preparedFor(c.spec.id); return !!kept && usable(kept); };
+        if (this.pairSearchMode === 'shadow') shadow = pickChecked(search, {...window, explore, eligible});
+        else {
+          const pick = pickChecked(search, {...window, explore, eligible});
+          if (pick) {
+            const kept = search.preparedFor(pick.candidate.spec.id)!;
+            choice = pick.menu ? {...kept.choice, menu: pick.menu} : kept.choice;
+            prepared = kept.prepared; loopBuffer = kept.loopBuffer; precheck = kept.report; at = map.atFor(prepared.plan);
+            engine = {rung: 'L0', candidate: pick.candidate, alternatives: pick.alternatives};
+          } else {
+            unsure.push('No checked plan from the pair search was usable inside the wait window.');
+            const c = pickModelled(search, window);
+            if (c) {
+              this.mix = {phase: 'preparing', summary: null, reason: 'Checking the best modelled handover candidate…'};
+              const out: CheckOutcome<KeptPlan> = await this.checkCandidate(job, c, controller.signal).catch(error => {
+                if (!current()) throw error;
+                return {status: 'unavailable' as const, reason: error instanceof Error ? error.message : String(error)};
+              });
+              if (!current()) return;
+              const kept = out.prepared;
+              c.reason = out.reason;
+              if ((out.status === 'pass' || out.status === 'warn') && kept && usable(kept)) {
+                c.status = out.status === 'pass' ? 'checked-pass' : 'checked-warn'; c.final = c.model.score;
+                choice = kept.choice; prepared = kept.prepared; loopBuffer = kept.loopBuffer; precheck = kept.report; at = map.atFor(prepared.plan);
+                engine = {rung: 'L1', candidate: c, alternatives: []};
+              } else {
+                c.status = 'rejected';
+                failedChecks.push({recipe: c.spec.key.slice(0, 120), reason: out.status === 'refused' ? `planner refused: ${out.reason}` : `L1 pre-check ${out.status.toUpperCase()}: ${out.reason}`});
+                unsure.push('The best modelled candidate did not pass its pre-check; the policy ladder was used.');
+              }
+            } else unsure.push('No modelled candidate inside the wait window.');
+          }
         }
-        prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal)
-          .catch(async error => {
-            if (!current()) throw error;
-            // A failed blend render falls back to native B; nothing has been scheduled yet.
-            choice = choose(false);
-            if (choice.kind === 'unavailable') throw error;
-            return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-          });
+      } else if (this.pairSearchMode !== 'off' && !ownerChoice) unsure.push('The pair search had no table for this pair yet.');
+      if (!engine) {
+        fromAnalysis ??= startA();
+        const [a, b] = await Promise.all([fromAnalysis, this.incomingAnalysis(toRecording, controller.signal)]);
         if (!current()) return;
-        at = atFor();
-        if (at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
-          // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
-          choice = choose(false);
-          requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
-          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+        const analysisA = a.ok ? a.analysis : null, analysisB = b.ok ? b.analysis : null;
+        const grid = setBarGrid(fromSet.asset, analysisA, rate);
+        const anchorBar = boundary.anchor === 'song' ? 0 : Math.max(0,
+          Math.round((toNative(fromSet.offset) - downbeatAt(grid, 0)) / grid.barFrames));
+        // S21: candidates are tried in policy order; a render, deadline or pre-check rejection excludes
+        // that recipe and the next candidate is prepared. Nothing is scheduled until one passes.
+        const exclude: string[] = [];
+        // Part B: A's whole-song structure when its merged analysis already settled (A was the previous B).
+        const structureA = this.analyses.settledSong(fromSet.asset, rate)?.songStructure ?? null;
+        // Owner decision (A), 2026-11-16: the final attempt plans only the ladder's last rung (shortest layered entry).
+        const choose = (allowBlend: boolean, lastRung = false): SetTransitionChoice => chooseSetTransition({
+          from: {asset: fromSet.asset, analysis: analysisA, frames: map.nativeFrames, structure: structureA},
+          to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
+            channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
+          sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
+          options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {}), ...(lastRung ? {lastRung} : {})});
+        // When every ordinary candidate is used up, the last rung is still tried before giving up.
+        const chooseOrLastRung = (allowBlend: boolean, lastRung = false): SetTransitionChoice => {
+          const picked = choose(allowBlend, lastRung);
+          return picked.kind === 'unavailable' && !lastRung ? choose(allowBlend, true) : picked;
+        };
+        if (!analysisB && !b.ok) this.mix = {phase: 'preparing', summary: null, reason: b.reason};
+        choice = chooseOrLastRung(true);
+        let lastRejected: PrecheckReport | null = null, unavailableRetried = false;
+        for (let attempt = 1; ; attempt++) {
+          if (choice.kind === 'unavailable') {
+            const reason: string = lastRejected ? precheckLabel(lastRejected) + '. No other handover candidate passed; the playing song is unchanged.' : choice.reason;
+            this.mix = {phase: 'unavailable', reason, summary: null, ...(lastRejected ? {precheck: lastRejected} : {})};
+            requireAudio(false, reason);
+          }
+          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal)
+            .catch(async error => {
+              if (!current()) throw error;
+              // A failed blend render falls back to native B; nothing has been scheduled yet.
+              choice = choose(false);
+              if (choice.kind === 'unavailable') throw error;
+              return this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+            });
           if (!current()) return;
           at = atFor();
-        }
-        loopBuffer = undefined;
-        try {
-          // A finite loop or (Part B) the dual tempo ramp's WSOLA outgoing render replaces A at its effect frame.
-          if (prepared.plan.kind === 'mix') loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
-        } catch (error) {
-          if (!current()) throw error;
-          if (prepared.plan.kind === 'mix' && prepared.plan.outgoingStretch) {
-            // Part B: a refused outgoing ramp excludes that parameterisation; the next candidate is prepared.
-            const failed = transitionSignature(prepared.plan, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
-            exclude.push(failed);
-            failedChecks.push({recipe: failed, reason: `outgoing tempo ramp unavailable: ${error instanceof Error ? error.message : String(error)}`});
-            choice = choose(true);
+          if (at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+            // Preparation outlasted its allowance: re-choose a later bar with native B (no re-render).
+            choice = choose(false);
+            requireAudio(choice.kind !== 'unavailable', 'The set transition missed its audio-clock deadline and no later bar remains.');
+            prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+            if (!current()) return;
+            at = atFor();
+          }
+          loopBuffer = undefined;
+          try {
+            // A finite loop or (Part B) the dual tempo ramp's WSOLA outgoing render replaces A at its effect frame.
+            if (prepared.plan.kind === 'mix') loopBuffer = await prepareOutgoingLoop(this.context, outgoing.nativeRecording, prepared.plan, outgoing.levelGain, controller.signal, this.mixRuntime);
+          } catch (error) {
+            if (!current()) throw error;
+            if (prepared.plan.kind === 'mix' && prepared.plan.outgoingStretch) {
+              // Part B: a refused outgoing ramp excludes that parameterisation; the next candidate is prepared.
+              const failed = transitionSignature(prepared.plan, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+              exclude.push(failed);
+              failedChecks.push({recipe: failed, reason: `outgoing tempo ramp unavailable: ${error instanceof Error ? error.message : String(error)}`});
+              choice = choose(true);
+              continue;
+            }
+            choice = choose(false);
+            requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
+            prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+            at = atFor();
+          }
+          if (loopBuffer && at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
+            choice = choose(false);
+            requireAudio(choice.kind !== 'unavailable', 'Finite loop missed S and no native fallback boundary remains.');
+            prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
+            at = atFor(); loopBuffer = undefined;
+          }
+          if (!current()) return;
+          const candidate = prepared.plan;
+          const effectFrame = at.frame - delayFor() - candidate.preRollFrames;
+          requireAudio(effectFrame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
+          const candidateExit = toBuffer(candidate.fromExitFrame);
+          // The outgoing deck consumes A for its whole automation, measured from the effect (exit minus pre-roll).
+          const aNeeds = candidate.automation.outgoing.durationFrames - candidate.preRollFrames;
+          requireAudio(candidateExit + aNeeds <= outgoing.playbackFrames &&
+            prepared.entryFrame + candidate.overlapFrames <= prepared.incoming.buffer.length,
+          'The set transition does not have enough audio for its handover.');
+          const report = await this.checkSelectedMix({plan: candidate, from: outgoing.nativeRecording, to: toRecording,
+            incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
+            ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: gridAlignedAnalysis(analysisA, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).fromGrid), to: gridAlignedAnalysis(analysisB, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).toGrid)},
+            fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
+          controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS, !unavailableRetried);
+          if (!current()) return;
+          if (report !== false) {
+            if (effectFrame >= this.clock.currentFrame + this.leadFrames) { precheck = report; break; }
+            // S21 (2026-11-16): the check passed but outlasted the plan's audio-clock deadline (explore draws
+            // often plan the earliest bar with a longer recipe). That exact parameterisation is excluded and a
+            // later bar is chosen AND pre-checked again; nothing unchecked is scheduled. Recorded in rejected[].
+            requireAudio(attempt < SET_CANDIDATE_ATTEMPTS, 'The checked set transition missed its audio-clock deadline. Request Next again.');
+            const late = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+            exclude.push(late);
+            failedChecks.push({recipe: late, reason: 'pre-check passed after the audio-clock deadline; re-chosen at a later bar'});
+            choice = chooseOrLastRung(true, attempt + 1 >= SET_CANDIDATE_ATTEMPTS);
             continue;
           }
-          choice = choose(false);
-          requireAudio(choice.kind !== 'unavailable', 'Loop preparation failed and no native fallback boundary remains.');
-          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-          at = atFor();
-        }
-        if (loopBuffer && at.frame - delayFor() - prepared.plan.preRollFrames < this.clock.currentFrame + this.leadFrames) {
-          choice = choose(false);
-          requireAudio(choice.kind !== 'unavailable', 'Finite loop missed S and no native fallback boundary remains.');
-          prepared = await this.prepareSetIncoming(choice, toRecording, analysisA, analysisB, controller.signal);
-          at = atFor(); loopBuffer = undefined;
-        }
-        if (!current()) return;
-        const candidate = prepared.plan;
-        const effectFrame = at.frame - delayFor() - candidate.preRollFrames;
-        requireAudio(effectFrame >= this.clock.currentFrame + this.leadFrames, 'The set transition missed its audio-clock deadline.');
-        const candidateExit = toBuffer(candidate.fromExitFrame);
-        // The outgoing deck consumes A for its whole automation, measured from the effect (exit minus pre-roll).
-        const aNeeds = candidate.automation.outgoing.durationFrames - candidate.preRollFrames;
-        requireAudio(candidateExit + aNeeds <= outgoing.playbackFrames &&
-          prepared.entryFrame + candidate.overlapFrames <= prepared.incoming.buffer.length,
-        'The set transition does not have enough audio for its handover.');
-        const report = await this.checkSelectedMix({plan: candidate, from: outgoing.nativeRecording, to: toRecording,
-          incoming: prepared.incoming, entryFrame: prepared.entryFrame, fromGain: outgoing.levelGain,
-          ...(loopBuffer ? {loopBuffer} : {}), analysis: {from: gridAlignedAnalysis(analysisA, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).fromGrid), to: gridAlignedAnalysis(analysisB, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).toGrid)},
-          fromPlayback: {recording: outgoing.recording, entryFrame: fromSet.offset, elapsedFrames: effectFrame - from.start.at.frame}},
-        controller.signal, current, attempt < SET_CANDIDATE_ATTEMPTS, !unavailableRetried);
-        if (!current()) return;
-        if (report !== false) {
-          if (effectFrame >= this.clock.currentFrame + this.leadFrames) { precheck = report; break; }
-          // S21 (2026-11-16): the check passed but outlasted the plan's audio-clock deadline (explore draws
-          // often plan the earliest bar with a longer recipe). That exact parameterisation is excluded and a
-          // later bar is chosen AND pre-checked again; nothing unchecked is scheduled. Recorded in rejected[].
-          requireAudio(attempt < SET_CANDIDATE_ATTEMPTS, 'The checked set transition missed its audio-clock deadline. Request Next again.');
-          const late = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
-          exclude.push(late);
-          failedChecks.push({recipe: late, reason: 'pre-check passed after the audio-clock deadline; re-chosen at a later bar'});
+          lastRejected = this.mix?.precheck ?? null;
+          if (lastRejected?.status === 'unavailable') unavailableRetried = true;
+          // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
+          const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
+          exclude.push(failedSignature);
+          if (lastRejected) failedChecks.push({recipe: failedSignature, reason: precheckLabel(lastRejected)});
           choice = chooseOrLastRung(true, attempt + 1 >= SET_CANDIDATE_ATTEMPTS);
-          continue;
         }
-        lastRejected = this.mix?.precheck ?? null;
-        if (lastRejected?.status === 'unavailable') unavailableRetried = true;
-        // S21: exclude this parameterisation only (recipe + boundary + overlap + choreography), not its whole recipe family.
-        const failedSignature = transitionSignature(candidate, (choice as Exclude<SetTransitionChoice, {kind: 'unavailable'}>).exitBar);
-        exclude.push(failedSignature);
-        if (lastRejected) failedChecks.push({recipe: failedSignature, reason: precheckLabel(lastRejected)});
-        choice = chooseOrLastRung(true, attempt + 1 >= SET_CANDIDATE_ATTEMPTS);
       }
       const plan = prepared.plan;
       const effect = this.clock.stamp(at.frame - delayFor() - plan.preRollFrames);
@@ -949,8 +1240,17 @@ export class SmallPlayer {
       const chosen: typeof picked = failedChecks.length ? {...picked,
         why: [...(picked.why ?? []), ...(cutAfterFail ? [`${fallbackName} reached after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''}; its own check is not a plain pass.`] : [])],
         rejected: [...(picked.rejected ?? []), ...failedChecks]} : picked;
-      const record = setTransitionRecord(chosen, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
-        {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null);
+      // Engine increment 3: the ladder rung is recorded in every mode (off/shadow/live) with the table state.
+      const recipeKey = 'layered' in plan && plan.layered ? layeredRecipeKey(plan.layered.style) : plan.recipe;
+      const rung: LadderRung = engine?.rung ?? (options.recipe === 'cut' && (plan.recipe === 'cut' || plan.recipe === 'fallback-cut') ? 'L4'
+        : 'layered' in plan && plan.layered?.lastRung ? 'L3' : 'L2');
+      const engineRec = this.engineRecord(job, rung, engine, this.pairSearchMode === 'shadow' && !ownerChoice ? shadow ?? null : undefined, recipeKey, unsure);
+      const ladderWhy = this.pairSearchMode === 'off' ? [] : [`Ladder (${ENGINE_LADDER_VERSION}): ${RUNG_TEXT[rung]}; pair search ${this.pairSearchMode}` +
+        `${engineRec.table ? ` (${engineRec.table.checkedPlans} checked plans, ${engineRec.table.rendered} rendered)` : ''}.`,
+        ...(engineRec.shadow ? [`Shadow pair search would have chosen ${engineRec.shadow.candidate ? `${engineRec.shadow.candidate.key} (${engineRec.shadow.rung})` : 'nothing (no usable checked plan)'}; the existing path scheduled this one.`] : [])];
+      const chosenWithRung: typeof chosen = ladderWhy.length ? {...chosen, why: [...(chosen.why ?? []), ...ladderWhy]} : chosen;
+      const record = setTransitionRecord(chosenWithRung, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
+        {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null, engineRec);
       from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
         motion: {at: effect.frame, sourceFrame: plan.fromExitFrame - plan.preRollFrames,
           ...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}),
@@ -964,7 +1264,7 @@ export class SmallPlayer {
       const tempoRatio = 'tempoRatio' in plan ? plan.tempoRatio : 1;
       this.mix = {phase: 'scheduled', earliestEffect: effect, ...(precheck ? {precheck} : {}),
         ...(cutAfterFail ? {fallbackAfterFailedPrecheck: {failedChecks: failedChecks.length, last: failedChecks.at(-1)!.reason}} : {}),
-        reason: `${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? (cutAfterFail
+        reason: `${engine ? `Pair search ${engine.rung}: ${engine.rung === 'L0' ? 'checked plan from the table' : 'best modelled candidate, checked now'}. ` : ''}${chosen.kind === 'route-free' ? chosen.plan.reason : `Analyzed ${plan.recipe} at bar ${chosen.exitBar + 1}.`} ${precheck ? (cutAfterFail
           ? `Fallback after ${failedChecks.length} failed pre-check${failedChecks.length > 1 ? 's' : ''} (last: ${failedChecks.at(-1)!.reason}); ${lastRungAfterFail ? 'the shortest layered entry itself' : 'the cut itself'}: ${precheckLabel(precheck)}`
           : precheckLabel(precheck)) + '. ' : ''}Listening is untested.`,
         summary: {recipe: plan.recipe, fromBpm: plan.fromBpm, toBpm: plan.toBpm, tempoRatio,
@@ -982,11 +1282,14 @@ export class SmallPlayer {
           set: {fromId: fromSet.asset.id, toId: toAsset.id, exitBar: chosen.exitBar + 1, boundaryBar: chosen.boundaryBar + 1,
             boundaryBars: boundary.bars, anchor: boundary.anchor, fromGrid: chosen.fromGrid.source,
             toGrid: chosen.toGrid.source, tempoChange: plan.toBpm / plan.fromBpm, notes: [...chosen.notes],
-            transition: record, why: [...(chosen.why ?? [])], ...(chosen.structure ? {structure: chosen.structure} : {}),
+            transition: record, why: [...(chosenWithRung.why ?? [])], ...(chosen.structure ? {structure: chosen.structure} : {}),
             ...('choreography' in plan && plan.choreography ? {choreography: plan.choreography.description} : {}),
             entry: {seconds: plan.toEntryFrame / rate, fraction: plan.toEntryFrame / toRecording.buffer.length,
               rank: 'entry' in plan ? plan.entry?.rank ?? null : null}}}};
       if (explore && this.explore) this.explore = {...this.explore, next: (this.explore.next + 1) % 2 ** 31};
+      this.lastFamily = familyOf(recipeKey);
+      this.decisions.add({at: new Date().toISOString(), fromId: fromSet.asset.id, toId: toAsset.id, kind: 'decision',
+        text: `${RUNG_TEXT[rung]}: ${recipeKey} at bar ${chosen.exitBar + 1}.`, engine: engineRec});
       incoming = null; // ownership transferred to this.voices
       this.retainSetSongs([]);
     } catch (error) {
@@ -1006,10 +1309,7 @@ export class SmallPlayer {
   }
 
   private async prepareSetIncoming(choice: SetTransitionChoice, to: DecodedRecording,
-    analysisA: MixAnalysis | null, analysisB: MixAnalysis | null, signal: AbortSignal): Promise<{
-      plan: Exclude<SetTransitionChoice, {kind: 'unavailable'}>['plan']; incoming: DecodedRecording;
-      entryFrame: number; mapping: TimePitchMapping | null; processor: string;
-      sourceStartFrame?: number; nativeJoin?: {sourceFrame: number; outputFrame: number}}> {
+    analysisA: MixAnalysis | null, analysisB: MixAnalysis | null, signal: AbortSignal): Promise<PreparedSet> {
     requireAudio(choice.kind !== 'unavailable', choice.kind === 'unavailable' ? choice.reason : '');
     if (choice.kind === 'analyzed' && ['tempo-ramp', 'brake'].includes(choice.plan.recipe)) {
       const ready = await renderPlannedMix(this.context, {buffer: {length: choice.plan.fromFrames}}, to, choice.plan,
@@ -1071,6 +1371,7 @@ export class SmallPlayer {
   private get leadFrames(): number { return Math.ceil(0.1 * this.clock.sampleRate); }
   private cancelVoices(): void {
     ++this.transitionOperation;
+    this.cancelPairSearch('playback changed');
     this.abortMixPreparation();
     for (const voice of this.voices) voice.source.release();
     this.voices = [];

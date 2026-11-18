@@ -290,3 +290,63 @@ A coordinator clarification added a seeded random mix of all passing styles, wit
 - This branch touches `web/studio.ts` and `web/studio.html`, so expect a merge with the song-dossier branch once it lands in `main`.
 
 **Next handoff:** coordinator review and merge of this branch into `main` (PC). Then S10 owner listening, with explore on, to rate the mix of styles, including the layered entries and the last rung.
+
+## Engine increment 3: pair search
+
+**Assignment:** build increment 3 of the [transition engine design](../TRANSITION_ENGINE_DESIGN.md#9-staged-implementation-plan), "Pair search", as one increment:
+- the candidate generator;
+- the stage-1 model;
+- the anytime render-and-check search and the pair plan table;
+- the ladder L0–L4 under the no-cut rule;
+- a timing measurement;
+- the record and journal additions, with a shadow mode;
+- tests and docs.
+
+**Base / branch:** `worktree-agent-aef33101a9f17a579`, from local `main` at `648b9a7`. The tested source is the commit that adds this section; the coordinator report carries its SHA.
+
+**Publication:** a local commit on the worker branch only. No merge or push. No change to the campaign, Current Tasks, the native board, RAM or NAV.
+
+**Untouched:**
+- `scripts/serve.ts`, `scripts/phone-*`, `scripts/phone-relay.ts` and `web/phone*`;
+- the dossier store files;
+- threshold and safety values, and `MIX_EVALUATOR_VERSION`.
+
+**Delivered.** Detail is in [the planner doc](../S21_TRANSITION_PLANNER.md#pair-search-engine-increment-3).
+- **`engine-candidates@1`:** every phrase, section-end and cue exit of A from the earliest feasible bar; B's section starts and cues with skip cost; every family; hard pruning (15% stretch, trusted grid, audio fit, echo pre-roll).
+- **`engine-model@1`:** dossier-only. Per-bar loudness, lowShare and kick onsets, lead presence, local chroma and the learned prior are recorded as absent in every score.
+- **`pair-search@1`:**
+  - K = 3 per slot, nearest slot first, with a 180 s budget.
+  - Cancellable, and restarted when the next song changes.
+  - Never a cut while budget and an unrendered non-cut candidate remain.
+  - Keeps the prepared audio of the best 2 in the nearest 4 slots, at most 4 heavy buffers.
+- **`engine-ladder@1`:**
+  - Live mode tries L0 (a checked plan from the table, no new render) and then L1 (the best modelled candidate plus one pre-check).
+  - Then comes the existing ladder: L2, ending in the L3 shortest layered entry. A cut is L4, only when chosen by the owner.
+  - The rung is in the plan record (`engine`), in "Why this handover" and in the mix reason, which feeds `DjStatus`.
+- **Shadow mode:** the would-be choice is logged while the existing path schedules.
+- **Off by default:** in the player and in the Studio. Turn it on with `?pairsearch=shadow|live` or the select in "Why this handover".
+- **`web/mix-precheck-inline.ts`:** the Worker's rules on one thread, for Node tests and timing. The status logic moved into a shared `reportFromEvaluation`, and the Worker's behaviour is unchanged.
+
+**Measured timing (owner's set, this Windows PC):** 206 render-and-checks over 3 owner pairs (44.1 kHz stereo, inline pre-check on one thread): median 1.9 s, p90 4.3 s, max 6.9 s, almost all pre-check (every rendered candidate was route-free; stretched renders on owner audio NOT MEASURED). K = 3 confirmed: about 30 checks fit a 60 s lead, covering the nearest ~10 slots. Two of three pairs hit the 180 s budget.
+
+**Tests run (Windows):**
+- `node --test dist/tests/pair-search.test.js`: 10 of 10 pass.
+- `node dist/scripts/pair-search-browser-check.js`: passes.
+- `npm run check`: pass, 702 of 702 tests, plus fixtures, validate and the s11 demo (final tree).
+- `npm run check:browser`: the first run failed at `mix-precheck-browser-check`. That was the seed-dependent level-mismatch case, with pair search off; it is fixed with a commented change, described in the planner doc. The rerun passed all 11 gates, including the new pair search gate.
+
+macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone and audio devices are NOT TESTED.
+
+**Judgement calls, for review:**
+- **L2 is the existing pre-checked ladder,** relabelled after the fact. It reports L3 when it ends at the layered last rung, and L4 for an owner cut. It is not a separate "safe dissolve only" step.
+- **Owner choices skip the engine.** A recipe or choreography the owner chose bypasses the engine entirely.
+- **Analyzed recipes are generated only on cue or section-end exits,** with the planner's own entry. Route-free families cover every exit × entry. On the owner's set, every render in the measured window was route-free; analyzed candidates ranked below them on the model.
+- **The table uses whole-song analyses;** L2 keeps its windowed analysis.
+- **The journal is in memory only (50 entries);** the design's journal v2 file is not built.
+
+**Risks and limits:**
+- Model weights, K, the far-below margin and the keep limits are uncalibrated.
+- Kept-render memory was not measured in a browser.
+- The model is section-level until increment 4.
+
+**Next handoff:** coordinator review and merge of this branch into `main` (PC). Then run the Studio with `?pairsearch=shadow` during S10 owner listening, compare the shadow choices with the plans actually scheduled, and decide whether live becomes the default.

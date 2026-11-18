@@ -284,6 +284,13 @@ try {
       await page.goto(origin + '/studio.html?pack=set&dossiers=off');
       await page.waitForFunction(() => document.getElementById('global-status')?.textContent?.includes('loaded · 2 songs'));
       await page.locator('#set-next-bars').selectOption('8');
+      // Engine increment 3 review: the Studio draws a fresh explore seed per load (explore-menu@1), so the first
+      // candidate (and whether it is the level-mismatch FAIL this case asserts) changed from run to run; seen failing
+      // 2 of 3 runs with pair search off. This lifecycle gate turns explore off so the deterministic ladder order is
+      // checked; explore itself is covered by set-browser-check and deck-browser-check (pinned seed).
+      if (expectFail) await page.evaluate(() => { // the box sits in the collapsed "Why this handover" panel
+        const box = document.getElementById('set-explore') as HTMLInputElement; box.checked = false; box.dispatchEvent(new Event('change'));
+      });
       await page.locator('#deck-a-low').focus(); await page.keyboard.press('ArrowLeft');
       await page.locator('#dj-play').click();
       await page.waitForFunction(() => document.getElementById('dj-now')?.textContent !== 'Nothing' &&
@@ -311,7 +318,11 @@ try {
       } else {
         assert.equal(trace.workers, trace.attempts); assert.equal(trace.terminated, trace.attempts);
         assert.equal(trace.results.length, trace.attempts);
-        assert.ok(trace.results.slice(0, -1).every(r => r.verdict === 'fail'), 'Only a FAIL may move on to another candidate.');
+        // Engine increment 3 review: since S21 (2026-11-16) a PASS/WARN that arrives after its audio-clock deadline is
+        // excluded and a later bar is re-chosen and checked again (mix-precheck-player covers it). With the deterministic
+        // ladder this level-mismatch case runs 8+ checks, so a late layered-entry WARN can move on (seen: 7 FAIL, late
+        // WARN, PASS). The trace cannot see deadlines, so a non-final PASS/WARN is allowed only when it came after a FAIL.
+        assert.ok(trace.results.slice(0, -1).every((r, i) => r.verdict === 'fail' || i > 0 && trace.results.slice(0, i).some(p => p.verdict === 'fail')), 'Only a FAIL (or a late pass after one) may move on to another candidate: ' + trace.results.map(r => r.recipe + ' ' + r.verdict).join(', ') + ' · ' + detail);
         const first = trace.results[0]!, result = trace.results.at(-1)!;
         assert.ok(trace.results.every(r => r.thresholds === 'mix-evaluation-thresholds@1'));
         if (expectFail) {

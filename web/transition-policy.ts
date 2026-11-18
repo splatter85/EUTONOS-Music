@@ -10,6 +10,7 @@
  */
 import type {EntryStyle, LayeredEntryInfo} from './layered-entry.js';
 import {bassDropMinOverlap, CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyName, type ChoreographyParams} from './eq-choreography.js';
+import {isEngineRecord, type EngineRecord} from './engine-journal.js';
 
 /**
  * @2 (S21 Part B) kept every @1 band edge and limit; it only added the pitch-preserving dual tempo ramp
@@ -301,6 +302,11 @@ export interface TransitionPlanRecord {
    * candidate. Optional and compatible like `entryStyle`; absent on deterministic Auto and manual plans.
    */
   readonly menu?: ExploreMenuRecord;
+  /**
+   * Transition engine increment 3 (pair-search@1): ladder rung, badge, pair plan table counts and timing, the
+   * chosen candidate's model terms and the shadow result. Optional and compatible like `entryStyle`.
+   */
+  readonly engine?: EngineRecord;
   readonly why: readonly string[];
   readonly rejected: readonly {readonly recipe: string; readonly reason: string}[];
 }
@@ -380,7 +386,8 @@ export function validateTransitionPlanRecord(value: unknown): TransitionPlanReco
     (r.menu === undefined || !!r.menu && r.menu.policy === EXPLORE_MENU_POLICY.version && Number.isSafeInteger(r.menu.seed) &&
       Number.isSafeInteger(r.menu.attempt) && r.menu.attempt >= 0 && typeof r.menu.chosen === 'string' && Array.isArray(r.menu.alternatives) &&
       r.menu.alternatives.length <= EXPLORE_MENU_POLICY.maxAlternatives && r.menu.alternatives.some(a => a.key === r.menu!.chosen) &&
-      r.menu.alternatives.every(a => typeof a.key === 'string' && a.key.length <= 64 && Number.isFinite(a.weight) && a.weight > 0));
+      r.menu.alternatives.every(a => typeof a.key === 'string' && a.key.length <= 64 && Number.isFinite(a.weight) && a.weight > 0)) &&
+    (r.engine === undefined || isEngineRecord(r.engine));
   if (!ok) throw new Error('Invalid transition plan record.');
   const {id, ...rest} = r;
   if (`tp-${fnv1a(canonical(rest))}` !== id) throw new Error('Transition plan record id does not match its content.');

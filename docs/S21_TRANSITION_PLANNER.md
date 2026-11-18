@@ -524,3 +524,190 @@ These results come from one offline harness. It ran on the owner's 9-song pack o
 - Layered entries do not align beats. Over 8 bars, two native grids drift apart when the tempi differ, so gaps above 8% use 4 bars.
 - The explore menu's alternatives are planned, not pre-checked, so a listed alternative may have failed had it been drawn.
 - Windows only. macOS and Linux were not run. The real phone and audio devices were not tested.
+
+## Pair search (engine increment 3)
+
+This section covers increment 3 of the [transition engine design](TRANSITION_ENGINE_DESIGN.md#9-staged-implementation-plan), "Pair search". It is engineering only: nothing here was heard, and nothing here claims a handover sounds good. It was built and checked on Windows only.
+
+**What it does.** While song A plays and song B is next in the queue, a background search does five things:
+1. lists every plausible handover between A and B;
+2. scores each one from the two song dossiers;
+3. renders the best few of each exit slot offline;
+4. runs the existing pre-check (`live-mix-precheck@1`) on each render;
+5. keeps the prepared audio of the best one or two in the nearest slots.
+
+When Next is pressed after the search, the handover is scheduled from that table. Nothing new is rendered or checked at that point.
+
+The search is **off by default**, both in the player API and on the Studio set page. Turn it on with `?pairsearch=shadow|live` or with the "Pair search" select in "Why this handover". In shadow mode the existing path still schedules, and the search's would-be choice is logged beside it.
+
+### Parts and versions
+
+| Part | File | Version | Role |
+| --- | --- | --- | --- |
+| Candidate generator | `web/engine-candidates.ts` | `engine-candidates@1` | Every exit and entry, each recipe family, hard pruning; outputs `CandidateSpec` (design 2.4) |
+| Stage-1 model | `web/engine-model.ts` | `engine-model@1` | Score from the two dossiers only; unsupported terms marked absent |
+| Anytime search | `web/engine-search.ts` | `pair-search@1` | Top-K render-and-check per slot, nearest slot first; `PairPlanTable` |
+| Ladder | `web/engine-ladder.ts` | `engine-ladder@1` | L0 and L1 picks; rung names |
+| Record and journal | `web/engine-journal.ts` | `pair-search@1` | Optional `engine` field on `em.transition-plan.v1`; in-memory decision journal |
+| Exact-candidate planning | `src/mix-transition.ts` | (chooser input `candidate`) | Builds exactly one candidate through the existing planners, or refuses |
+| Inline pre-check | `web/mix-precheck-inline.ts` | `live-mix-precheck@1` | The Worker's window, evaluator, validation and status rules on one thread, for Node tests and timing only |
+
+### Candidate generator (`engine-candidates@1`)
+
+**Exits.** These are taken from the earliest feasible bar of A onwards, capped at 160:
+- every phrase boundary (each 4th bar);
+- every section end;
+- every exit-cue bar.
+
+**Entries.** These are B's first downbeat, its labelled section starts and its entry cues. They are ranked by cue score minus the skip cost (how much of B is skipped). The top 4 are kept, and the earliest entry is always one of them.
+
+**Families per exit:**
+- **Analyzed (beat-matched) policy recipes** (blend, bass swap, tempo ramp and the rest): only on cue or section-end exits. The analyzed planner chooses the entry.
+- **Per entry:** the crossfade at its gap-rule lengths, the echo reset, the filter and tone dissolves, and the four layered-entry styles at 8 or 4 bars. Each layered style also gets its 2-bar last rung.
+- **A cut:** only when the owner chose one.
+
+**Pruning, before any audio:**
+- stretch above 15%;
+- beat-locked recipes without trusted grids on both songs;
+- not enough audio for the overlap;
+- no room for the echo pre-roll.
+
+**Candidate keys** take the form `recipe|x<exitBar>|e<entryBar>|b<bars>[|last]`, and the id is an FNV hash of the key.
+
+### Stage-1 model (`engine-model@1`)
+
+The model reads the two dossiers only: tempo, grid confidence, global key, sections (energy, low share and vocal share per section) and cues. Its terms are:
+- **structure:** whether the exit is a section end or cue, and the entry a section start;
+- **energy, low-band clash and lead overlap:** section proxies;
+- **harmonic:** the global key only;
+- **tempo strain;**
+- **grid trust;**
+- **skip cost;**
+- **variety** against the previous handover's family;
+- **a small family base.**
+
+These terms are **absent** and recorded as such in every score (`absent`):
+- per-bar loudness;
+- lowShare and kick onsets;
+- lead presence;
+- local chroma;
+- the learned prior (always 0; there is no learner yet).
+
+Section proxies stand in where the design wanted bar-level data. No value is invented. When a pair lacks sections or a confident key, that term is listed in `missing`.
+
+### Anytime search (`pair-search@1`)
+
+**Order of work:**
+- Candidates are grouped into slots by exit bar and ranked by model score. Cuts always rank last.
+- Slots are worked nearest first. Slots already behind the clock are skipped.
+- In each slot the best unrendered candidate is checked: non-cut first, a cut only when no non-cut is left.
+
+**Each check:**
+- builds exactly that candidate through the existing planners (the chooser's new `candidate` input);
+- renders it as Next would (incoming stretch, loop buffer);
+- re-checks the deadline and the audio;
+- runs the injected pre-check runtime: the real Worker in the browser, or `inlineMixPrecheck` or a fake in Node.
+
+**Scoring.** A PASS or WARN sets the final score: the model score, minus 0.2 for a WARN, minus 0.05 per evaluator flag. Passing is a floor, not the ranking. A planner refusal makes no render and does not use up an attempt.
+
+**Stopping.** A slot stops after K = 3 checked plans or 8 attempts. A candidate more than 0.6 below the slot's best checked final score is not rendered. The whole search stops at 180 s.
+
+**Kept audio:**
+- the best 2 of the nearest 4 future slots;
+- at most 4 heavy (rendered) buffers in all;
+- route-free plans on the native B are light and always kept.
+
+**Cut rule.** `bestIn` never returns a cut while the budget remains and the slot still has an unrendered non-cut candidate. L1 never offers a cut.
+
+**Cancellation:**
+- **Pair change:** a new next song or a new playing voice cancels the search, drops its kept audio and starts again (`preparePair`, idempotent for the same pair). The Studio calls `preparePair` with the queue head on every render tick.
+- **Next:** Next halts the search but keeps its table and kept audio for the decision.
+- **Playback stopped or changed:** this cancels the search.
+
+**Audio path.** Heavy work stays off the audio path. Renders use the existing time-stretch runtime, and checks use the pre-check Worker. The search yields between steps, and nothing is scheduled until Next.
+
+### Ladder L0–L4 under the no-cut rule
+
+| Rung | Meaning | Where |
+| --- | --- | --- |
+| L0 | Best checked plan from the table inside the window (first boundary .. +8 bars), whose kept audio still fits the clock | Live mode, at Next |
+| L1 | Best modelled (unchecked, non-cut) candidate in the window, checked once now | Live mode, when L0 has nothing usable |
+| L2 | The existing pre-checked policy ladder (safe dissolves and the other passing styles) | All modes |
+| L3 | The ladder's last rung, the shortest layered entry | All modes |
+| L4 | A clean cut, only when the owner selected `cut` | All modes |
+
+There is no automatic plain-cut rung. With explore on, L0 makes a seeded draw (`explore-menu@1`) among the best checked plan of each family, with each layered style counted separately, and records it as `menu`. When the owner chose a recipe or choreography, the engine is skipped and the existing path runs.
+
+The rung is recorded in three places:
+- in the plan record, as `engine.rung` with the badge (`checked` for L0/L1, `fallback` otherwise), the table counts and timing, the chosen candidate's model terms, up to 3 alternatives, and `unsure` notes;
+- in "Why this handover", as a line such as "Ladder (engine-ladder@1): L0 checked plan from the pair search";
+- in the mix reason ("Pair search L0: …"), which feeds the `DjStatus` detail.
+
+In shadow mode a further "Why" line says what the search would have chosen.
+
+### Measured render-and-check time (this Windows PC)
+
+How it was measured (2026-11-17, Windows 11):
+- **Setup.** Node ran the real player with live pair search over three consecutive pairs of the owner's rated set (44.1 kHz stereo, about 180 s per song).
+- **Path.** It used the real analysis, planner and render runtime, plus `inlineMixPrecheck`: the Worker's exact rules, run on one thread.
+- **Output.** Only aggregate numbers were recorded. No title, id or audio leaves the PC, and nothing is committed. The script was a scratchpad file, not part of the repo.
+
+| Pair | Generated | Slots | Rendered | Checked (PASS/WARN) | Search | Median per render+check | End state |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 2153 | 35 | 50 | 44 (33/11) | 182 s | 2.6 s | budget |
+| 2 | 498 | 37 | 93 | 66 (0/66) | 183 s | 1.8 s | budget |
+| 3 | 812 | 16 | 59 | 48 (0/48) | 118 s | 1.7 s | complete |
+
+**All 206 timed candidates together:**
+- render+check: median 1.9 s, p90 4.3 s, max 6.9 s;
+- render alone: median 0 ms, max 3 ms;
+- the rest is the pre-check.
+
+**Why the render time is near zero.** Every candidate rendered inside these windows was route-free on the native B: crossfades, dissolves, echo resets and layered entries. Analyzed, stretched candidates ranked lower and were not reached. Their render time on owner audio is therefore NOT MEASURED here.
+
+**Synthetic browser figure.** For comparison, the Chromium gate's real Worker measured a median of 1.2 s per check on 16 kHz mono synthetic songs.
+
+**K = 3 is confirmed, not changed.**
+- At the median, a 60 s lead fits about 30 checks.
+- With K = 3 that covers the nearest ~10 slots, more than the 8-bar Next window. K = 5 would cover about 6.
+- Pairs 1 and 2 hit the 180 s budget with most slots still only modelled. Far slots stay at L1 or L2, which is the intended anytime behaviour.
+
+These are engineering timings. They are not listening evidence, and the Worker in a busy browser tab may be slower.
+
+### Record compatibility
+
+`engine` is optional and validated by shape (`isEngineRecord`). Records without it keep their ids, because the canonical form drops undefined fields. The record stays under the feedback store's 12,000-character plan limit; a test checks this. The decision journal is in memory only (bounded to 50) and is not the relay journal file. The design's "journal v2" file format is not built.
+
+### Tests (this pass)
+
+New `tests/pair-search.test.ts` has 10 tests.
+
+**Search units, with a fake check:**
+- K per slot, nearest slot first, and one timing per render-and-check;
+- the cut rule;
+- budget stop with a best-so-far answer and the WARN penalty;
+- cancel and halt, with refusals not counted as renders;
+- the kept-buffer cap;
+- the bounded journal and engine record validation.
+
+**Player, with original synthetic 128 s songs, the real analysis, planner and render path, and an injected PASS pre-check:**
+- Off is the default, and the record names the rung (L2 or L3).
+- **Live with more than 60 s of lead:** the nearest slots hold checked plans, every phrase bar has a slot, absent model terms are recorded, and timing is recorded. Next then schedules at L0 with no new render and no new pre-check, and Why, the mix reason and the journal name L0.
+- Changing the next song cancels and restarts; in shadow mode the would-be choice is recorded.
+- Next before a table exists cancels the search and uses the policy ladder, saying why.
+
+New browser gate `scripts/pair-search-browser-check.ts`, part of `check:browser`, runs on the real Studio page with the real pre-check Worker:
+- Off is the default.
+- `?pairsearch=live` finishes a search while A plays.
+- Next shows L0 in "Why this handover".
+
+One existing gate changed, with comments in the file: `mix-precheck-browser-check`, level-mismatch case. The first full `check:browser` run failed there, and it failed 2 of 3 times when rerun alone, with pair search off (that code path is unchanged). The cause is the fresh explore seed the Studio draws on each load: the first draw is sometimes a passing style, not the expected loudness FAIL. The case now turns explore off. On the deterministic ladder the case then runs 8 or more checks, and the S21 late-pass re-choose lets a late WARN move on. The "only a FAIL moves on" assertion now also accepts a late PASS/WARN after a FAIL. It passed 3 of 3 runs afterwards.
+
+### Known limits (this pass)
+
+- Nothing here was heard. The model weights, K, the far-below margin and the keep limits are engineering values, not calibrated by listening or ratings.
+- The model is section-level. Bar-level loudness, low-band and lead terms wait for increment 4.
+- Shadow and live use whole-song analyses for the table. The existing L2 path still uses its windowed analysis.
+- Analyzed recipes are generated only on cue or section-end exits, with the planner choosing the entry, so not every exit × entry pair is tried for beat-matched recipes.
+- Kept heavy renders cost memory; at most 4 are kept. Browser memory was not measured.
+- Windows only. macOS and Linux were not run. The real phone and audio devices were not tested. Listening is NOT TESTED.
