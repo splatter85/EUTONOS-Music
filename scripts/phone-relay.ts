@@ -735,8 +735,9 @@ export function djPageUrl(djOrigin: string, relayPort: number, token: string): s
 }
 
 /** S18: the Studio set page (any-to-any set DJ with Auto) with the same relay and token. */
-export function studioSetPageUrl(djOrigin: string, relayPort: number, token: string): string {
-  return `${djOrigin}/studio.html?pack=set&tab=dj&relay=${encodeURIComponent(`http://127.0.0.1:${relayPort}`)}#relayToken=${token}`;
+/** `extraQuery` is added to the query string (before the fragment), e.g. '&sources=legacy'. */
+export function studioSetPageUrl(djOrigin: string, relayPort: number, token: string, extraQuery = ''): string {
+  return `${djOrigin}/studio.html?pack=set&tab=dj&relay=${encodeURIComponent(`http://127.0.0.1:${relayPort}`)}${extraQuery}#relayToken=${token}`;
 }
 
 function usage(): string {

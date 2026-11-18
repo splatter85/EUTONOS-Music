@@ -113,7 +113,7 @@ try {
     const phonePage = await context.newPage();
     phonePage.on('pageerror', error => errors.push(`phone-stream page: ${error.message}`));
     try {
-      await phonePage.goto(studioSetPageUrl(origin, relayAddress.port, relay.token) + "&sources=legacy");
+      await phonePage.goto(studioSetPageUrl(origin, relayAddress.port, relay.token, '&sources=legacy'));
       await waitText(phonePage, 'global-status', /Rated set.*loaded · 4 songs/);
       await phonePage.locator('#phone-stream').click();
       const until = async (check: () => boolean, label: string): Promise<void> => {

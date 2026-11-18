@@ -105,7 +105,7 @@ try {
 
   // ---- Studio: the pool starts from the two default-on Music Studio sources ----
   const studio = await context.newPage();
-  await studio.goto(studioSetPageUrl(origin, relayPort, relay.token) + '&dossiers=off');
+  await studio.goto(studioSetPageUrl(origin, relayPort, relay.token, '&dossiers=off'));
   await waitFor(studio, '#global-status', /Song sources: 2 songs/);
   await waitCount(studio, '#set-songs [data-src-song]', 2);
   assert.match(await content(studio, '#set-songs'), /Music Studio: loved/);
