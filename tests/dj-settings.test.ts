@@ -13,7 +13,7 @@ import {DEFAULT_SETTINGS_ID, defaultDjSettings, describeSnapshot, EXPLORE_WEIGHT
 import {ENTRY_STYLES} from '../web/layered-entry.js';
 import {dualRampTempo, tempoBandsFor, tempoGapPolicy, validateTransitionPlanRecord, exploreMenuDraw} from '../web/transition-policy.js';
 import {makeTransitionFeedback, parseTransitionFeedback} from '../web/transition-feedback.js';
-import {buildReport, formatReport, NO_SETTINGS, styleOfEntry} from '../scripts/transitions-report.js';
+import {buildReport, formatReport, NO_SETTINGS, NO_SOURCES, styleOfEntry} from '../scripts/transitions-report.js';
 
 const SR = 16000;
 const fakeAsset = (id: string, bpm: number, frames: number) =>
@@ -224,4 +224,31 @@ test('report: ratings group by settings id, by style and by style within setting
   const text = formatReport(report);
   assert.ok(text.includes('By settings id:') && text.includes('By style within settings id:') && text.includes('Settings ids'));
   assert.ok(text.includes(sA.id));
+});
+
+test('song sources: the optional stamp is validated on ratings, old ratings stay valid, and the report groups by source and rating', () => {
+  const mk = (n: number, sources: unknown) => {
+    const c = chooseSetTransition(input(n));
+    assert.ok(c.kind !== 'unavailable');
+    const plan = setTransitionRecord(c, {id: 'a', sha256: 'a'.repeat(64)}, {id: 'b', sha256: 'b'.repeat(64), frames}, SR, 'explore', n);
+    return makeTransitionFeedback({plan, rating: 'like', device: 'phone', at: `2026-11-17T11:00:${String(n).padStart(2, '0')}.000Z`,
+      ...(sources ? {sources: sources as never} : {})});
+  };
+  const stamp = {from: {source: 'studio-loved', label: 'Music Studio: loved', rating: 'love'}, to: {source: 'folder-0123456789ab', label: 'Folder: Beats', rating: 'unrated'}};
+  const withSources = mk(1, stamp);
+  assert.deepEqual(withSources.sources, stamp);
+  assert.deepEqual(parseTransitionFeedback(JSON.parse(JSON.stringify(withSources))).sources, stamp);
+  const old = mk(2, undefined);
+  assert.equal('sources' in old, false);
+  assert.equal(parseTransitionFeedback(JSON.parse(JSON.stringify(old))).planId, old.planId);
+  assert.throws(() => parseTransitionFeedback({...withSources, sources: {...stamp, extra: 1}}));
+  assert.throws(() => parseTransitionFeedback({...withSources, sources: {...stamp, to: {...stamp.to, rating: 'meh'}}}));
+  assert.throws(() => parseTransitionFeedback({...withSources, sources: {...stamp, from: {...stamp.from, source: '../x'}}}));
+  assert.throws(() => mk(3, {from: stamp.from}));
+  const report = buildReport([withSources, mk(4, stamp), old], {lines: 3, skipped: 0});
+  const bySource = Object.fromEntries(report.groups['song source (from -> to)']!.map(r => [r.key, r.n]));
+  assert.equal(bySource['Music Studio: loved -> Folder: Beats'], 2);
+  assert.equal(bySource[NO_SOURCES], 1);
+  assert.ok(report.groups['song ratings when played (from -> to)']!.some(r => r.key === 'love -> unrated' && r.n === 2));
+  assert.ok(formatReport(report).includes('Folder: Beats'));
 });

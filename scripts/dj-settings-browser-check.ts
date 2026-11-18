@@ -73,7 +73,7 @@ try {
 
   // ---- Studio, through the relay ----
   const studio = await context.newPage();
-  await studio.goto(studioSetPageUrl(origin, relayPort, relay.token) + '&dossiers=off');
+  await studio.goto(studioSetPageUrl(origin, relayPort, relay.token) + '&dossiers=off&sources=legacy');
   await waitFor(studio, '#global-status', /loaded · 2 songs/);
   await waitFor(studio, '#booth-message', /Saved on the PC/);
   assert.equal(await studio.locator('#booth-pairSearch').inputValue(), 'off');

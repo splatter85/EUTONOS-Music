@@ -8,6 +8,7 @@
  */
 import {cleanFeedbackText, FEEDBACK_NOTE_MAX, isFeedbackRating, parseFeedbackTags, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
 import {isSettingsStamp, type SettingsStamp} from './dj-settings.js';
+import {isPairSourceStamp, type PairSourceStamp} from './dj-sources.js';
 import {validateTransitionPlanRecord, type TransitionPlanRecord, type TransitionRatingLog} from './transition-policy.js';
 
 export const TRANSITION_FEEDBACK = 'em.transition-feedback.v1' as const;
@@ -39,10 +40,16 @@ export interface TransitionFeedback {
    * plan was made, copied from `plan.settings`. It is stored beside the plan so reports can group ratings by settings.
    */
   readonly settings?: SettingsStamp;
+  /**
+   * OPTIONAL (added with the DJ song sources; older ratings simply lack it): where each song of the pair came from and how it was
+   * rated when it played (love, like or unrated), so reports can group ratings by source. Never holds a path. It sits beside the
+   * plan (the plan id is a content hash and is not changed by it).
+   */
+  readonly sources?: PairSourceStamp;
 }
 
 const REQUIRED_KEYS = ['version', 'planId', 'plan', 'rating', 'tags', 'note', 'device', 'at', 'measured'] as const;
-const TOP_KEYS = [...REQUIRED_KEYS, 'settings'] as const;
+const TOP_KEYS = [...REQUIRED_KEYS, 'settings', 'sources'] as const;
 const MEASURED_KEYS = ['status', 'reason', 'fallbackAfterFailedChecks'] as const;
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -85,9 +92,14 @@ export function parseTransitionFeedback(value: unknown): TransitionFeedback {
     if (!plan.settings || JSON.stringify(plan.settings) !== JSON.stringify(value.settings)) return fail('settings do not match the plan');
     settings = structuredClone(value.settings);
   }
+  let sources: PairSourceStamp | undefined;
+  if (value.sources !== undefined) {
+    if (!isPairSourceStamp(value.sources)) return fail('sources stamp');
+    sources = structuredClone(value.sources);
+  }
   return {version: TRANSITION_FEEDBACK, planId: plan.id, plan: structuredClone(plan), rating: value.rating, tags,
     note: cleanFeedbackText(value.note, FEEDBACK_NOTE_MAX), device: value.device as FeedbackDevice, at: value.at, measured: parseMeasured(value.measured),
-    ...(settings ? {settings} : {})};
+    ...(settings ? {settings} : {}), ...(sources ? {sources} : {})};
 }
 
 export interface FeedbackInput {
@@ -98,11 +110,13 @@ export interface FeedbackInput {
   readonly device: FeedbackDevice;
   readonly at: string;
   readonly measured?: FeedbackMeasured | null;
+  /** Optional source and rating of the two songs as they were when played (DJ song sources). */
+  readonly sources?: PairSourceStamp;
 }
 export function makeTransitionFeedback(input: FeedbackInput): TransitionFeedback {
   return parseTransitionFeedback({version: TRANSITION_FEEDBACK, planId: input.plan.id, plan: input.plan, rating: input.rating,
     tags: input.tags ?? [], note: input.note ?? '', device: input.device, at: input.at, measured: input.measured ?? null,
-    ...(input.plan.settings ? {settings: input.plan.settings} : {})});
+    ...(input.plan.settings ? {settings: input.plan.settings} : {}), ...(input.sources ? {sources: input.sources} : {})});
 }
 
 /** An older em.transition-ratings.v1 entry (love/like/dislike only) as feedback with no tags or note. */

@@ -76,6 +76,12 @@
             <label class="check"><input id="set-loop" type="checkbox" autocomplete="off"> Loop the set</label>
             <button id="set-requeue" class="chip" type="button">Queue the whole set</button>
           </div>
+          <details id="set-sources" class="set-booth" open hidden>
+            <summary>Song sources</summary>
+            <p class="dim">The DJ plays the union of the ticked sources. Ticking or unticking changes the set and the queue refreshes. Songs from folders are local only. Rate any song here or on the phone: love, like or dislike (press the same rating again to clear). A disliked song is never played; it stays below as a negative example and Undo brings it back. Ratings of Music Studio songs are saved in Music Studio.</p>
+            <div id="set-sources-card"></div>
+            <p id="set-sources-apply" class="dim" hidden>The song list changed while the music is playing. <button id="set-sources-apply-btn" class="chip" type="button">Apply song changes (stops the music)</button></p>
+          </details>
           <details id="set-booth" class="set-booth" open>
             <summary>DJ booth settings</summary>
             <p class="dim">Each setting is either pinned by you (Manual) or left to the DJ (DJ decides, today's behaviour). Touching a control pins it. The same card is on the phone. Changes apply to the next handover that is planned and are recorded with it.</p>

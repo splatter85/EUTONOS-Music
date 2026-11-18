@@ -4,6 +4,16 @@ import type {SmallPlayer} from '../src/player.js';
 import type {MixAnalysis} from '../src/mix-analysis.js';
 import type {SongWaveform} from './set-waveform.js';
 import type {PersistentSetAnalysisCache} from './set-analysis-cache.js';
+import {markRating, ratingButtons} from './dj-sources-ui.js';
+import type {RateAction, SongRating} from './dj-sources.js';
+
+/** DJ song sources: each row shows its source and rating and lets the owner rate it (pressing the same rating clears it). */
+export interface SongRater {
+  /** Source and rating in words, e.g. "Folder: Beats · unrated, playable"; '' when unknown. */
+  text(id: string): string;
+  current(id: string): SongRating;
+  rate(id: string, action: RateAction): void;
+}
 
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '') => {
   const node = document.createElement(tag); node.className = className; return node;
@@ -17,7 +27,7 @@ export function measuredSongLabel(analysis: MixAnalysis): string {
 }
 interface Row {
   root: HTMLLIElement; title: HTMLElement; metadata: HTMLElement; analysis: HTMLElement; window: HTMLElement;
-  canvas: HTMLCanvasElement; analyze: HTMLButtonElement; wave: SongWaveform | null; drawn: string;
+  canvas: HTMLCanvasElement; analyze: HTMLButtonElement; wave: SongWaveform | null; drawn: string; rate: HTMLElement | null;
 }
 export class SetSongList {
   private readonly rows = new Map<string, Row>();
@@ -25,7 +35,7 @@ export class SetSongList {
   private busy: string | null = null;
   constructor(private readonly host: HTMLElement, private readonly cache: PersistentSetAnalysisCache,
     private readonly player: () => SmallPlayer | null, private readonly enqueue: (id: string) => void,
-    private readonly rating: (id: string) => string) {}
+    private readonly rating: (id: string) => string, private readonly rater?: SongRater) {}
   private create(asset: AudioAsset): Row {
     const root = element('li', 'set-song-row'), detail = element('div', 'song-detail'), title = element('strong', 'song-title');
     const metadata = element('div', 'song-meta'), analysis = element('div', 'song-analysis'), window = element('div', 'song-window');
@@ -45,8 +55,15 @@ export class SetSongList {
         .finally(() => { this.busy = null; });
     });
     detail.append(title, metadata, analysis, window); actions.append(analyze, queue); root.append(detail, actions, canvas);
+    let rate: HTMLElement | null = null;
+    if (this.rater) {
+      const rater = this.rater;
+      rate = ratingButtons(asset.id, rater.current(asset.id), action => rater.rate(asset.id, action), asset.title);
+      actions.append(rate);
+    }
+    root.dataset.srcSong = asset.id;
     this.host.append(root);
-    return {root, title, metadata, analysis, window, canvas, analyze, wave: null, drawn: ''};
+    return {root, title, metadata, analysis, window, canvas, analyze, wave: null, drawn: '', rate};
   }
   render(assets: readonly AudioAsset[]): void {
     const ids = new Set(assets.map(asset => asset.id));
@@ -58,7 +75,8 @@ export class SetSongList {
       if (!row) { row = this.create(asset); this.rows.set(asset.id, row); }
       const rating = this.rating(asset.id), duration = asset.file.frames / asset.file.sample_rate;
       put(row.title, asset.title);
-      put(row.metadata, (asset.timing?.bpm ?? '?') + ' BPM requested · ' + time(duration) + (rating ? ' · ' + rating : ''));
+      put(row.metadata, (asset.timing?.bpm ?? '?') + ' BPM requested · ' + time(duration) + (rating ? ' · ' + rating : '') + (this.rater ? ' · ' + this.rater.text(asset.id) : ''));
+      if (row.rate && this.rater) { const rater = this.rater; markRating(row.rate, rater.current(asset.id), action => rater.rate(asset.id, action)); }
       if (rate) void this.cache.restore(asset, rate);
       const data = rate ? this.cache.presentation(asset, rate) : null;
       const running = data?.analyzing || this.busy === asset.id, analysis = data?.analysis;

@@ -295,7 +295,7 @@ test('set budget refuses too many takes or too many audition bytes; selection ne
   const catalog = (takes: RatedTake[]): RatedCatalog => ({schema_version: 'eutonos.rated-catalog.v1', takes, pair: null, set: null, limits: []});
   const max = RATED_INTAKE_LIMITS.setTakes;
   assert.equal(selectSet(catalog(Array.from({length: max}, (_, i) => take(i, 1000))), 'loved-liked').length, max);
-  assert.throws(() => selectSet(catalog(Array.from({length: max + 1}, (_, i) => take(i, 1000))), 'loved-liked'), /SET_TOO_LARGE.*32-take/);
+  assert.throws(() => selectSet(catalog(Array.from({length: max + 1}, (_, i) => take(i, 1000))), 'loved-liked'), /SET_TOO_LARGE.*128-take/);
   const half = RATED_INTAKE_LIMITS.setBytes / 2;
   assert.equal(selectSet(catalog([take(1, half), take(2, half), take(3, half + 1, 'dislike')]), 'loved-liked').length, 2);
   assert.throws(() => selectSet(catalog([take(1, half), take(2, half + 1)]), 'loved-liked'), /SET_TOO_LARGE.*512 MiB/);

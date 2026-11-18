@@ -28,8 +28,8 @@ export interface LazyMediaReader {
 /** S02 is a small, resident demo, not an arbitrary-pack importer or streamer. */
 export const MAX_DEMO_BYTES = 16 * 1024 * 1024;
 export const MAX_AUDITION_BYTES = 128 * 1024 * 1024;
-/** S18 set limits, matching the rated-set intake (32 takes, 512 MiB of packed audio). */
-export const SET_LIMITS = Object.freeze({minRecordings: 2, maxRecordings: 32, maxPackedBytes: 512 * 1024 * 1024,
+/** S18 set limits, up to 128 songs; the 4 GiB packed budget is a manifest total (nothing is resident, one song is fetched at a time). */
+export const SET_LIMITS = Object.freeze({minRecordings: 2, maxRecordings: 128, maxPackedBytes: 4 * 1024 * 1024 * 1024,
   /** Decoded Float32 budget for one song at the output rate (about 5.8 min of 48 kHz stereo). */
   maxDecodedSongBytes: 128 * 1024 * 1024});
 
@@ -104,7 +104,7 @@ async function loadSetPack(manifestUrl: URL, allowFixtures: boolean, fetcher: ty
   requireAudio(recordings.length >= SET_LIMITS.minRecordings && recordings.length <= SET_LIMITS.maxRecordings &&
     recordings.length === pack.assets.length, `A set needs ${SET_LIMITS.minRecordings}–${SET_LIMITS.maxRecordings} recordings and no samples.`);
   requireAudio(pack.assets.reduce((sum, a) => sum + a.file.bytes, 0) <= SET_LIMITS.maxPackedBytes,
-    'A set supports at most 512 MiB of packed audio.');
+    'A set supports at most 4 GiB of packed audio.');
   requireAudio(recordings.every(a => a.timing && a.cues.some(c => c.kind === 'entry')), 'Every set song needs timing and an entry cue.');
   requireAudio(recordings.every(a => eligibleForPlayback(a, allowFixtures, allowUnreviewed)),
     'Recording is not eligible; fixture mode or explicit owner-local unreviewed audition is required.');

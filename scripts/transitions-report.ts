@@ -60,6 +60,7 @@ export function styleOfEntry(e: TransitionFeedback): string {
   const s = e.plan.entryStyle;
   return s && s.source === 'layered-entry@1' ? `layered ${s.style}${s.lastRung ? ' (last rung)' : ''}` : e.plan.recipe;
 }
+export const NO_SOURCES = 'no source recorded (before the song sources)';
 export const NO_SETTINGS = 'no settings recorded (before the booth settings)';
 export const settingsIdOfEntry = (e: TransitionFeedback): string => e.settings?.id ?? e.plan.settings?.id ?? NO_SETTINGS;
 function gapBucket(gapFraction: number): string { return `${(gapFraction * 100).toFixed(1)}%`; }
@@ -82,6 +83,11 @@ const DIMENSIONS: readonly {readonly name: string; readonly of: (e: TransitionFe
   {name: 'style (recipe or layered entry)', of: styleOfEntry},
   {name: 'style within settings id', of: e => `${settingsIdOfEntry(e)} · ${styleOfEntry(e)}`},
   {name: 'pre-check verdict at the time', of: e => e.measured?.status ?? 'not recorded'},
+  // DJ song sources: where each song came from and how it was rated when it played (optional in older records).
+  {name: 'song source (from -> to)', of: e => e.sources ? `${e.sources.from.label} -> ${e.sources.to.label}` : NO_SOURCES},
+  {name: 'from song source', of: e => e.sources ? e.sources.from.label : NO_SOURCES},
+  {name: 'to song source', of: e => e.sources ? e.sources.to.label : NO_SOURCES},
+  {name: 'song ratings when played (from -> to)', of: e => e.sources ? `${e.sources.from.rating} -> ${e.sources.to.rating}` : NO_SOURCES},
   {name: 'rated on', of: e => e.device},
 ];
 
