@@ -7,6 +7,8 @@ import type {PhoneCommand, RelayStatus, TransitionInfo} from './phone-protocol.j
 import {audioPlan, phoneView} from './phone-ui.js';
 import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
 import {StallWatchdog} from './phone-watchdog.js';
+import {DjSettingsStore} from './dj-settings-store.js';
+import {SettingsCard} from './dj-settings-ui.js';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -336,6 +338,20 @@ async function poll(reschedule = true): Promise<void> {
   }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll(); });
+
+// DJ booth settings: same card as the Studio page; the relay file is shared, the newest change wins.
+const settingsStore = new DjSettingsStore({endpoint: '/api/settings', onChange: () => { renderBooth(); }});
+const boothCard = new SettingsCard(element('booth-card'), {
+  patch: patch => { void settingsStore.update(patch).catch(error => { boothCard.say(`Refused: ${error instanceof Error ? error.message : String(error)}`); }); },
+  reset: () => { void settingsStore.reset(); },
+}, 'booth');
+function renderBooth(): void {
+  boothCard.render(settingsStore.get());
+  boothCard.say(settingsStore.lastProblem || (settingsStore.isSaved ? 'Saved on the PC.' : settingsStore.pending ? 'Not saved on the PC yet; it will retry.' : 'Waiting for the PC.'));
+}
+renderBooth();
+void settingsStore.sync();
+setInterval(() => { if (!document.hidden) void settingsStore.tick(); }, 3000);
 
 setupMediaSession();
 render();

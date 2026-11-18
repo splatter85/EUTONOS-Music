@@ -24,6 +24,8 @@ import {deckPositionAt, type DeckPositionInput, type DeckPosition} from '../web/
 import {precheckLabel, PRECHECK_PROTOCOL, type PrecheckReport, type PrecheckRequest, type PrecheckRuntime} from '../web/mix-precheck-data.js';
 import {buildSongDossier, identityOfAsset} from '../web/song-dossier.js';
 import {generateCandidates, ENGINE_CANDIDATES_VERSION} from '../web/engine-candidates.js';
+import {resolveDjSettings, settingsStamp, transitionSettingsOf, exploreWeight, type DjSettings, type EffectiveDjSettings, type SettingsStamp,
+  type TransitionSettings} from '../web/dj-settings.js';
 import {modelScore, familyOf, ENGINE_MODEL_VERSION} from '../web/engine-model.js';
 import {buildTable, PairSearch, PAIR_SEARCH_VERSION, type CheckOutcome, type ScoredCandidate, type SearchProgress} from '../web/engine-search.js';
 import {pickChecked, pickModelled, ENGINE_LADDER_VERSION, RUNG_TEXT, type LadderPick, type LadderRung, type LadderWindow} from '../web/engine-ladder.js';
@@ -753,6 +755,32 @@ export class SmallPlayer {
     this.explore = seed === null ? null : {seed, next: seed};
   }
   get transitionExplore(): number | null { return this.explore?.seed ?? null; }
+
+  // ---------------------------------------------------------------------------------------
+  // DJ booth settings (dj-settings@1): allowed styles, max stretch, wait bars, explore level, pair search mode
+  // ---------------------------------------------------------------------------------------
+  private djSettings: {readonly effective: EffectiveDjSettings; readonly stamp: SettingsStamp; readonly planner: TransitionSettings} | null = null;
+  /**
+   * Applies the owner's booth settings. Until this is called the player behaves exactly as before and records no
+   * settings stamp. `urlPairSearch` is the `?pairsearch=` override. A change that affects planning cancels and restarts
+   * the pair search so no stale plan table is used.
+   */
+  setDjSettings(settings: DjSettings, urlPairSearch: PairSearchMode | null = null): SettingsStamp {
+    const effective = resolveDjSettings(settings, urlPairSearch);
+    const before = this.djSettings?.stamp.id ?? null;
+    const stamp = settingsStamp(settings, urlPairSearch);
+    this.djSettings = {effective, stamp, planner: transitionSettingsOf(effective)};
+    this.setPairSearch(effective.pairSearch);
+    if (before !== stamp.id && this.pairJob) {
+      const target = this.pairJob.targetId;
+      this.cancelPairSearch('DJ settings changed');
+      this.preparePair(target);
+    }
+    return stamp;
+  }
+  get djSettingsStamp(): SettingsStamp | null { return this.djSettings?.stamp ?? null; }
+  get effectiveDjSettings(): EffectiveDjSettings | null { return this.djSettings?.effective ?? null; }
+  private plannerSettings(): {settings?: TransitionSettings} { return this.djSettings ? {settings: this.djSettings.planner} : {}; }
   private explore: {seed: number; next: number} | null = null;
 
   // ---------------------------------------------------------------------------------------
@@ -852,7 +880,8 @@ export class SmallPlayer {
       const dossierB = buildSongDossier(analysisB, {identity: identityOfAsset(toAsset), channels: toAsset.file.channels === 1 ? 1 : 2, analysisMs: 0, at});
       const map = this.voiceMap(from);
       const set = generateCandidates({from: {dossier: dossierA, grid: gridA, frames: map.nativeFrames},
-        to: {dossier: dossierB, grid: gridB, frames: toRecording.buffer.length}, sampleRate: rate, earliestFrame: map.earliestNative()});
+        to: {dossier: dossierB, grid: gridB, frames: toRecording.buffer.length}, sampleRate: rate, earliestFrame: map.earliestNative(),
+        ...(this.djSettings ? {settings: {...(this.djSettings.planner.allowedRecipeKeys ? {allowedRecipeKeys: this.djSettings.planner.allowedRecipeKeys} : {}), ...(this.djSettings.planner.maxStretch !== undefined ? {maxStretch: this.djSettings.planner.maxStretch} : {})}} : {})});
       const scored = set.candidates.map(spec => ({spec, model: modelScore(spec, {from: dossierA, to: dossierB, sampleRate: rate,
         fromBarFrames: gridA.barFrames, toBarFrames: gridB.barFrames, previousFamily: this.lastFamily})}));
       const table = buildTable({fromId: fromSet.asset.id, toId: toAsset.id, fromSha256: fromSet.asset.file.sha256, toSha256: toAsset.file.sha256,
@@ -888,7 +917,7 @@ export class SmallPlayer {
       from: {asset: map.fromSet.asset, analysis: analysisA, frames: map.nativeFrames, structure: analysisA.songStructure ?? null},
       to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length, channels: toRecording.buffer.numberOfChannels},
       sampleRate: rate, earliestFrame: map.earliestNative(), boundary: {bars: 4, anchorBar: 0},
-      options: {fromLevelGain: map.outgoing.levelGain},
+      options: {fromLevelGain: map.outgoing.levelGain}, ...this.plannerSettings(),
       candidate: {recipe: spec.recipe, exitBar: spec.exit.bar, entryFrame: spec.entry.frame, bars: spec.overlapBars, lastRung: spec.lastRung}});
     if (choice.kind === 'unavailable') return {status: 'refused', reason: choice.reason};
     const fail = (error: unknown): CheckOutcome<KeptPlan> => {
@@ -943,7 +972,10 @@ export class SmallPlayer {
     const grid = job.ctx!.gridA, earliest = map.earliestNative();
     const anchorBar = boundary.anchor === 'song' ? 0 : Math.max(0, Math.round((map.toNative(map.fromSet.offset) - downbeatAt(grid, 0)) / grid.barFrames));
     const first = nextBoundary(grid, anchorBar, boundary.bars, earliest);
-    return {earliestFrame: earliest, firstBar: first.bar, lastBar: first.bar + SET_WAIT_LIMIT_BARS};
+    const wait = this.djSettings?.effective.waitBars ?? SET_WAIT_LIMIT_BARS;
+    const level = this.djSettings?.effective.explore.level;
+    return {earliestFrame: earliest, firstBar: first.bar, lastBar: first.bar + wait,
+      ...(level && level !== 'dj' ? {exploreWeight: (key: string) => exploreWeight(level, key)} : {})};
   }
 
   /** The plan record's engine field for one committed handover. */
@@ -1113,7 +1145,7 @@ export class SmallPlayer {
           to: {asset: toAsset, analysis: analysisB, frames: toRecording.buffer.length,
             channels: allowBlend ? toRecording.buffer.numberOfChannels : Number.MAX_SAFE_INTEGER},
           sampleRate: rate, earliestFrame: earliestNative(), boundary: {bars: boundary.bars, anchorBar},
-          options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {}), ...(lastRung ? {lastRung} : {})});
+          options: {...options, fromLevelGain: outgoing.levelGain}, exclude, ...(explore ? {explore} : {}), ...(lastRung ? {lastRung} : {}), ...this.plannerSettings()});
         // When every ordinary candidate is used up, the last rung is still tried before giving up.
         const chooseOrLastRung = (allowBlend: boolean, lastRung = false): SetTransitionChoice => {
           const picked = choose(allowBlend, lastRung);
@@ -1250,7 +1282,8 @@ export class SmallPlayer {
         ...(engineRec.shadow ? [`Shadow pair search would have chosen ${engineRec.shadow.candidate ? `${engineRec.shadow.candidate.key} (${engineRec.shadow.rung})` : 'nothing (no usable checked plan)'}; the existing path scheduled this one.`] : [])];
       const chosenWithRung: typeof chosen = ladderWhy.length ? {...chosen, why: [...(chosen.why ?? []), ...ladderWhy]} : chosen;
       const record = setTransitionRecord(chosenWithRung, {id: fromSet.asset.id, sha256: fromSet.asset.file.sha256},
-        {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null, engineRec);
+        {id: toAsset.id, sha256: toAsset.file.sha256, frames: toRecording.buffer.length}, rate, explore ? 'explore' : options.recipe && options.recipe !== 'auto' ? 'manual' : 'auto', explore?.seed ?? null, engineRec,
+        this.djSettings ? ('allowListOverridden' in picked.plan && picked.plan.allowListOverridden ? {...this.djSettings.stamp, allowListOverridden: true} : this.djSettings.stamp) : undefined);
       from.set = {...fromSet, bpm: plan.fromBpm, grid: chosen.fromGrid.source,
         motion: {at: effect.frame, sourceFrame: plan.fromExitFrame - plan.preRollFrames,
           ...('nativeRate' in plan && plan.nativeRate ? {rate: plan.nativeRate.outgoing} : {}),

@@ -11,6 +11,7 @@
 import type {EntryStyle, LayeredEntryInfo} from './layered-entry.js';
 import {bassDropMinOverlap, CHOREOGRAPHY_LIMITS, CHOREOGRAPHY_VERSION, type ChoreographyName, type ChoreographyParams} from './eq-choreography.js';
 import {isEngineRecord, type EngineRecord} from './engine-journal.js';
+import {isSettingsStamp, type SettingsStamp} from './dj-settings.js';
 
 /**
  * @2 (S21 Part B) kept every @1 band edge and limit; it only added the pitch-preserving dual tempo ramp
@@ -47,11 +48,13 @@ export interface DualRampTempo {readonly bpm: number; readonly fromRatio: number
  * Meeting tempo with the least distortion: the geometric mean (equal stretch on both decks in log
  * terms), clamped so that each deck stays within the WSOLA bounds. Null when no tempo fits.
  */
-export function dualRampTempo(fromBpm: number, toBpm: number): DualRampTempo | null {
+export function dualRampTempo(fromBpm: number, toBpm: number, maxStretch: number = DUAL_RAMP_LIMITS.maxRatio - 1): DualRampTempo | null {
   const gap = tempoGap(fromBpm, toBpm);
   if (gap < DUAL_RAMP_LIMITS.minGap - 1e-12) return null;
   const lo = Math.min(fromBpm, toBpm), hi = Math.max(fromBpm, toBpm);
-  const low = DUAL_RAMP_LIMITS.minRatio * hi, high = DUAL_RAMP_LIMITS.maxRatio * lo;
+  // DJ booth settings: `maxStretch` (0.08 or 0.15) narrows the per-deck reach; the default is the 0.85..1.15 WSOLA bounds.
+  const ratioMax = Math.min(DUAL_RAMP_LIMITS.maxRatio, 1 + maxStretch), ratioMin = Math.max(DUAL_RAMP_LIMITS.minRatio, 1 - maxStretch);
+  const low = ratioMin * hi, high = ratioMax * lo;
   if (low > high + 1e-9) return null;
   const bpm = Math.min(high, Math.max(low, Math.sqrt(fromBpm * toBpm)));
   return {bpm, fromRatio: bpm / fromBpm, toRatio: bpm / toBpm};
@@ -63,6 +66,17 @@ export const TEMPO_GAP_BANDS: readonly {readonly band: TempoBand; readonly maxGa
   {band: 'bridge', maxGap: 0.40, description: 'echo bridge or native ramp; no long beatmatched overlap'},
   {band: 'reset', maxGap: Infinity, description: 'brake, echo reset or structural reset'},
 ] as const);
+/**
+ * Bands for a per-deck stretch limit (DJ booth setting max stretch, 0.08 or 0.15). The default 0.15 is exactly
+ * `TEMPO_GAP_BANDS`; a smaller limit L moves the stretched edge to L and the meet edge to (1+L)^2-1 (both decks within L).
+ */
+export function tempoBandsFor(maxStretch: number): typeof TEMPO_GAP_BANDS {
+  if (maxStretch >= 0.15 - 1e-12) return TEMPO_GAP_BANDS;
+  const meet = Math.round(((1 + maxStretch) ** 2 - 1) * 1e4) / 1e4;
+  return Object.freeze(TEMPO_GAP_BANDS.map(b => b.band === 'stretched' ? {...b, maxGap: maxStretch, description: `stretched blend (B stretched up to ${Math.round(maxStretch * 100)}%, pitch kept)`}
+    : b.band === 'meet' ? {...b, maxGap: meet, description: `dual tempo ramp (both decks within ${Math.round(maxStretch * 100)}%, pitch kept) or a short FX handover`}
+    : b.band === 'normal' ? {...b, maxGap: Math.min(b.maxGap, maxStretch)} : b));
+}
 /** Rhythm recipes need a confident beat grid; weak key only forbids sustained harmonic overlap. */
 export const RHYTHM_RECIPES: readonly SetRecipe[] = Object.freeze(['blend', 'loudness-match', 'filter-sweep', 'loop-extend', 'meet-in-middle', 'dual-ramp', 'tempo-ramp', 'brake']);
 const BAND_ORDER: Readonly<Record<TempoBand, readonly SetRecipe[]>> = Object.freeze({
@@ -89,14 +103,16 @@ export interface TempoGapDecision {
  * Ordered Auto recipe list for a tempo pair. @3: no clean cut. After these the route-free chain (crossfade,
  * layered entries, echo reset, dissolves) ends in the shortest layered entry. An owner-chosen cut bypasses this list.
  */
-export function tempoGapPolicy(fromBpm: number, toBpm: number, evidence: {readonly beatConfident: boolean} = {beatConfident: true}): TempoGapDecision {
+export function tempoGapPolicy(fromBpm: number, toBpm: number, evidence: {readonly beatConfident: boolean} = {beatConfident: true},
+  maxStretch = 0.15): TempoGapDecision {
   const gap = tempoGap(fromBpm, toBpm);
+  const bands = tempoBandsFor(maxStretch);
   // A tiny tolerance keeps exact band edges (100 -> 104 BPM is 4%) in the lower band despite rounding.
-  const band = TEMPO_GAP_BANDS.find(b => gap <= b.maxGap + 1e-9)!.band;
+  const band = bands.find(b => gap <= b.maxGap + 1e-9)!.band;
   const meetBpm = Math.sqrt(fromBpm * toBpm), perDeckChange = Math.sqrt(1 + gap) - 1;
-  const reasons = [`Tempo gap ${(gap * 100).toFixed(1)}% (${fromBpm.toFixed(1)} -> ${toBpm.toFixed(1)} BPM): ${TEMPO_GAP_BANDS.find(b => b.band === band)!.description}.`];
+  const reasons = [`Tempo gap ${(gap * 100).toFixed(1)}% (${fromBpm.toFixed(1)} -> ${toBpm.toFixed(1)} BPM): ${bands.find(b => b.band === band)!.description}.`];
   let recipes = [...BAND_ORDER[band]];
-  const dual = dualRampTempo(fromBpm, toBpm);
+  const dual = dualRampTempo(fromBpm, toBpm, maxStretch);
   if (!dual) recipes = recipes.filter(r => r !== 'dual-ramp');
   else if (band === 'bridge') recipes = ['dual-ramp', ...recipes];
   if (dual && band !== 'normal') reasons.push(`Dual tempo ramp: both decks move to ${dual.bpm.toFixed(1)} BPM (A ${((dual.fromRatio - 1) * 100).toFixed(1)}%, B ${((dual.toRatio - 1) * 100).toFixed(1)}%) with pitch kept.`);
@@ -240,7 +256,7 @@ export interface ExploreChoice {
  * Bounded, reproducible variation. Harmony gating still applies: with weak/unknown harmony only
  * mid-carve and bass-drop-handover are eligible. The overlap never exceeds the render budget.
  */
-export function exploreChoice(seed: number, f: PairFeatures, entryCandidates: number): ExploreChoice {
+export function exploreChoice(seed: number, f: PairFeatures, entryCandidates: number, limit?: {readonly maxStretch: number; readonly from: number; readonly to: number}): ExploreChoice {
   const random = seededRandom(seed), pick = <T>(xs: readonly T[]): T => xs[Math.floor(random() * xs.length)]!;
   const limited = f.harmonic === null || f.harmonic < 0.85;
   const names: readonly ChoreographyName[] = limited ? ['mid-carve', 'bass-drop-handover']
@@ -251,7 +267,12 @@ export function exploreChoice(seed: number, f: PairFeatures, entryCandidates: nu
   const gapBars = pick(EXPLORE_BOUNDS.gapBars);
   const echoTail = random() < 0.5;
   const entryIndex = entryCandidates > 0 ? Math.floor(random() * Math.min(EXPLORE_BOUNDS.entryTop, entryCandidates)) : 0;
-  const meetFraction = EXPLORE_BOUNDS.meetFraction.min + random() * (EXPLORE_BOUNDS.meetFraction.max - EXPLORE_BOUNDS.meetFraction.min);
+  let meetFraction = EXPLORE_BOUNDS.meetFraction.min + random() * (EXPLORE_BOUNDS.meetFraction.max - EXPLORE_BOUNDS.meetFraction.min);
+  if (limit) {
+    // DJ booth max stretch: keep both decks within the limit when the meeting point is drawn (fraction of the log distance).
+    const r = Math.abs(Math.log(limit.to / limit.from)), c = Math.log(1 + limit.maxStretch);
+    if (r > 1e-9 && r <= 2 * c) meetFraction = Math.min(c / r, Math.max(1 - c / r, meetFraction));
+  }
   let choreography: ChoreographyParams;
   if (name === 'bass-drop-handover') {
     // The planner only accepts 8/16/32-bar overlaps (4 beats per bar in MIX_OVERLAP_BEATS), so a 4-bar gap
@@ -307,6 +328,11 @@ export interface TransitionPlanRecord {
    * chosen candidate's model terms and the shadow result. Optional and compatible like `entryStyle`.
    */
   readonly engine?: EngineRecord;
+  /**
+   * DJ booth settings in force when this plan was made (snapshot plus short id, em.dj-settings.v1). Optional and compatible
+   * like `entryStyle`: older records have none and keep their ids. Lets ratings be compared across settings.
+   */
+  readonly settings?: SettingsStamp;
   readonly why: readonly string[];
   readonly rejected: readonly {readonly recipe: string; readonly reason: string}[];
 }
@@ -387,7 +413,8 @@ export function validateTransitionPlanRecord(value: unknown): TransitionPlanReco
       Number.isSafeInteger(r.menu.attempt) && r.menu.attempt >= 0 && typeof r.menu.chosen === 'string' && Array.isArray(r.menu.alternatives) &&
       r.menu.alternatives.length <= EXPLORE_MENU_POLICY.maxAlternatives && r.menu.alternatives.some(a => a.key === r.menu!.chosen) &&
       r.menu.alternatives.every(a => typeof a.key === 'string' && a.key.length <= 64 && Number.isFinite(a.weight) && a.weight > 0)) &&
-    (r.engine === undefined || isEngineRecord(r.engine));
+    (r.engine === undefined || isEngineRecord(r.engine)) &&
+    (r.settings === undefined || isSettingsStamp(r.settings));
   if (!ok) throw new Error('Invalid transition plan record.');
   const {id, ...rest} = r;
   if (`tp-${fnv1a(canonical(rest))}` !== id) throw new Error('Transition plan record id does not match its content.');

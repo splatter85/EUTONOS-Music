@@ -33,6 +33,8 @@ export interface LadderWindow {
   readonly firstBar: number; readonly lastBar: number;
   /** Explore seed: L0 then draws among the best checked plan of each family (explore-menu@1, logged). */
   readonly explore?: {readonly seed: number} | null;
+  /** DJ booth explore level: weight per menu key (bold vs safe styles); absent = equal floor weights. */
+  readonly exploreWeight?: (key: string) => number;
   /** Extra eligibility (for example: prepared audio still bound to the same voice). */
   readonly eligible?: (candidate: ScoredCandidate) => boolean;
 }
@@ -62,7 +64,7 @@ export function pickChecked<P>(search: PairSearch<P>, w: LadderWindow): LadderPi
   const perFamily: ScoredCandidate[] = [];
   for (const c of ranked) if (!perFamily.some(p => familyKey(p) === familyKey(c))) perFamily.push(c);
   const keys = perFamily.map(familyKey).slice(0, EXPLORE_MENU_POLICY.maxAlternatives);
-  const draw = exploreMenuDraw(w.explore.seed, 0, keys);
+  const draw = exploreMenuDraw(w.explore.seed, 0, keys, w.exploreWeight ? keys.map(w.exploreWeight) : undefined);
   const picked = perFamily[draw.index]!;
   return {rung: 'L0', candidate: picked, alternatives: perFamily.filter(p => p !== picked).slice(0, 3),
     menu: {policy: EXPLORE_MENU_POLICY.version, seed: w.explore.seed, attempt: 0, chosen: keys[draw.index]!,

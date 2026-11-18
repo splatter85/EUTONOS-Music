@@ -7,6 +7,7 @@
  * Feedback is evidence for analysis, not a listening qualification, and nothing learns from it.
  */
 import {cleanFeedbackText, FEEDBACK_NOTE_MAX, isFeedbackRating, parseFeedbackTags, type FeedbackRating, type FeedbackTag} from './feedback-vocabulary.js';
+import {isSettingsStamp, type SettingsStamp} from './dj-settings.js';
 import {validateTransitionPlanRecord, type TransitionPlanRecord, type TransitionRatingLog} from './transition-policy.js';
 
 export const TRANSITION_FEEDBACK = 'em.transition-feedback.v1' as const;
@@ -33,9 +34,15 @@ export interface TransitionFeedback {
   /** ISO time the rating was given. Re-rating the same plan later replaces the earlier rating. */
   readonly at: string;
   readonly measured: FeedbackMeasured | null;
+  /**
+   * OPTIONAL (added with the DJ booth settings; older ratings simply lack it): the settings stamp that was active when the
+   * plan was made, copied from `plan.settings`. It is stored beside the plan so reports can group ratings by settings.
+   */
+  readonly settings?: SettingsStamp;
 }
 
-const TOP_KEYS = ['version', 'planId', 'plan', 'rating', 'tags', 'note', 'device', 'at', 'measured'] as const;
+const REQUIRED_KEYS = ['version', 'planId', 'plan', 'rating', 'tags', 'note', 'device', 'at', 'measured'] as const;
+const TOP_KEYS = [...REQUIRED_KEYS, 'settings'] as const;
 const MEASURED_KEYS = ['status', 'reason', 'fallbackAfterFailedChecks'] as const;
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -60,7 +67,7 @@ function parseMeasured(value: unknown): FeedbackMeasured | null {
 export function parseTransitionFeedback(value: unknown): TransitionFeedback {
   if (!isRecord(value)) return fail('not an object');
   for (const key of Object.keys(value)) if (!(TOP_KEYS as readonly string[]).includes(key)) return fail(`unknown field "${key.slice(0, 40)}"`);
-  for (const key of TOP_KEYS) if (!(key in value)) return fail(`missing "${key}"`);
+  for (const key of REQUIRED_KEYS) if (!(key in value)) return fail(`missing "${key}"`);
   if (value.version !== TRANSITION_FEEDBACK) return fail('version');
   if (!isFeedbackRating(value.rating)) return fail('rating');
   const tags = parseFeedbackTags(value.tags);
@@ -72,8 +79,15 @@ export function parseTransitionFeedback(value: unknown): TransitionFeedback {
   let plan: TransitionPlanRecord;
   try { plan = validateTransitionPlanRecord(value.plan); } catch (error) { return fail(error instanceof Error ? error.message : 'plan'); }
   if (value.planId !== plan.id) return fail('planId does not match its plan');
+  let settings: SettingsStamp | undefined;
+  if (value.settings !== undefined) {
+    if (!isSettingsStamp(value.settings)) return fail('settings stamp');
+    if (!plan.settings || JSON.stringify(plan.settings) !== JSON.stringify(value.settings)) return fail('settings do not match the plan');
+    settings = structuredClone(value.settings);
+  }
   return {version: TRANSITION_FEEDBACK, planId: plan.id, plan: structuredClone(plan), rating: value.rating, tags,
-    note: cleanFeedbackText(value.note, FEEDBACK_NOTE_MAX), device: value.device as FeedbackDevice, at: value.at, measured: parseMeasured(value.measured)};
+    note: cleanFeedbackText(value.note, FEEDBACK_NOTE_MAX), device: value.device as FeedbackDevice, at: value.at, measured: parseMeasured(value.measured),
+    ...(settings ? {settings} : {})};
 }
 
 export interface FeedbackInput {
@@ -87,7 +101,8 @@ export interface FeedbackInput {
 }
 export function makeTransitionFeedback(input: FeedbackInput): TransitionFeedback {
   return parseTransitionFeedback({version: TRANSITION_FEEDBACK, planId: input.plan.id, plan: input.plan, rating: input.rating,
-    tags: input.tags ?? [], note: input.note ?? '', device: input.device, at: input.at, measured: input.measured ?? null});
+    tags: input.tags ?? [], note: input.note ?? '', device: input.device, at: input.at, measured: input.measured ?? null,
+    ...(input.plan.settings ? {settings: input.plan.settings} : {})});
 }
 
 /** An older em.transition-ratings.v1 entry (love/like/dislike only) as feedback with no tags or note. */

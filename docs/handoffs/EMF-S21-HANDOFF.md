@@ -350,3 +350,20 @@ macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone and audio 
 - The model is section-level until increment 4.
 
 **Next handoff:** coordinator review and merge of this branch into `main` (PC). Then run the Studio with `?pairsearch=shadow` during S10 owner listening, compare the shadow choices with the plans actually scheduled, and decide whether live becomes the default.
+
+## DJ booth settings (subagent increment)
+
+**Built.** Owner-adjustable planner settings (pair search, explore, allowed styles, max stretch, wait bars), each Manual or DJ decides, on the Studio booth card and the phone page, saved in the browser and in `local/dj-settings/settings.json` through new relay endpoints (`/api/dj/settings`, `/api/settings`). A settings stamp (short id plus snapshot) is recorded on plan records and ratings, and `scripts/transitions-report.ts` groups by settings id and by style. Contract: [S21 section](../S21_TRANSITION_PLANNER.md#dj-booth-settings); endpoints: [S17 section](../S17_PHONE_LISTENING.md#dj-booth-settings-endpoints-and-phone-card).
+
+**Judgement calls.**
+- Analyzed recipes are not filtered by the allow-list; only the 8 route-free styles are.
+- No stamp until settings are applied (the Studio always applies them); all-DJ settings share one constant id.
+- POST is a partial merge; one bad value rejects the whole request; newest `updatedAt` wins; 3 s polling, no push.
+- Explore low/high weights are bold 1/3 and 3/1; the old explore checkbox and pair-search select stay as mirrors; the URL flag overrides and is stamped.
+- Max stretch 8% narrows the tempo bands, dual ramp and explore meet and adds a post-plan gate.
+
+**Not touched.** Song dossier store, S17 relay core logic beyond the new endpoints, campaign / Current Tasks / board / RAM / NAV.
+
+**Not verified.** Listening, a real phone, macOS and Linux (Windows only). Settings defaults and the weights are uncalibrated.
+
+**Next handoff:** coordinator review and merge (PC); then use the settings during S10 listening to compare shadow/live, styles and stretch by settings id in the report.
