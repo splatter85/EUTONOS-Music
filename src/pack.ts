@@ -228,7 +228,7 @@ export function validatePackManifest(value: unknown): AudioPack {
   const o = object(value, 'pack', ['schema_version', 'id', 'revision', 'assets', 'palettes', 'recipes', 'routes']);
   if (o.schema_version !== PACK_VERSION) fail('UNSUPPORTED_VERSION', 'pack.schema_version', `expected ${PACK_VERSION}`);
   const pack: AudioPack = {...identity(o, 'pack'), schema_version: PACK_VERSION,
-    assets: list(o.assets, 'pack.assets', asset), palettes: list(o.palettes, 'pack.palettes', palette),
+    assets: list(o.assets, 'pack.assets', asset, 128), palettes: list(o.palettes, 'pack.palettes', palette),
     recipes: list(o.recipes, 'pack.recipes', recipe), routes: list(o.routes, 'pack.routes', route)};
   if (!pack.assets.length) fail('INVALID_MANIFEST', 'pack.assets', 'pack needs audio');
   unique([pack.id, ...pack.assets.map(a => a.id), ...pack.palettes.map(p => p.id),

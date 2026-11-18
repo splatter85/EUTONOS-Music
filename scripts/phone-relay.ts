@@ -21,6 +21,8 @@ import {FeedbackFile, FeedbackFileError} from './transition-feedback-file.js';
 import {DossierFileError, SongDossierFile} from './song-dossier-file.js';
 import {isDossierId} from '../web/song-dossier.js';
 import {DjSettingsFile, DjSettingsFileError} from './dj-settings-file.js';
+import {DjSources, SourcesError} from './dj-sources.js';
+import {isRateAction, parseTickPatch} from '../web/dj-sources.js';
 import {parseControlCommand, sanitizeDjStatus, type DjStatus, type RelayStatus,
   type RelayedCommand} from '../web/phone-protocol.js';
 
@@ -42,6 +44,8 @@ export const LIMITS = {
   dossierBytes: 128 * 1024,
   /** One DJ booth settings write (a handful of small settings; the stored file is capped at 8 KiB). */
   settingsBytes: 4 * 1024,
+  /** One sources change (ticks, one folder path, one rating). */
+  sourcesBytes: 4 * 1024,
   /** About two seconds of 256 kbit/s MP3, sent first to a new listener for fast start. */
   recentBytes: 64 * 1024,
   /** A listener whose unsent backlog exceeds this is dropped instead of buffered. */
@@ -84,6 +88,10 @@ export interface PhoneRelayOptions {
   readonly dossierRoot?: string;
   /** Folder whose `local/dj-settings/` holds the booth settings; defaults to `feedbackRoot`, then the repository root. */
   readonly settingsRoot?: string;
+  /** Folder whose `local/dj-sources/` holds the source ticks, folder allow-list and ratings; defaults to `feedbackRoot`, then the repository root. */
+  readonly sourcesRoot?: string;
+  /** Tests inject a service with a fake Music Studio; production builds one from `sourcesRoot`. */
+  readonly sources?: DjSources;
   /** Clock in ms; injectable so tests can age phone activity without waiting. */
   readonly now?: () => number;
 }
@@ -136,6 +144,9 @@ const PHONE_FILES: Readonly<Record<string, {file: string; type: string}>> = {
   '/dj-settings.js': {file: 'dist/web/dj-settings.js', type: 'text/javascript; charset=utf-8'},
   '/dj-settings-store.js': {file: 'dist/web/dj-settings-store.js', type: 'text/javascript; charset=utf-8'},
   '/dj-settings-ui.js': {file: 'dist/web/dj-settings-ui.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-sources.js': {file: 'dist/web/dj-sources.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-sources-store.js': {file: 'dist/web/dj-sources-store.js', type: 'text/javascript; charset=utf-8'},
+  '/dj-sources-ui.js': {file: 'dist/web/dj-sources-ui.js', type: 'text/javascript; charset=utf-8'},
 };
 
 /** Raw-target path check in the same discipline as scripts/serve.ts; returns the decoded path. */
@@ -199,6 +210,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
   const feedbackFile = new FeedbackFile(options.feedbackRoot);
   const dossierFile = new SongDossierFile(options.dossierRoot ?? options.feedbackRoot);
   const settingsFile = new DjSettingsFile(options.settingsRoot ?? options.feedbackRoot);
+  const sources = options.sources ?? new DjSources({...((options.sourcesRoot ?? options.feedbackRoot) !== undefined ? {root: (options.sourcesRoot ?? options.feedbackRoot)!} : {}), log});
   /** Time of the last phone-side request (status, live stream, control); DJ requests never set it. */
   let phoneSeenAt: number | null = null;
 
@@ -336,6 +348,74 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     } catch (error) { settingsError(response, error); }
   }
 
+  /** Refusals the owner can act on. Messages are fixed or built without paths; nothing private reaches the phone. */
+  function sourcesError(response: ServerResponse, error: unknown): void {
+    if (error instanceof SourcesError) {
+      const code = error.code === 'invalid' ? 400 : error.code === 'unknown-song' ? 404 : error.code === 'changed' ? 409
+        : error.code === 'not-ready' ? 503 : 502;
+      if (error.code !== 'invalid') fail(`sources: ${error.code}`);
+      json(response, code, {error: `sources-${error.code}`, detail: error.message.slice(0, 200)});
+    } else {
+      fail(`sources failed: ${error instanceof Error ? error.message : String(error)}`);
+      json(response, 500, {error: 'sources-failed'});
+    }
+  }
+  /**
+   * GET returns the sources view (the phone's copy has no folder paths). A POST body is exactly one of: `{ticks}`,
+   * `{rate: {assetId, action}}`, and (DJ side only) `{addFolder}`, `{removeFolder}` or `{rescan: true}`.
+   */
+  async function sourcesRequest(request: IncomingMessage, response: ServerResponse, phone: boolean): Promise<void> {
+    try {
+      if (request.method === 'GET') { json(response, 200, await sources.view({phone})); return; }
+      const body = await readBody(request, LIMITS.sourcesBytes);
+      let parsed: unknown;
+      try { parsed = JSON.parse(body.toString('utf8')); } catch { json(response, 400, {error: 'invalid-json'}); return; }
+      const keys = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? Object.keys(parsed) : [];
+      if (keys.length !== 1) { json(response, 400, {error: 'sources-invalid', detail: 'Send exactly one change.'}); return; }
+      const record = parsed as Record<string, unknown>;
+      const key = keys[0];
+      if (key === 'ticks') {
+        let patch;
+        try { patch = parseTickPatch(record.ticks); } catch (error) { json(response, 400, {error: 'sources-invalid', detail: (error as Error).message}); return; }
+        json(response, 200, await sources.setTicks(patch));
+      } else if (key === 'rate') {
+        const rate = record.rate as Record<string, unknown> | null;
+        if (typeof rate !== 'object' || rate === null || Array.isArray(rate) || Object.keys(rate).length !== 2 || !isRateAction(rate.action)) {
+          json(response, 400, {error: 'sources-invalid', detail: 'Send {assetId, action}.'}); return;
+        }
+        json(response, 200, await sources.rate(rate.assetId, rate.action));
+      } else if (!phone && key === 'addFolder') json(response, 200, await sources.addFolder(record.addFolder));
+      else if (!phone && key === 'removeFolder') json(response, 200, await sources.removeFolder(record.removeFolder));
+      else if (!phone && key === 'rescan' && record.rescan === true) { await sources.refresh(); json(response, 200, await sources.view({phone})); }
+      else json(response, 400, {error: 'sources-invalid', detail: 'Unknown change.'});
+    } catch (error) {
+      if (error instanceof BodyTooLarge) throw error;
+      sourcesError(response, error);
+    }
+  }
+  /** The virtual set pack: manifest, rights evidence and audio by opaque id (re-verified on every read). */
+  async function sourcesPack(response: ServerResponse, path: string): Promise<void> {
+    try {
+      if (path === '/api/dj/sources/pack/manifest.json') {
+        const body = await sources.manifest();
+        response.writeHead(200, {'Content-Type': 'application/json; charset=utf-8', 'Content-Length': body.byteLength});
+        response.end(body);
+        return;
+      }
+      if (path === '/api/dj/sources/pack/PROVENANCE.md') {
+        const body = sources.provenance();
+        response.writeHead(200, {'Content-Type': 'text/markdown; charset=utf-8', 'Content-Length': body.byteLength});
+        response.end(body);
+        return;
+      }
+      const match = /^\/api\/dj\/sources\/pack\/audio\/(src-[0-9a-f]{32})\.wav$/.exec(path);
+      if (!match) { plain(response, 404, 'Not found'); return; }
+      const body = await sources.readAudio(match[1]!);
+      response.writeHead(200, {'Content-Type': 'audio/wav', 'Content-Length': body.byteLength});
+      response.end(body);
+    } catch (error) { sourcesError(response, error); }
+  }
+
   function status(): RelayStatus {
     return {
       dj: {connected: djEvents !== null, ageMs: djStatus ? now() - djStatus.at : null, status: djStatus?.status ?? null},
@@ -414,6 +494,16 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === '/api/dj/settings') {
       if (request.method !== 'GET' && request.method !== 'POST') { response.setHeader('Allow', 'GET, POST, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
       await settingsRequest(request, response);
+      return;
+    }
+    if (path === '/api/dj/sources') {
+      if (request.method !== 'GET' && request.method !== 'POST') { response.setHeader('Allow', 'GET, POST, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      await sourcesRequest(request, response, false);
+      return;
+    }
+    if (path.startsWith('/api/dj/sources/pack/')) {
+      if (request.method !== 'GET') { response.setHeader('Allow', 'GET, OPTIONS'); plain(response, 405, 'Method not allowed'); return; }
+      await sourcesPack(response, path);
       return;
     }
     if (path === '/api/dj/ratings') {
@@ -551,6 +641,14 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
       await settingsRequest(request, response);
       return;
     }
+    if (path === '/api/sources') {
+      // Phone side: same-origin only; no folder paths in, none out. JSON content type forces a preflight for any foreign page.
+      if (request.method !== 'GET' && request.method !== 'POST') { response.setHeader('Allow', 'GET, POST'); plain(response, 405, 'Method not allowed'); return; }
+      if (request.headers['sec-fetch-site'] === 'cross-site' || !sameOriginOrAbsent(request)) { json(response, 403, {error: 'same-origin-only'}); return; }
+      if (request.method === 'POST' && !/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] ?? '')) { json(response, 403, {error: 'same-origin-json-only'}); return; }
+      await sourcesRequest(request, response, true);
+      return;
+    }
     if (request.method !== 'GET' && !head) { response.setHeader('Allow', 'GET, HEAD'); plain(response, 405, 'Method not allowed'); return; }
     if ((path === '/api/status' || path === '/live.mp3') && request.headers['sec-fetch-site'] === 'cross-site') {
       plain(response, 403, 'Cross-site requests are refused', head); return;
@@ -602,7 +700,7 @@ export function createPhoneRelay(options: PhoneRelayOptions = {}): PhoneRelay {
     if (path === undefined) { plain(response, 404, 'Not found'); return; }
     const url = new URL(request.url ?? '/', 'http://relay.invalid');
     const handler = path.startsWith('/api/dj/')
-      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings', '/api/dj/dossier', '/api/dj/dossiers', '/api/dj/settings'].includes(path) ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
+      ? (['/api/dj/ingest', '/api/dj/events', '/api/dj/status', '/api/dj/wanted', '/api/dj/rating', '/api/dj/ratings', '/api/dj/dossier', '/api/dj/dossiers', '/api/dj/settings', '/api/dj/sources'].includes(path) || path.startsWith('/api/dj/sources/pack/') ? handleDj(request, response, path, url) : Promise.resolve(plain(response, 404, 'Not found')))
       : isPhoneHost(request.headers.host, allowHosts)
         ? handlePhone(request, response, path)
         : Promise.resolve(plain(response, 400, 'Invalid host'));

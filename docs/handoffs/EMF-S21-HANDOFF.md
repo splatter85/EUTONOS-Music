@@ -367,3 +367,21 @@ macOS and Linux were NOT RUN. Listening is NOT TESTED. The real phone and audio 
 **Not verified.** Listening, a real phone, macOS and Linux (Windows only). Settings defaults and the weights are uncalibrated.
 
 **Next handoff:** coordinator review and merge (PC); then use the settings during S10 listening to compare shadow/live, styles and stretch by settings id in the report.
+
+## Addendum: DJ song sources
+
+**Built.** The DJ pool is the union of ticked sources (Music Studio loved/liked, existing packs, user-added WAV folders) with ratings from the booth and the phone, dislikes excluded and kept as negative examples, a 128-song cap, a virtual `em.audio-pack.v0` set pack served by the relay, and source/rating stamps on feedback records and the transitions report. Music Studio side: read-only `GET /api/takes/rated` and `GET /api/takes/{id}/dj-audio` (branch `work/sources-endpoint`). Contract: [S18 section](../S18_SET_MODE.md#dj-song-sources-the-pool-is-the-union-of-ticked-sources); endpoints: [S17 section](../S17_PHONE_LISTENING.md#dj-song-sources-endpoints-and-phone-card).
+
+**Judgement calls.**
+- The Studio uses the relay pool whenever a relay token is present; `?sources=legacy` keeps the older rated-set import, and the older browser checks use it.
+- Source stamps go on the feedback record, not the plan record (plan ids are content hashes).
+- Duplicate songs (same file hash) appear once under the highest-priority source.
+- A pool change while music plays waits for the Apply button instead of cutting the music.
+- Music Studio revision is derived from the audio file identity, not the rating or title.
+- The rated-set intake byte budget stays 512 MiB; only the take count cap moved to 128.
+
+**Not touched.** Song dossier store, campaign / Current Tasks / board / RAM / NAV; no GPU engine started, no audio generated.
+
+**Not verified.** Listening, a real phone, a real running Music Studio, macOS and Linux (Windows only).
+
+**Next handoff:** coordinator review and merge of both branches (PC).

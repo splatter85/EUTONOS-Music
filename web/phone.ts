@@ -9,6 +9,8 @@ import {FEEDBACK_RATING_LABELS, FEEDBACK_TAG_LABELS, FEEDBACK_TAGS, isFeedbackRa
 import {StallWatchdog} from './phone-watchdog.js';
 import {DjSettingsStore} from './dj-settings-store.js';
 import {SettingsCard} from './dj-settings-ui.js';
+import {DjSourcesStore} from './dj-sources-store.js';
+import {SourcesCard} from './dj-sources-ui.js';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -351,6 +353,18 @@ function renderBooth(): void {
 }
 renderBooth();
 void settingsStore.sync();
+
+// DJ song sources: the same card as the Studio page, without folder paths (those stay on the PC).
+const sourcesStore: DjSourcesStore = new DjSourcesStore({endpoint: '/api/sources', onChange: () => { sourcesCard.render(sourcesStore.view, sourcesStore.ticks(), sourcesStore.lastProblem); }});
+const sourcesCard = new SourcesCard(element('sources-card'), {
+  tick: (id, on) => { void sourcesStore.setTick(id, on); },
+  addFolder: () => undefined,
+  removeFolder: () => undefined,
+  rescan: () => undefined,
+  rate: (id, action) => { void sourcesStore.rate(id, action); },
+}, 'sources', {admin: false, songs: true});
+void sourcesStore.refresh();
+setInterval(() => { if (!document.hidden) void sourcesStore.refresh(); }, 3000);
 setInterval(() => { if (!document.hidden) void settingsStore.tick(); }, 3000);
 
 setupMediaSession();

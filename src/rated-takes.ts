@@ -12,7 +12,7 @@ export const RATED_CATALOG_VERSION = 'eutonos.rated-catalog.v1';
 export const RATED_INTAKE_LIMITS = Object.freeze({jsonBytes: 1024 * 1024, fileBytes: 256 * 1024 * 1024,
   totalBytes: 8 * 1024 * 1024 * 1024, takes: 4096, pairBytes: MAX_AUDITION_BYTES,
   /** EMF-S18 set budget: total dj_audio bytes and take count of one set pack (no pair cap applies). */
-  setBytes: 512 * 1024 * 1024, setTakes: 32});
+  setBytes: 512 * 1024 * 1024, setTakes: 128});
 /** `loved-liked` selects every love and like take; an explicit list names takes (love/like only). */
 export type SetSelection = 'loved-liked' | readonly string[];
 export type TakeRating = 'love' | 'like' | 'dislike';

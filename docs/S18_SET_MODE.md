@@ -9,7 +9,7 @@ Let the owner play a DJ **set** made from every take they rated love or like, no
 ## Increments
 
 1. **Rated set intake (in main, Node only).** `importRatedTakes` and `npm run import:rated` accept `--set loved-liked` or `--set TAKE_ID,TAKE_ID,...` and emit one `em.audio-pack.v0` pack with N recordings and `routes: []`. The catalogue records the selection in a new `set` field.
-2. **Set playback (in main).** The browser loader and DJ accept a set of 2–32 recordings. In automatic-mix mode they mix any song to any song without authored routes, cache per-song analysis and decode lazily within a memory budget. See [Increment 2](#increment-2-set-playback).
+2. **Set playback (in main).** The browser loader and DJ accept a set of 2–128 recordings. In automatic-mix mode they mix any song to any song without authored routes, cache per-song analysis and decode lazily within a memory budget. See [Increment 2](#increment-2-set-playback).
 3. **Set UI (in main).** Studio `studio.html?pack=set` shows the set, an editable queue and Next on a 4- or 8-bar boundary. It adds Auto every 16, 32 or 64 bars with an optional loop, and shows the chosen recipe, bar and tempo change. The phone remote gains an Auto button. See [Increment 3](#increment-3-studio-set-page-and-phone).
 
 ## Increment 1 contract
@@ -19,7 +19,7 @@ Let the owner play a DJ **set** made from every take they rated love or like, no
 - **Asset IDs.** `s18-` plus the first 24 hex digits of SHA-256 of the take ID. An ID depends only on its take, so the same take keeps its ID in any set.
 - **Per asset.** The same facts as the S16 pair: full-length PCM16 audition copy, original and audition hashes, byte counts, PCM format and duration re-checked for every selected take, a **requested** constant 4/4 grid at frame zero (`requested-not-measured`), `key` and `harmony_pitch_classes` null, eligibility `unreviewed`, playback-only rights. A take with unknown requested BPM is refused because it cannot get a grid.
 - **Mixed BPMs.** Requested BPMs may differ between set takes. No equal-BPM rule applies because no route is authored; `src/pack.ts` already accepts a pack with zero routes, and its route rules are unchanged.
-- **Budget.** The 128 MiB pair cap does not apply. A set allows at most **32 takes** and **512 MiB** of audition audio in total; past either limit the import fails with `SET_TOO_LARGE`. Audio is never shortened to fit. Each audition file stays within the pack's existing 64 MiB per-file limit (about 6 minutes of 44.1 kHz stereo PCM16). The intake raises the importer's delivery read budget only for this call, to 514 MiB; other producers keep the 256 MiB default.
+- **Budget.** The 128 MiB pair cap does not apply. A set allows at most **128 takes** and **512 MiB** of audition audio in total; past either limit the import fails with `SET_TOO_LARGE`. Audio is never shortened to fit. Each audition file stays within the pack's existing 64 MiB per-file limit (about 6 minutes of 44.1 kHz stereo PCM16). The intake raises the importer's delivery read budget only for this call, to 514 MiB; other producers keep the 256 MiB default.
 - **Catalogue.** Schema stays `eutonos.rated-catalog.v1`. A new `set` field (null unless `--set` is used) records `selection`, `take_ids`, `asset_ids`, `manifest` (`pack/manifest.json`), `grid` (`requested-not-measured`), `transition` (`none-authored (DJ decides)`), `eligibility` (`unreviewed`), `order` (`catalog`), `total_bytes`, `max_bytes` and `max_takes`. Readers must treat an absent `set` as null. With `--pair`, `pair` is unchanged and `set` is null.
 - **Output.** The output rules are unchanged: a new directory outside the export, `OUTPUT_EXISTS` refusal and no published output on any failure.
 
@@ -35,7 +35,7 @@ Let the owner play a DJ **set** made from every take they rated love or like, no
 - **Loader.** `loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, set: true})` fetches only the manifest and rights evidence.
   - Every asset must be a recording with timing and an entry cue.
   - Songs are fetched and validated one at a time when needed (`LoadedBrowserPack.lazy`).
-  - `SET_LIMITS`: 2–32 recordings, 512 MiB packed and **128 MiB decoded per song**.
+  - `SET_LIMITS`: 2–128 recordings, 4 GiB packed and **128 MiB decoded per song**.
   - The one- and two-recording paths are unchanged.
 - **Player.** `new SmallPlayer(context, loaded, null)` is a route-free set player.
   - `playAsset(id)` starts any song.
@@ -120,3 +120,23 @@ These describe S18 as integrated. [S19](S19_TRANSITIONS.md) adds bounded full-so
 - When a mix-in finishes, the incoming song is reconnected directly at the end of its entry automation. Tests check this approximation; nobody has listened to it.
 - The analysis cache is in memory only (no IndexedDB). Waveforms are not drawn for set songs.
 - Checked on Windows only; macOS and Linux were not run. Physical output, the real phone and listening are **NOT TESTED**.
+
+## DJ song sources (the pool is the union of ticked sources)
+
+The set pool is no longer one fixed pack. The Studio booth has a **Song sources** card (and the phone page a compact copy): tick or untick sources and the DJ's pool becomes the union of the ticked ones. Ticking or unticking refreshes the queue at once when idle; while music plays an **Apply song changes (stops the music)** button appears instead. Without a relay token, or with `?sources=legacy`, the older rated-set import from `local/s16-rated` is used unchanged.
+
+**Sources.** Music Studio loved and Music Studio liked (default on), the existing EUTONOS packs (owner-local real FL, mock FL, rated pair under `local/`; default off) and any number of user-added WAV folders (default on when added). A song present in several sources appears once, keeps the first source by priority and records the others.
+
+**Rating.** Every song row shows its source and rating (love, like or unrated). The owner can rate love, like or dislike from the Studio booth and from the phone; pressing the same rating again clears it. Ratings of Music Studio songs are written back with the existing `PATCH /api/takes/{id}` `{rating}`; folder and pack songs are rated in the git-ignored `local/dj-sources/ratings.json`, keyed by file hash (same guards and caps as the other PC files). A dislike removes the song from the pool and from the queue at once (the song already playing finishes), keeps it in an inventory of negative examples ("Disliked songs", with Undo) and is never played; Undo restores it. Unrated folder songs are playable and labelled unrated.
+
+**Folders.** The path field on the Studio page sends a path to the relay, which validates and canonicalises it and refuses UNC and device paths, relative or non-drive-letter paths, reserved Windows names, trailing dots or spaces, streams, and symlinks or junctions (the folder itself and every ancestor). Remove only takes a folder off the list; it never deletes files. The scan is read-only, depth 3, at most 5000 directory entries, WAV only, using the pack loader's `readPcm16Wav` validation, a 64 MiB file cap, 10-1200 s duration and a 4 GiB scan budget. Anything else is skipped with a note. Rescans run on change and on a 3 s poll.
+
+**Caps.** At most **128 songs** in the pool in total, 8 folders, 128 WAV files per folder and 4096 stored ratings. Past 128 the card says so in words and tells the owner to untick a source or use a smaller folder; nothing is silently dropped. The set loader, the rated-set intake and the pack asset list now allow 128 (was 32; the intake byte budget stays 512 MiB).
+
+**Virtual pack.** The relay serves the pool as an `em.audio-pack.v0` set pack at `/api/dj/sources/pack/` (manifest, PROVENANCE.md, audio). Songs have opaque ids `src-` plus 32 hex of the file SHA-256; the browser never sees a private path. Each song has a requested-not-measured grid (a tempo from the file name when present, else a placeholder 120 BPM), no routes, eligibility `unreviewed` and transition `none-authored (DJ decides)`. At serve time the file is re-opened without following links, size-checked and re-hashed; a mismatch answers 409 `changed` and triggers a rescan. Music Studio audio is fetched from `127.0.0.1:7870` only (`GET /api/takes/rated`, `GET /api/takes/{id}/dj-audio`, read-only) into `local/dj-sources/studio-cache/<take>-<revision>.wav`. If Music Studio is not running the card says so and other sources still work.
+
+**Records.** Feedback records carry an optional `sources` stamp (source label and rating as played, for the from and to song). Old records without it stay valid. `scripts/transitions-report.ts` adds four groupings: song source (from to), source of the from song, source of the to song, and ratings when played; unstamped records group as "no source stamp". Plan records are content-hashed, so the stamp sits on the feedback record beside the plan id, not in the plan.
+
+**Rights.** Songs from folders and Music Studio are treated as unreviewed, local-only audition material, and the pack says so. The UI shows only a small "local only" label.
+
+**Limits.** Windows only. Real phone use, listening, and a real running Music Studio are **NOT TESTED**; the checks use a fake in-process Music Studio and synthetic tones.

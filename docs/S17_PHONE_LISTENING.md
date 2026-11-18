@@ -140,3 +140,15 @@ The relay also holds the DJ booth settings (planner contract: [S21](S21_TRANSITI
 `POST` is a partial merge of `{pairSearch, explore, styles, maxStretch, waitBars}` (each `{mode, value}`) or `{reset: true}`. Unknown keys are ignored; a bad value returns 400 `invalid-settings` and changes nothing; an oversized body returns 413. Both endpoints share one file, so a change from either side shows on the other within the 3 s poll.
 
 The phone page has a collapsed "DJ booth settings" card with a Manual / DJ decides toggle per setting and "Reset to safe defaults". It uses three more files from the allowlist (`/dj-settings.js`, `/dj-settings-store.js`, `/dj-settings-ui.js`) and no inline script or style, so the strict CSP is unchanged. Real phone behaviour is NOT TESTED; the Chromium check drives the same page at desktop width on an ephemeral port.
+
+## DJ song sources endpoints and phone card
+
+| Endpoint | Caller | Guard |
+| --- | --- | --- |
+| `GET`/`POST /api/dj/sources` | Studio page | loopback `Host`, allowed `Origin`, no proxy headers, timing-safe `X-Relay-Token`, 4 KiB body cap |
+| `GET /api/dj/sources/pack/manifest.json`, `PROVENANCE.md`, `audio/<id>.wav` | Studio page | same DJ guard; audio only by opaque `src-` id |
+| `GET`/`POST /api/sources` | phone page | same-origin JSON only, like the other phone endpoints |
+
+The DJ `POST` takes exactly one change: `ticks`, `rate`, `addFolder`, `removeFolder` or `rescan`. The phone `POST` accepts only `ticks` and `rate`: it can tick sources and rate songs but cannot add or remove folders, and its view never contains a folder path or private location. Errors: `invalid` 400, `unknown-song` 404, `changed` 409, `not-ready` 503, Music Studio problems 502. The state lives on the PC (`local/dj-sources/sources.json`, atomic write, symlink and junction refusal) and the phone and Studio poll it every 3 s.
+
+The phone page has a collapsed "Song sources" card: source checkboxes, every playable song with its source and rating and Love / Like / Dislike buttons, and a Disliked list with Undo. It adds three files to the allowlist (`/dj-sources.js`, `/dj-sources-store.js`, `/dj-sources-ui.js`) and no inline script or style. Contract and limits: [S18 song sources](S18_SET_MODE.md#dj-song-sources-the-pool-is-the-union-of-ticked-sources). Real phone behaviour is NOT TESTED; the Chromium check drives the page at desktop width on an ephemeral port.

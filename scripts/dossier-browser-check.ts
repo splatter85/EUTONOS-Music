@@ -46,7 +46,7 @@ try {
   const relayOrigin = `http://127.0.0.1:${await listen(relay.server)}`;
   browser = await chromium.launch({headless: true, args: ['--autoplay-policy=no-user-gesture-required']});
   report.browser = browser.version();
-  const url = `${origin}/studio.html?pack=set&relay=${encodeURIComponent(relayOrigin)}#relayToken=${TOKEN}`;
+  const url = `${origin}/studio.html?pack=set&relay=${encodeURIComponent(relayOrigin)}&sources=legacy#relayToken=${TOKEN}`;
   const store = (): Promise<string[]> => readdir(join(dossierRoot, 'local', 'song-dossiers')).catch(() => []);
 
   async function open(label: string): Promise<{page: import('playwright').Page; wavs: () => string[]; dossierCalls: () => string[]; close(): Promise<void>}> {

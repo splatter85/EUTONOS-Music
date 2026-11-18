@@ -29,12 +29,15 @@ import {describeSnapshot, resolveDjSettings, summarizeSnapshot} from './dj-setti
 import {PhoneAutoStart, PhoneStream, relayFromLocation, takeRelayToken} from './phone-stream.js';
 import {SetDeckControls} from './deck-controls.js';
 import {PersistentSetAnalysisCache} from './set-analysis-cache.js';
-import {SetSongList} from './set-song-list.js';
+import {SetSongList, type SongRater} from './set-song-list.js';
 import {StudioDossiers} from './studio-dossiers.js';
 import {browserMixPrecheck} from './mix-precheck.js';
 import {precheckLabel} from './mix-precheck-data.js';
 import {QUEUE_LIMIT, type PhoneCommand, type TransitionInfo} from './phone-protocol.js';
 import {AudioGate} from './audio-gate.js';
+import {DjSourcesStore} from './dj-sources-store.js';
+import {SourcesCard} from './dj-sources-ui.js';
+import {songSourceText, stampOfSong, type PairSourceStamp, type PoolSong} from './dj-sources.js';
 import {phoneTransition as basePhoneTransition} from './phone-transition.js';
 /**
  * Part B: the phone handover card with the mix-structure@1 position ("leaves in the breakdown at bar 33,
@@ -80,6 +83,14 @@ const requestedPairSearch = params.get('pairsearch');
 /** DJ booth settings: the pair search mode is now a setting; this URL flag stays as an override that wins over it. */
 const urlPairSearch: PairSearchMode | null = (PAIR_SEARCH_MODES as readonly string[]).includes(requestedPairSearch ?? '') ? requestedPairSearch as PairSearchMode : null;
 let pairSearchMode: PairSearchMode = urlPairSearch ?? 'off';
+const phoneRelay = relayFromLocation(location.search);
+// Read (and strip from the address bar) a relay token on every Studio page, not only the set page.
+const phoneToken = takeRelayToken(phoneRelay);
+/**
+ * DJ song sources: with a PC relay connected the song pool is the union of the ticked sources, served by the relay as a virtual
+ * set pack. `?sources=legacy` (or no relay) keeps the older rated-set import from local/s16-rated.
+ */
+const sourcesActive = isSet && !!phoneToken && params.get('sources') !== 'legacy';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const found = document.getElementById(id);
@@ -431,7 +442,7 @@ let lastSetMix = '';
  * The transition that most recently FINISHED playing (player.transition === 'complete'), with the
  * pre-check summary shown for it. Ratings from the PC panel and the phone attach to this plan only.
  */
-interface CompletedTransition {readonly plan: TransitionPlanRecord; readonly measured: FeedbackMeasured | null; readonly info: TransitionInfo | null}
+interface CompletedTransition {readonly plan: TransitionPlanRecord; readonly measured: FeedbackMeasured | null; readonly info: TransitionInfo | null; readonly sources?: PairSourceStamp}
 let lastCompleted: CompletedTransition | null = null;
 let feedbackStore: FeedbackStore | null = null;
 /** DJ booth settings (set page only): the store holds them, the card edits them, `applySettings` hands them to the player. */
@@ -459,7 +470,8 @@ function setAutoEnabled(enabled: boolean): void {
 setAuto.addEventListener('click', () => { setAutoEnabled(!autoOn); });
 /** Queue every set song in catalogue order, starting after `current` and skipping it. */
 async function queueWholeSet(current: string | null): Promise<void> {
-  const songs = loaded?.pack.assets.filter(a => a.source_kind === 'recording').map(a => a.id) ?? [];
+  const playable = sourcesActive ? playablePoolIds() : null;
+  const songs = loaded?.pack.assets.filter(a => a.source_kind === 'recording' && (!playable || playable.has(a.id))).map(a => a.id) ?? [];
   const at = current === null ? -1 : songs.indexOf(current);
   const ordered = [...songs.slice(at + 1), ...songs.slice(0, Math.max(0, at))].filter(id => id !== current);
   for (const id of ordered) await send({type: 'queueTrack', trackId: id});
@@ -501,8 +513,99 @@ function ratingOfAsset(id: string): string {
   const takeId = index >= 0 ? ratedCatalog?.set?.take_ids[index] : undefined;
   return ratedCatalog?.takes.find(t => t.id === takeId)?.rating ?? '';
 }
+// ---------- DJ song sources: the pool from the relay, ratings from the booth, queue refresh ----------
+let sourcesStore: DjSourcesStore | null = null;
+let sourcesCard: SourcesCard | null = null;
+let poolBusy = false, poolPending = false, purging = false;
+/** Every song the pool has shown, kept so a rating-as-played can still be stamped after a song was disliked or unticked. */
+const songMemory = new Map<string, PoolSong>();
+const poolSong = (id: string): PoolSong | undefined => sourcesStore?.view?.songs.find(s => s.assetId === id);
+function playablePoolIds(): Set<string> | null {
+  const view = sourcesStore?.view;
+  return view && view.pool.ok ? new Set(view.songs.map(s => s.assetId)) : null;
+}
+const relayFetch: typeof fetch = (input, init) => fetch(input, {...init, headers: {...(init?.headers as Record<string, string> | undefined), 'X-Relay-Token': phoneToken ?? ''},
+  mode: 'cors', credentials: 'omit'});
+const loadedKey = (): string => (loaded?.pack.assets ?? []).map(a => a.id).sort().join(',');
+const viewKey = (): string => (sourcesStore?.view?.songs ?? []).map(s => s.assetId).sort().join(',');
+function pairStamp(plan: TransitionPlanRecord): PairSourceStamp | undefined {
+  const from = songMemory.get(plan.from.id), to = songMemory.get(plan.to.id);
+  return from && to ? {from: stampOfSong(from), to: stampOfSong(to)} : undefined;
+}
+const songRater: SongRater | undefined = sourcesActive ? {
+  text: id => { const song = poolSong(id); return song ? songSourceText(song) : ''; },
+  current: id => poolSong(id)?.rating ?? 'unrated',
+  rate: (id, action) => {
+    void sourcesStore?.rate(id, action).then(ok => {
+      sourcesCard?.say(ok ? '' : sourcesStore?.lastProblem ?? '');
+      if (ok && action === 'dislike') void purgeQueue();
+    });
+  },
+} : undefined;
 const setSongList = isSet ? new SetSongList($('set-songs'), setAnalyses!, () => djPlayer,
-  id => { void send({type: 'queueTrack', trackId: id}); }, ratingOfAsset) : null;
+  id => { void send({type: 'queueTrack', trackId: id}); }, sourcesActive ? () => '' : ratingOfAsset, songRater) : null;
+/** A disliked or unticked song still waiting in the queue is removed at once; the song that is playing is left alone. */
+async function purgeQueue(): Promise<void> {
+  if (purging || !dj) return;
+  purging = true;
+  try {
+    for (let guard = 0; guard < 200; guard++) {
+      const allowed = playablePoolIds();
+      const stale = allowed ? dj?.snapshot().control.queue.find(entry => !allowed.has(entry.trackId)) : undefined;
+      if (!stale) break;
+      await send({type: 'cancelQueue', queueCommandId: stale.commandId});
+      if (dj?.snapshot().control.queue.some(entry => entry.commandId === stale.commandId)) break;
+    }
+  } finally { purging = false; }
+}
+/** Loads the relay's current virtual pack as the Studio's pool and rebuilds the queue (only ever called when idle). */
+async function loadPool(): Promise<void> {
+  const view = sourcesStore?.view;
+  if (!view?.pool.ok) throw new Error(view?.pool.message ?? 'No playable songs yet.');
+  const next = await loadBrowserPack(new URL(`${phoneRelay}/api/dj/sources/pack/manifest.json`), true, relayFetch, {allowUnreviewed: true, set: true});
+  const old = dj; dj = null; djPlayer = null; lastQueueKey = ''; autoHandled = null;
+  void old?.dispose().catch(() => undefined);
+  loaded = next;
+  getDj();
+  await queueWholeSet(null);
+  const songs = next.pack.assets.filter(a => a.source_kind === 'recording');
+  setText('global-status', `Song sources: ${songs.length} songs · requested or placeholder BPMs, the DJ measures the real grid · unreviewed, local only · listening untested`);
+  renderTracks(); preparePlan(); renderPhoneStream(); renderDj();
+}
+/** Reloads the pool when the songs changed: at once if idle (or the first load), otherwise on the Apply button. */
+async function reconcilePool(force = false): Promise<void> {
+  const view = sourcesStore?.view;
+  if (!view || poolBusy || !view.pool.ok) { renderPoolNote(); return; }
+  poolPending = loadedKey() !== viewKey();
+  if (!poolPending) { renderPoolNote(); return; }
+  const state = dj?.snapshot().player.state;
+  const idle = !state || ['idle', 'ended', 'closed'].includes(state);
+  // While Music Studio songs are still being fetched, wait for the scan to finish (the first load never waits).
+  if (loaded !== null && view.pool.scanning && !force) { renderPoolNote(); return; }
+  if (!idle && !force) { renderPoolNote(); return; }
+  poolBusy = true;
+  try {
+    if (!idle) await send({type: 'transport', action: 'stop'});
+    await loadPool();
+    poolPending = loadedKey() !== viewKey();
+  } catch (error) { djError.textContent = message(error); }
+  finally { poolBusy = false; renderPoolNote(); renderSet(); }
+}
+function renderPoolNote(): void {
+  const row = document.getElementById('set-sources-apply');
+  if (!row) return;
+  const show = sourcesActive && poolPending && !poolBusy && (sourcesStore?.view?.pool.ok ?? false);
+  if (row.hidden === show) row.hidden = !show;
+}
+function onSourcesChanged(): void {
+  const store = sourcesStore, view = store?.view ?? null;
+  if (view) for (const song of view.songs) songMemory.set(song.assetId, song);
+  sourcesCard?.render(view, store?.ticks() ?? {}, store?.lastProblem ?? '');
+  if (!view) return;
+  void purgeQueue();
+  void reconcilePool();
+  renderSet();
+}
 // ---------- S21 transition readout, seeded explore, and ratings of the LAST completed handover (no learner) ----------
 let shownPlan: TransitionPlanRecord | null = null;
 type DjPlayerSnapshot = PlayerSnapshot;
@@ -521,7 +624,7 @@ let mixingPlan: CompletedTransition | null = null;
 function noteCompleted(player: DjPlayerSnapshot | undefined): void {
   const summary = player?.mix?.summary, plan = summary?.set?.transition;
   const current: CompletedTransition | null = player && summary && plan
-    ? {plan, measured: measuredOf(player), info: phoneTransition(summary, player.mix?.fallbackAfterFailedPrecheck)} : null;
+    ? {plan, measured: measuredOf(player), info: phoneTransition(summary, player.mix?.fallbackAfterFailedPrecheck), ...(pairStamp(plan) ? {sources: pairStamp(plan)!} : {})} : null;
   const promote = (entry: CompletedTransition): void => { if (lastCompleted?.plan.id !== entry.plan.id) lastCompleted = entry; };
   if (player && current && player.transition === 'complete') { promote(current); mixingPlan = null; return; }
   if (player && current && player.transition === 'mixing') {
@@ -561,7 +664,8 @@ function rateLast(rating: FeedbackRating, tags: readonly string[], note: string,
   }
   const target = lastCompleted, label = lastCompletedLabel();
   let entry;
-  try { entry = makeTransitionFeedback({plan: target.plan, rating, tags, note, device, at: new Date().toISOString(), measured: target.measured}); }
+  try { entry = makeTransitionFeedback({plan: target.plan, rating, tags, note, device, at: new Date().toISOString(), measured: target.measured,
+    ...(target.sources ? {sources: target.sources} : {})}); }
   catch (error) { return refuse(`refused: ${error instanceof Error ? error.message : String(error)}`); }
   const done = feedbackStore.rate(entry).then(outcome => `Rated "${rating}": ${label}. ${savedWording(outcome)}`,
     error => `Not saved: ${error instanceof Error ? error.message : String(error)}`).finally(() => { renderSet(); });
@@ -686,9 +790,6 @@ function renderSet(): void {
 
 // ---------- phone (S17 relay, Studio set page) ----------
 const phoneButton = $<HTMLButtonElement>('phone-stream'), phoneBackground = $<HTMLInputElement>('phone-background');
-const phoneRelay = relayFromLocation(location.search);
-// Read (and strip from the address bar) a relay token on every Studio page, not only the set page.
-const phoneToken = takeRelayToken(phoneRelay);
 if (isSet) {
   feedbackStore = new FeedbackStore({relay: phoneToken ? phoneRelay : null, token: phoneToken, onChange: () => { renderSet(); }});
   const store = feedbackStore;
@@ -698,6 +799,20 @@ if (isSet) {
   applySettings();
   void settingsStore.sync();
   setInterval(() => { void settingsStore?.tick(); }, 3000);
+  if (sourcesActive) {
+    sourcesStore = new DjSourcesStore({endpoint: `${phoneRelay}/api/dj/sources`, token: phoneToken, onChange: onSourcesChanged});
+    const sourcesChanged = (ok: boolean): void => { if (!ok) onSourcesChanged(); };
+    sourcesCard = new SourcesCard($('set-sources-card'), {
+      tick: (id, on) => { void sourcesStore?.setTick(id, on).then(sourcesChanged); },
+      addFolder: path => { void sourcesStore?.addFolder(path).then(ok => { if (ok) sourcesCard?.clearPath(); sourcesChanged(ok); }); },
+      removeFolder: id => { void sourcesStore?.removeFolder(id).then(sourcesChanged); },
+      rescan: () => { void sourcesStore?.rescan().then(sourcesChanged); },
+      rate: (id, action) => { void sourcesStore?.rate(id, action).then(ok => { sourcesChanged(ok); if (ok && action === 'dislike') void purgeQueue(); }); },
+    }, 'src', {admin: true, songs: false});
+    $('set-sources').hidden = false;
+    $('set-sources-apply-btn').addEventListener('click', () => { void reconcilePool(true); });
+    setInterval(() => { if (!document.hidden) void sourcesStore?.refresh(); }, 3000);
+  }
   // The PC file is the source of truth: send anything queued, then read the file back; retry queued ratings every 15 s.
   void store.flush().then(() => store.sync());
   dossiers = new StudioDossiers({loaded: () => loaded, player: () => djPlayer, dj: () => dj, cache: setAnalyses!, relay: phoneRelay, token: phoneToken,
@@ -1178,15 +1293,31 @@ async function initialize(): Promise<void> {
     if (isSet) {
       handoffMode = 'mix';
       $('set-panel').hidden = false;
-      await loadRatedCatalog();
-      // Lazy: only the manifest is fetched now; each song is fetched and decoded when it is needed.
-      loaded = await loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, set: true});
-      const songs = loaded.pack.assets.filter(a => a.source_kind === 'recording');
       setText('sampler-sub', 'No samples or recipes in this pack');
-      setText('global-status', `${PACKS.set.label} loaded · ${songs.length} songs · requested BPMs ${songs.map(a => a.timing?.bpm ?? '?').join(', ')} · unreviewed audition · listening untested`);
       setText('dj-next', 'Next ▸');
-      getDj();
-      await queueWholeSet(null);
+      if (sourcesActive) {
+        // DJ song sources: the pool is the union of the ticked sources, served by the relay as a virtual set pack.
+        setText('global-status', 'Song sources: scanning the ticked sources…');
+        const store = sourcesStore!;
+        for (let waited = 0; waited < 40; waited++) {
+          await store.refresh();
+          if (store.view && !store.view.pool.scanning && store.view.pool.rev !== 'none') break;
+          if (!store.reachable) break;
+          await new Promise<void>(next => setTimeout(next, 250));
+        }
+        if (store.view) for (const song of store.view.songs) songMemory.set(song.assetId, song);
+        sourcesCard?.render(store.view, store.ticks(), store.lastProblem);
+        if (store.view?.pool.ok) await loadPool();
+        else setText('global-status', `Song sources: ${store.view?.pool.message ?? store.lastProblem ?? 'the PC relay did not answer.'}`);
+      } else {
+        await loadRatedCatalog();
+        // Lazy: only the manifest is fetched now; each song is fetched and decoded when it is needed.
+        loaded = await loadBrowserPack(manifest, true, fetch, {allowUnreviewed: true, set: true});
+        const songs = loaded.pack.assets.filter(a => a.source_kind === 'recording');
+        setText('global-status', `${PACKS.set.label} loaded · ${songs.length} songs · requested BPMs ${songs.map(a => a.timing?.bpm ?? '?').join(', ')} · unreviewed audition · listening untested`);
+        getDj();
+        await queueWholeSet(null);
+      }
       // `?dossiers=off` keeps the older lazy behaviour (songs are fetched only when played); checks that assert it use it.
       if (params.get('dossiers') !== 'off') dossiers?.start();
       renderTracks(); preparePlan(); renderPhoneStream();
